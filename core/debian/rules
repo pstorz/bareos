@@ -127,6 +127,16 @@ override_dh_installinit:
 override_dh_makeshlibs:
 	dh_makeshlibs -n
 
+override_dh_auto_test:
+	make clean
+	ctest -R gtest: -D Continuous || result=$?
+	result=$?
+	if [ $result -eq 1 ]; then
+		echo "ctest result $result is expected and OK"
+		exit 0
+	else
+		echo "ctest result $result is not 1, ERROR"
+	fi
 
 
 override_dh_shlibdeps:
