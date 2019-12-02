@@ -128,6 +128,7 @@ override_dh_makeshlibs:
 	dh_makeshlibs -n
 
 override_dh_auto_test:
+	cd obj-*
 	make clean
 	ctest -R gtest: -D Continuous || result=$?
 	result=$?
