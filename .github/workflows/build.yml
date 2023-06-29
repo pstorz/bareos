@@ -1,0 +1,96 @@
+on:
+  # Trigger analysis when pushing in master or pull requests, and when creating
+  # a pull request.
+  push:
+    branches:
+      - sonarcube
+  pull_request:
+      types: [opened, synchronize, reopened]
+name: Main Workflow
+jobs:
+  sonarcloud:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_WRAPPER_OUT_DIR: build_wrapper_output_directory # Directory where build-wrapper output will be placed
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        # Disabling shallow clone is recommended for improving relevancy of reporting
+        fetch-depth: 0
+    - name:  Install sonar-scanner and build-wrapper
+      uses: sonarsource/sonarcloud-github-c-cpp@v1
+    - name: Run build-wrapper
+      run: |
+        git log -1 --pretty=format:%ct
+
+        #here goes your compilation wrapped with build-wrapper; See https://docs.sonarcloud.io/advanced-setup/languages/c-c-objective-c/#analysis-steps-using-build-wrapper for more information
+        sudo apt-get --yes install \
+        acl \
+        attr \
+        acl-dev \
+        apache2 \
+        apache2-dev \
+        aptitude \
+        bc \
+        build-essential \
+        chrpath \
+        debhelper \
+        default-libmysqlclient-dev \
+        dh-python \
+        gawk \
+        git \
+        gdb \
+        glusterfs-common \
+        init-system-helpers \
+        libacl1-dev \
+        libarchive-dev \
+        libbz2-dev \
+        libcap-dev \
+        libcephfs-dev \
+        libcurl4-openssl-dev \
+        libjansson-dev \
+        libjson-c-dev \
+        libjsoncpp-dev \
+        liblzma-dev \
+        liblzo2-dev \
+        libpam-dev \
+        libpq-dev \
+        librados-dev \
+        libradosstriper-dev \
+        libreadline-dev \
+        librhash-dev \
+        libsqlite3-dev \
+        libssl-dev \
+        libsystemd-dev \
+        libuv1-dev \
+        libwrap0-dev \
+        libx11-dev \
+        libxml2-dev \
+        locales \
+        logrotate \
+        lsb-release \
+        mtx \
+        ncurses-dev \
+        ninja-build \
+        pkg-config \
+        po-debconf \
+        rsync \
+        sudo \
+        systemd \
+        vim \
+        zlib1g-dev \
+        postgresql \
+        postgresql-client \
+        mariadb-server \
+        dpkg-dev locales-all locales libutf8-locale0 build-essential debhelper cmake libgtest-dev libgmock-dev
+
+        pwd
+        git fetch --tags
+        mkdir build
+        cmake -S ../bareos -B build
+        build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} cmake --build build --parallel 4
+    - name: Run sonar-scanner
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      run: sonar-scanner --define sonar.cfamily.build-wrapper-output="${{ env.BUILD_WRAPPER_OUT_DIR }}" #Consult https://docs.sonarcloud.io/advanced-setup/ci-based-analysis/sonarscanner-cli/ for more information and options
