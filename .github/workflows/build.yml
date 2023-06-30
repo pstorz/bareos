@@ -21,8 +21,6 @@ jobs:
       uses: sonarsource/sonarcloud-github-c-cpp@v1
     - name: Run build-wrapper
       run: |
-        git log -1 --pretty=format:%ct
-
         #here goes your compilation wrapped with build-wrapper; See https://docs.sonarcloud.io/advanced-setup/languages/c-c-objective-c/#analysis-steps-using-build-wrapper for more information
         sudo apt-get --yes install \
         acl \
