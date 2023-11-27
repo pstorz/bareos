@@ -1,0 +1,117 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+set -u
+
+TestName="$(basename "$(pwd)")"
+export TestName
+
+#shellcheck source=../environment.in
+. ./environment
+
+#shellcheck source=../scripts/functions
+. "${rscripts}"/functions
+
+source "defs"
+
+start_test
+
+starttimestamp=$(date --iso-8601=seconds)
+
+backup_log="$tmp"/backups.out
+restore_log="$tmp"/restores.out
+consolidate_log="$tmp"/consolidate.out
+output="$tmp/output-$starttimestamp.tsv"
+
+rm -rf "$backup_log" "$consolidate_log" "$output"
+
+echo "$starttimestamp" >> "$output"
+printf  "bareos_version\ttestrun\ttlssettings\tfileset\tfilesetoptions\tclientoptions\tused_tls_settings\tcompression_rate\tbackup speed\tbackup time\trestore speed\trestore time\n" >> "$output"
+
+for tlssettings in "${TlsSettings[@]}"; do
+  echo "$tlssettings" > include/common_tls.conf
+  tlssettings_filenamecompat=$(tr ' ,=;' '_' <<< $tlssettings)
+
+for backupdatadir in "${BackupDataDir[@]}"; do
+  echo "$backupdatadir" > tmp/file-list
+  files=$(basename $backupdatadir)
+
+for clientoptions in "${ClientOptions[@]}"; do
+  echo "$clientoptions" > include/etc/bareos/bareos-dir.d/client/bareos-fd.conf
+  clientoptions_filenamecompat=$(tr ',=' '_' <<< $clientoptions)
+
+
+for filesetoptions in "${FilesetOptions[@]}"; do
+
+  bin/bareos restart
+
+for testrun in "${TestRuns[@]}"; do
+
+  rm storage/* ||:
+  echo $filesetoptions > include/etc/bareos/bareos-dir.d/fileset/default.conf
+  filesetoptions_filenamecompat=$(tr ',=' '_' <<< $filesetoptions)
+
+
+  log="$backup_log-$testrun-$tlssettings_filenamecompat-$clientoptions_filenamecompat-$filesetoptions_filenamecompat"
+  echo > "$log"
+	cat <<END_OF_DATA >"$tmp/bconcmds"
+@$out /dev/null
+messages
+@$out $log
+reload
+show fileset=Default
+delete volume=Full-0001 yes
+delete volume=Full-0002 yes
+run job=backup-bareos-fd level=Full yes
+wait
+messages
+END_OF_DATA
+cat "$tmp/bconcmds"
+	run_bconsole
+
+	expect_grep "Backup OK" \
+		    "$log" \
+		    "Backup was not ok."
+  compression_rate=$(sed -n "s/^.*Software Compression:\s*\(.*\).*$/\1/p" "$log")
+  speed_in_kb=$(grep -o "[0-9.]* KB/s" "$log" | sed -e 's#KB/s##g' -e 's/\./,/g' )
+  tls_settings_found=$(grep "speed-test-fd.*Connected Storage daemon at .* encryption: " "$log" | sed 's/.*ncryption: //g')
+  elapsed_time_backup=$(grep "Elapsed time:  .*" "$log" | cut -b 27-)
+  bareos_version=$(grep -o [0-9][0-9]\\.[0-9]\\.[0-9]\\S* "$log" | head -n1)
+  echo "... result: $speed_in_kb"
+
+  printf "$bareos_version\t$testrun\t$tlssettings\t$files\t$filesetoptions\t$clientoptions\t$tls_settings_found\t$compression_rate\t$speed_in_kb\t$elapsed_time_backup\t"  >> "$output"
+
+# now restore
+	log="$restore_log-$testrun-$clientoptions_filenamecompat-$filesetoptions_filenamecompat"
+  echo > "$log"
+  # clean restore dir
+  sudo rm -Rf "$tmp/bareos-restores"
+  cat <<END_OF_DATA >"$tmp/bconcmds"
+@$out /dev/null
+messages
+@$out $log
+reload
+restore client=bareos-fd where=$tmp/bareos-restores select all done yes
+wait
+messages
+END_OF_DATA
+	run_bconsole
+	expect_grep "Restore OK" \
+		    "$log" \
+		    "Restore was not ok."
+  speed_in_kb=$(grep -o "[0-9.]* KB/s" "$log" | sed -e 's#KB/s##g' -e 's/\./,/g' )
+  elapsed_time_restore=$(grep "Elapsed time:  .*" "$log" | cut -b 27-)
+	echo "... result: $speed_in_kb"
+  printf  "$speed_in_kb\t$elapsed_time_restore\n"  >> "$output"
+done
+done
+done
+done
+
+done
+
+printf "\n\nResults:\n------\n"
+cat "${output}"
+
+end_test
