@@ -11,6 +11,10 @@
 #  JSONCPP_INCLUDE_PREFIX, include prefix for jsoncpp.
 #  jsoncpp_lib_static imported library.
 
+set(CMAKE_FIND_DEBUG_MODE TRUE)
+
+message(FATAL_ERROR "ERROR")
+
 # only look in default directories
 find_path(
 	JSONCPP_INCLUDE_DIR
@@ -50,7 +54,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 	set(JSONCPP_LIBRARY optimized ${JSONCPP_LIBRARY} debug ${JSONCPP_LIBRARY_DEBUG})
 
 endif()
-
 # find JSONCPP_INCLUDE_PREFIX
 find_path(
     JSONCPP_INCLUDE_PREFIX
@@ -71,3 +74,5 @@ endif()
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(jsoncpp DEFAULT_MSG JSONCPP_INCLUDE_DIR JSONCPP_LIBRARY)
 mark_as_advanced (JSONCPP_INCLUDE_DIR JSONCPP_LIBRARY)
+
+set(CMAKE_FIND_DEBUG_MODE FALSE)

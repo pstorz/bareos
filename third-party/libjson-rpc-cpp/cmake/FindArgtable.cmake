@@ -35,6 +35,6 @@ endif()
 # handle the QUIETLY and REQUIRED arguments and set JSONCPP_FOUND to TRUE
 # if all listed variables are TRUE, hide their existence from configuration view
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(argtable DEFAULT_MSG ARGTABLE_INCLUDE_DIR ARGTABLE_LIBRARY)
+find_package_handle_standard_args(Argtable DEFAULT_MSG ARGTABLE_INCLUDE_DIR ARGTABLE_LIBRARY)
 mark_as_advanced (ARGTABLE_INCLUDE_DIR ARGTABLE_LIBRARY)
 
