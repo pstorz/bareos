@@ -102,13 +102,13 @@ bool WebsocketJsonRpcServer::on_validate(wsasioserver* wsserver,
     }
     else {
         std::cout << "Authentication failed" << std::endl;
-        return false;
+        return true;
     }
   } catch (websocketpp::exception const& e) {
     std::cout << "Operation failed because: "
               << "(" << e.what() << ")" << std::endl;
   }
-  return false;
+  return true;
 }
 
 WebsocketJsonRpcServer::WebsocketJsonRpcServer(int port)
