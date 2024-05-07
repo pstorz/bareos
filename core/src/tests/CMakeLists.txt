@@ -1,6 +1,6 @@
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2017-2023 Bareos GmbH & Co. KG
+#   Copyright (C) 2017-2024 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -241,6 +241,7 @@ target_sources(addresses_and_ports_config
 
   bareos_add_test(
     rpc_restore_browser LINK_LIBRARIES libjson-rpc-cpp::jsonrpcserver dird_objects bareosfind bareossql GTest::gtest_main
+    #rpc_restore_browser LINK_LIBRARIES dird_objects bareosfind bareossql GTest::gtest_main
   )
 
   bareos_add_test(

@@ -1,6 +1,6 @@
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2017-2023 Bareos GmbH & Co. KG
+#   Copyright (C) 2017-2024 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -158,14 +158,13 @@ set(DIRD_RESTYPES
 # dird_objects is also used as library for unittests
 add_library(dird_objects STATIC ${DIRD_OBJECTS_SRCS})
 
-add_dependencies(dird_objects libjson-rpc-cpp-download)
-
 target_link_libraries(
-  dird_objects PUBLIC fmt::fmt-header-only libjson-rpc-cpp::jsonrpcserver
+  #dird_objects PUBLIC fmt::fmt-header-only libjson-rpc-cpp::jsonrpcserver
+  dird_objects PUBLIC fmt::fmt-header-only jsonrpcserver
 )
 
 target_link_libraries(
-  dird_objects PRIVATE bareos ${OPENSSL_LIBRARIES} Threads::Threads websocketpp
+  dird_objects PRIVATE bareos ${OPENSSL_LIBRARIES} Threads::Threads websocketpp:websocketpp
 )
 
 add_executable(bareos-dir)
@@ -173,7 +172,7 @@ target_sources(bareos-dir PRIVATE dird.cc)
 
 
 target_link_libraries(
-  bareos-dir PRIVATE dird_objects websocketpp bareossql bareosfind CLI11::CLI11
+  bareos-dir PRIVATE dird_objects websocketpp::websocketpp bareossql bareosfind CLI11::CLI11
 )
 
 if(HAVE_WIN32)
