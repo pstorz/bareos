@@ -173,6 +173,7 @@ target_sources(bareos-dir PRIVATE dird.cc)
 
 target_link_libraries(
   bareos-dir PRIVATE dird_objects websocketpp::websocketpp bareossql bareosfind CLI11::CLI11
+  #bareos-dir PRIVATE dird_objects bareossql bareosfind CLI11::CLI11
 )
 
 if(HAVE_WIN32)
