@@ -52,16 +52,16 @@ cpmaddpackage(
   "TCP_SOCKET_SERVER OFF" "TCP_SOCKET_CLIENT OFF"
 )
 cpmaddpackage(
-  GITHUB_REPOSITORY zaphoyd/websocketpp
+  GITHUB_REPOSITORY pstorz/websocketpp
   NAME websocketpp
   GIT_TAG HEAD
-  #URL https://github.com/zaphoyd/websocketpp/archive/1b11fd301531e6df35a6107c1e8665b1e77a2d8e.zip
-  # OPTIONS "BENCHMARK_ENABLE_TESTING Off"
+  OPTIONS "BUILD_TESTS ON"
 )
 
-file(CREATE_LINK ${websocketpp_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/cpm/include  SYMBOLIC)
+message(INFO "CREATE_LINK ${websocketpp_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/include  SYMBOLIC")
+file(CREATE_LINK ${websocketpp_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/include  SYMBOLIC)
 include(${websocketpp_BINARY_DIR}/CMakeFiles/websocketpp-config.cmake)
-
+#message(FATAL_ERROR "${WEBSOCKETPP_INCLUDE_DIR}")
 CPMAddPackage("gh:fmtlib/fmt#7.1.3")
 
 set(BUILDNAME
