@@ -180,7 +180,7 @@ ${StrRep}
 !insertmacro MUI_PAGE_WELCOME
 
 ; License
-!insertmacro MUI_PAGE_LICENSE "C:\src\master\core\LICENSE"
+!insertmacro MUI_PAGE_LICENSE "..\..\LICENSE"
 
 ; Directory page
 !insertmacro MUI_PAGE_DIRECTORY
