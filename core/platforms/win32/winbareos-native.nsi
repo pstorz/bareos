@@ -877,7 +877,7 @@ Section "Bareos Webui" SEC_WEBUI
    File  "C:\ProgramData\Chocolatey\lib\nssm\tools\nssm.exe"
 
    SetOutPath "$INSTDIR\bareos-webui\php"
-   File /r "${PHP_BASE_DIR}\php\*.*"
+   File /r "${PHP_BASE_DIR}\*.*"
 
    SetOutPath "$INSTDIR\bareos-webui"
    File /r "${CMAKE_SOURCE_DIR}\webui\*.*"
@@ -1455,7 +1455,7 @@ done:
   File "/oname=$PLUGINSDIR\postgresql-grant.sql" "grants\postgresql.sql"
 
   # webui
-  File "/oname=$PLUGINSDIR\php.ini" "${PHP_BASE_DIR}\php\php.ini-production"
+  File "/oname=$PLUGINSDIR\php.ini" "${PHP_BASE_DIR}\php.ini-production"
   !cd ${CMAKE_SOURCE_DIR}
   File "/oname=$PLUGINSDIR\global.php" "webui\config\autoload\global.php"
   File "/oname=$PLUGINSDIR\directors.ini" "webui\install\directors.ini"
