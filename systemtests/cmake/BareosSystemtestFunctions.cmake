@@ -238,6 +238,7 @@ function(configurefilestosystemtest srcbasedir dirname globexpression
       configure_file(
         ${CURRENT_FILE} ${PROJECT_BINARY_DIR}/${dirname}/${TARGET_FILE}
         ${configure_option}
+        NEWLINE_STYLE UNIX
       )
     else()
       file(CREATE_LINK ${CURRENT_FILE}
@@ -780,10 +781,9 @@ macro(create_systemtest prefix test_subdir)
     configurefilestosystemtest(
       "systemtests" "tests/${test_subdir}" "*" @ONLY ""
     )
-
     configure_file(
       "${PROJECT_SOURCE_DIR}/environment.in"
-      "${PROJECT_BINARY_DIR}/tests/${test_subdir}/environment" @ONLY
+      "${PROJECT_BINARY_DIR}/tests/${test_subdir}/environment" @ONLY NEWLINE_STYLE UNIX
     )
 
     add_systemtest_from_directory(${tests_dir} ${prefix} ${test_subdir})

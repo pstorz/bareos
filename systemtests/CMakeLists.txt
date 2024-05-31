@@ -333,6 +333,7 @@ if(ENABLE_WEBUI_SELENIUM_TEST)
     )
 
     configure_file("environment.in" "tests/${TEST_NAME}/environment" @ONLY NEWLINE_STYLE UNIX)
+
     # create a bin/bareos and bin/bconsole script in every testdir for
     # start/stop and bconsole file(MAKE_DIRECTORY
     # "${CMAKE_BINARY_DIR}/tests/${TEST_NAME}/bin")
