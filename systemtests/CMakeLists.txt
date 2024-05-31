@@ -213,27 +213,27 @@ endif()
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Windows" AND MSVC)
   configure_file(
-    "CTestCustom-win.cmake.in" "${CMAKE_BINARY_DIR}/CTestCustom.cmake" @ONLY
+    "CTestCustom-win.cmake.in" "${CMAKE_BINARY_DIR}/CTestCustom.cmake" @ONLY NEWLINE_STYLE UNIX
   )
   configure_file(
     "ctest_custom_pretest-win.sh.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/ctest_custom_pretest.sh" @ONLY
+    "${CMAKE_CURRENT_BINARY_DIR}/ctest_custom_pretest.sh" @ONLY NEWLINE_STYLE UNIX
   )
   configure_file(
     "ctest_custom_posttest-win.sh.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/ctest_custom_posttest.sh" @ONLY
+    "${CMAKE_CURRENT_BINARY_DIR}/ctest_custom_posttest.sh" @ONLY NEWLINE_STYLE UNIX
   )
 else()
   configure_file(
-    "CTestCustom.cmake.in" "${CMAKE_BINARY_DIR}/CTestCustom.cmake" @ONLY
+    "CTestCustom.cmake.in" "${CMAKE_BINARY_DIR}/CTestCustom.cmake" @ONLY NEWLINE_STYLE UNIX
   )
   configure_file(
     "ctest_custom_pretest.sh.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/ctest_custom_pretest.sh" @ONLY
+    "${CMAKE_CURRENT_BINARY_DIR}/ctest_custom_pretest.sh" @ONLY NEWLINE_STYLE UNIX
   )
   configure_file(
     "ctest_custom_posttest.sh.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/ctest_custom_posttest.sh" @ONLY
+    "${CMAKE_CURRENT_BINARY_DIR}/ctest_custom_posttest.sh" @ONLY NEWLINE_STYLE UNIX
   )
 
 endif()
@@ -322,17 +322,17 @@ if(ENABLE_WEBUI_SELENIUM_TEST)
     file(MAKE_DIRECTORY ${WEBUICONFDIR})
     configure_file(
       "${CMAKE_SOURCE_DIR}/webui/config/autoload/global.php.in"
-      "${current_test_directory}/webui/config/autoload/global.php" @ONLY
+      "${current_test_directory}/webui/config/autoload/global.php" @ONLY NEWLINE_STYLE UNIX
     )
     configure_file(
       "${CMAKE_SOURCE_DIR}/systemtests/tests/webui-common/testrunner.in"
-      "${current_test_directory}/testrunner" @ONLY
+      "${current_test_directory}/testrunner" @ONLY NEWLINE_STYLE UNIX
     )
     configurefilestosystemtest(
       "systemtests" "tests/${TEST_NAME}" "*" @ONLY "tests/webui-common"
     )
 
-    configure_file("environment.in" "tests/${TEST_NAME}/environment" @ONLY)
+    configure_file("environment.in" "tests/${TEST_NAME}/environment" @ONLY NEWLINE_STYLE UNIX)
     # create a bin/bareos and bin/bconsole script in every testdir for
     # start/stop and bconsole file(MAKE_DIRECTORY
     # "${CMAKE_BINARY_DIR}/tests/${TEST_NAME}/bin")

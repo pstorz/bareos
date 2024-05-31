@@ -112,7 +112,7 @@ setup_data()
     set_error "setup_data: $tarfile not found."
     exit 1
    fi
-   if [[ "$(uname -s)" =~ MINGW64_NT ]]; then
+   if [[ "$(uname -s)" =~ _NT ]]; then
      $GTAR --directory="$data_dir" -xf "$tarfile" || :  # we expect errors on windows
    else
      $GTAR --directory="$data_dir" -xf "$tarfile" || exit 1
@@ -120,7 +120,7 @@ setup_data()
   done
 
 # TODO: make this also work on windows
- if [[ "$(uname -s)" =~ MINGW64_NT ]]; then
+ if [[ "$(uname -s)" =~ _NT ]]; then
    pushd "$data_dir"
    rm 'weird-files/a-file-with-spaces-at-the-end    '
    rm weird-files/'  '
@@ -1171,7 +1171,7 @@ fi
 
 skip_if_windows()
 {
-if [[ "$(uname -s)" =~ MINGW64_NT ]]; then
+if [[ "$(uname -s)" =~ _NT ]]; then
  if [ -z "${1+x}" ]; then
    echo "${TestName} test skipped on windows."
  else

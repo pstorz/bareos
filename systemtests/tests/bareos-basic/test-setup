@@ -37,7 +37,7 @@ setup_data
 generate_test_data data
 
 #TODO: make this work also on windows!
-if [[ ! "$(uname -s)" =~ MINGW64_NT ]]; then
+if [[ ! "$(uname -s)" =~ _NT ]]; then
   mkdir "$tmp/data/hardlinks"
   mkdir "$tmp/data/hardlinks/file"
   touch "$tmp/data/hardlinks/file/file"

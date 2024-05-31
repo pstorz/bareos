@@ -75,7 +75,7 @@ test_con TLS_AES_128_GCM_SHA256
 test_con TLS_AES_128_CCM_SHA256
 
 # TODO: this does not work on windows
-if [[ ! "$(uname -s)" =~ MINGW64_NT ]]; then
+if [[ ! "$(uname -s)" =~ _NT ]]; then
   test_con TLS_AES_128_CCM_8_SHA256
 fi
 

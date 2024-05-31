@@ -1,5 +1,5 @@
 # CMAKE_CONFIG_TYPE is required on windows, on other OS it needs to be empty
-if [[ ! "$(uname -s)" =~ MINGW64_NT ]]; then
+if [[ ! "$(uname -s)" =~ _NT ]]; then
   CMAKE_CONFIG_TYPE=""
 fi
 
@@ -42,12 +42,12 @@ DBTYPE=${DBTYPE:-postgresql}
 archivedir=@archivedir@
 logdir=@logdir@
 
-export backenddir=@backenddir@
-export sd_backenddir=@sd_backenddir@
+export backenddir="@backenddir@"
+export sd_backenddir="@sd_backenddir@"
 
-export dir_password=@dir_password@
-export sd_password=@sd_password@
-export fd_password=@fd_password@
+export dir_password="@dir_password@"
+export sd_password="@sd_password@"
+export fd_password="@fd_password@"
 
 # exported variables used by start/stop and other bareos scripts
 # to override the defaults
@@ -132,7 +132,7 @@ $PATH
 if [ -d /usr/lib/postgresql  ]; then
   POSTGRES_BINARY_DIR=$(dirname $(find -L /usr/lib/postgresql -name psql | sort | head -n 1))
 else
-  if [[ "$(uname -s)" =~ MINGW64_NT ]]; then
+  if [[ "$(uname -s)" =~ _NT ]]; then
     PG_CYGPATH=$(cygpath "@POSTGRES_BIN_PATH@")
     export PATH="$PG_CYGPATH:$PATH"
   fi

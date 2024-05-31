@@ -23,7 +23,7 @@ if [[ -d "$tmp/bareos-restores/$dir" ]]; then
     rm -r "$tmp/bareos-restores/$dir"
 fi
 
-if [[ "$(uname -s)" =~ MINGW64_NT ]]; then
+if [[ "$(uname -s)" =~ _NT ]]; then
   dir="$(cygpath -w -m $dir)"
 fi
 
