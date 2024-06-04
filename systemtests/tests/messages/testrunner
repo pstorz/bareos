@@ -19,8 +19,6 @@ export TestName
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
 
-skip_if_windows "messages_resource.cc(105): error: Value of: config_dir.empty()"
-
 console_messages_file="${BAREOS_LOG_DIR}"/.conmsg
 syslog_file="${BAREOS_LOG_DIR}"/syslog
 dblog_file="${BAREOS_LOG_DIR}"/dblog

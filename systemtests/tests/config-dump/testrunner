@@ -154,8 +154,6 @@ JobName=backup-bareos-fd
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
 
-skip_if_windows
-
 "${rscripts}"/cleanup
 "${rscripts}"/setup
 

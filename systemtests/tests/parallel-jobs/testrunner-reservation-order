@@ -17,8 +17,6 @@ export TestName
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
 
-skip_if_windows
-
 start_test
 
 sleeping_job="runscriptjob"

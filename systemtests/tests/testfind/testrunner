@@ -18,7 +18,6 @@ zstat=0
 
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
-skip_if_windows
 
 "${rscripts}"/cleanup
 

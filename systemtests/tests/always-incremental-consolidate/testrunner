@@ -16,7 +16,6 @@
 #
 TestName="$(basename "$(pwd)")"
 export TestName
-skip_if_windows
 JobName=ai-backup-bareos-fd
 
 #shellcheck source=../environment.in
@@ -26,7 +25,6 @@ JobName=ai-backup-bareos-fd
 . "${rscripts}"/functions
 
 #TODO: get this test work on windows
-skip_if_windows "works in principle, but some checks fail"
 
 "${rscripts}"/cleanup
 "${rscripts}"/setup

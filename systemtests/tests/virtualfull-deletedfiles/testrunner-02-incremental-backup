@@ -14,11 +14,10 @@ myname=$(basename "$0")
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
 
-OS=$(uname)
-if [[ $OS =~ MINGW64_.* ]]; then
+if [[ "$(uname -s)" =~ _NT ]]; then
   expected_files=4
 else
-  expected_files=3
+  expected_files=2
 fi
 
 start_test

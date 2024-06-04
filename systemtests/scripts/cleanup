@@ -21,9 +21,10 @@ function deletefiles(){
   rm -rf /tmp/chrome-user-data-*
 }
 
-deletefiles;
 
 "${rscripts}/bareos" stop >/dev/null
+
+deletefiles;
 
 tail -n +1 ${working:?}/*.traceback || true
 ${scripts}/drop_bareos_database ${DBTYPE} >/dev/null 2>&1

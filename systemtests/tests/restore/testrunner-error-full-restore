@@ -17,8 +17,6 @@ export TestName
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
 
-skip_if_windows
-
 #shellcheck source=functions
 . functions
 
