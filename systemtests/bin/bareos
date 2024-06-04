@@ -10,6 +10,11 @@ else
   exesuffix=""
 fi
 
+# echo "Appending CMAKE_CONFIG_TYPE ${CMAKE_CONFIG_TYPE} to Plugin Directory in config files"
+sed -i.bak "s:stored.*:stored/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*sd.conf
+sed -i.bak "s:filed.*:filed/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*fd.conf
+sed -i.bak "s:dird.*:dird/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*dir.conf
+
 for confdir in etc/bareos*; do
     BAREOS_STORAGEDAEMON_BINARY_TO_USE=""
     BAREOS_FILEDAEMON_BINARY_TO_USE=""
