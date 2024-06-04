@@ -11,16 +11,21 @@ else
 fi
 
 # echo "Appending CMAKE_CONFIG_TYPE ${CMAKE_CONFIG_TYPE} to Plugin Directory in config files"
-sed -i.bak "s:stored.*:stored/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*sd.conf
-sed -i.bak "s:filed.*:filed/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*fd.conf
-sed -i.bak "s:dird.*:dird/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*dir.conf
+sed -i.sed_bak "s:stored.*:stored/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*sd.conf
+sed -i.sed_bak "s:filed.*:filed/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*fd.conf
+sed -i.sed_bak "s:dird.*:dird/${CMAKE_CONFIG_TYPE}\":g" etc/*/*/*/*dir.conf
+
+chmod 644 etc/*/*/*/*sd.conf
+chmod 644 etc/*/*/*/*fd.conf
+chmod 644 etc/*/*/*/*dir.conf
+
 
 for confdir in etc/bareos*; do
     BAREOS_STORAGEDAEMON_BINARY_TO_USE=""
     BAREOS_FILEDAEMON_BINARY_TO_USE=""
     BAREOS_DIRECTOR_BINARY_TO_USE=""
     daemonsuffix="$(sed 's#etc/bareos##g'<<< $confdir)"
-    echo confdir: "$confdir"
+    #echo confdir: "$confdir"
     #echo daemonsuffix: "\"$daemonsuffix\""
     if [ -d "$confdir/bareos-sd.d" ]; then
       # create binary with correct name

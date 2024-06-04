@@ -386,7 +386,7 @@ is_file_compressed()
    local FILENAME=${3}
 
    print_debug "Is ${FILENAME} compressed on ${STORAGE}->${VOLUME} ?"
-   if OUT=$(bls_files_verbose "${STORAGE}" "${VOLUME}" | grep -A1 "${FILENAME}$" | grep -i "COMPRESSED"); then
+   if OUT=$(bls_files_verbose "${STORAGE}" "${VOLUME}" | grep -A1 "${FILENAME}" | grep -i "COMPRESSED"); then
        return 0
    else
        return 1

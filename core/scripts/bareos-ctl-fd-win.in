@@ -39,6 +39,8 @@ case "$1" in
           nssm install $srv_name $(cygpath -w "${BAREOS_FILEDAEMON_BINARY}")
           nssm set $srv_name AppParameters "-d 1000 -v -c $(cygpath -w ${srv_configdir})"
           nssm set $srv_name AppDirectory  "$(cygpath -w ${srv_rundir})"
+          nssm set $srv_name AppStdout  "$(cygpath -w ${srv_rundir})/log/${srv_name}.stdout.log"
+          nssm set $srv_name AppStdErr  "$(cygpath -w ${srv_rundir})/log/${srv_name}.stderr.log"
           nssm set $srv_name AppExit Default Restart
           nssm set $srv_name AppNoConsole 1
           nssm set $srv_name DisplayName $srv_name

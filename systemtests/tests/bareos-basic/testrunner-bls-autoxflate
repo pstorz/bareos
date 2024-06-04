@@ -13,8 +13,6 @@ export TestName
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
 
-skip_if_windows "autoxflate dll cannot be loaded into sd"
-
 start_test
 
 JobName=backup-bareos-fd

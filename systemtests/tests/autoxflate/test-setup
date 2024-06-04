@@ -22,11 +22,14 @@ set -e
 set -o pipefail
 set -u
 
+
 TestName="$(basename "$(pwd)")"
 export TestName
 
 #shellcheck source=../environment.in
 . ./environment
+
+bin/bareos stop
 
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
