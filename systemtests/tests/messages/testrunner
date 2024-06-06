@@ -18,6 +18,8 @@ export TestName
 
 #shellcheck source=../scripts/functions
 . "${rscripts}"/functions
+#"${rscripts}"/cleanup
+#"${rscripts}"/setup
 
 console_messages_file="${BAREOS_LOG_DIR}"/.conmsg
 syslog_file="${BAREOS_LOG_DIR}"/syslog
@@ -51,8 +53,7 @@ function check_output_file {
     exit_error "\"$1\" does not contain the expected text"
   fi
 }
-#../../scripts/cleanup
-#../../scripts/setup
+
 
 start_test
 

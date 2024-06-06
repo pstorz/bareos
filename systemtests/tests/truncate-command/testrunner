@@ -22,7 +22,6 @@ JobName=backup-bareos-fd
 "${rscripts}"/cleanup
 "${rscripts}"/setup
 
-
 # Fill ${BackupDirectory} with data.
 setup_data
 

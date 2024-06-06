@@ -1,5 +1,6 @@
 #!/bin/bash
 set -u
+
 #shellcheck source=../environment.in
 . ./environment
 

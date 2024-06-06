@@ -133,10 +133,18 @@ setup_data()
    rm weird-files/normalfile
    rm weird-files/subdir/a-hardlink
    rm weird-files/subdir/another-hardlink
-   rm weird-files/'_ -_ '
+   # rm weird-files/'_ -_ '
    rm weird-files/*-with-accents* -Rvf
    rm weird-files/subdir/*softlink* -Rvf
    rm weird-files/This-Is-A-Very-Long-Directory-Name* -Rvf
+   rmdir weird-files/'? -> '
+   rm weird-files/absolute-softlink
+   rm weird-files/dangling-link
+   rm weird-files/fifo
+   rm weird-files/fifo-file
+   rm weird-files/soft-file2
+   rm weird-files/softlink-to-softlinkee
+   rm -Rvf weird-files/a-file-with*
    popd
  fi
 
