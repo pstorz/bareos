@@ -51,7 +51,7 @@ function test_con()
 {
 	response=$(check_tls bconsole-"$1".conf)
 	cipher=$(echo "$response" | cut -d' ' -f1)
-	tls=$(echo "$response" | cut -d' ' -f2)
+	tls=$(echo "$response" | cut -d' ' -f2 | tr -d '\r')
 
 	if ! [ "$tls" = "TLSv1.3" ]; then
 	    echo "expected 'TLSv1.3' got '$tls'"
