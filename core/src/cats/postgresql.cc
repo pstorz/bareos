@@ -216,6 +216,10 @@ bool BareosDbPostgresql::OpenDatabase(JobControlRecord* jcr)
     // If no connect, try once more in case it is a timing problem
     if (PQstatus(db_handle_) == CONNECTION_OK) { break; }
 
+    // free memory if not successful
+    PQfinish(db_handle_);
+    db_handle_ = nullptr;
+
     Bmicrosleep(5, 0);
   }
 
@@ -263,7 +267,7 @@ void BareosDbPostgresql::CloseDatabase(JobControlRecord* jcr)
   if (ref_count_ == 0) {
     if (connected_) { SqlFreeResult(); }
     db_list->remove(this);
-    if (connected_ && db_handle_) { PQfinish(db_handle_); }
+    if (db_handle_) { PQfinish(db_handle_); }
     if (RwlIsInit(&lock_)) { RwlDestroy(&lock_); }
     FreePoolMemory(errmsg);
     FreePoolMemory(cmd);
@@ -564,6 +568,7 @@ retry_query:
   num_rows_ = -1;
   row_number_ = -1;
   field_number_ = -1;
+  fields_fetched_ = false;
 
   if (result_) {
     PQclear(result_); /* hmm, someone forgot to free?? */
@@ -607,10 +612,13 @@ retry_query:
 
           if (PQstatus(db_handle_) == CONNECTION_OK) {
             // Reset the connection settings.
-            PQexec(db_handle_, "SET datestyle TO 'ISO, YMD'");
-            PQexec(db_handle_, "SET cursor_tuple_fraction=1");
-            PQexec(db_handle_, "SET client_min_messages TO WARNING");
-            result_ = PQexec(db_handle_, "SET standard_conforming_strings=on");
+            // prevent leak
+            if (result_) { PQclear(result_); }
+            result_ = PQexec(db_handle_,
+                             "SET datestyle TO 'ISO, YMD';"
+                             "SET cursor_tuple_fraction=1;"
+                             "SET standard_conforming_strings=on;"
+                             "SET client_min_messages TO WARNING;");
 
             switch (PQresultStatus(result_)) {
               case PGRES_COMMAND_OK:
@@ -656,6 +664,7 @@ void BareosDbPostgresql::SqlFreeResult(void)
     free(fields_);
     fields_ = NULL;
   }
+  fields_fetched_ = false;
   num_rows_ = num_fields_ = 0;
 }
 
@@ -796,15 +805,46 @@ bail_out:
   return id;
 }
 
+void BareosDbPostgresql::SqlUpdateField(int i)
+{
+  Dmsg1(500, "filling field %d\n", i);
+  fields_[i].name = PQfname(result_, i);
+  fields_[i].type = PQftype(result_, i);
+  fields_[i].flags = 0;
+
+  // For a given column, find the max length.
+  int max_length = 0;
+  int this_length = 0;
+  for (int j = 0; j < num_rows_; j++) {
+    if (PQgetisnull(result_, j, i)) {
+      this_length = 4; /* "NULL" */
+    } else {
+      this_length = cstrlen(PQgetvalue(result_, j, i));
+    }
+
+    if (max_length < this_length) { max_length = this_length; }
+  }
+  fields_[i].max_length = max_length;
+
+  Dmsg4(500,
+        "SqlUpdateField finds field '%s' has length='%d' type='%d' and "
+        "IsNull=%d\n",
+        fields_[i].name, fields_[i].max_length, fields_[i].type,
+        fields_[i].flags);
+}
+
 SQL_FIELD* BareosDbPostgresql::SqlFetchField(void)
 {
-  int i, j;
-  int max_length;
-  int this_length;
-
   Dmsg0(500, "SqlFetchField starts\n");
 
+  if (field_number_ >= num_fields_) {
+    Dmsg1(100, "requesting field number %d, but only %d fields given\n",
+          field_number_, num_fields_);
+    return nullptr;
+  }
+
   if (!fields_ || fields_size_ < num_fields_) {
+    fields_fetched_ = false;
     if (fields_) {
       free(fields_);
       fields_ = NULL;
@@ -812,32 +852,11 @@ SQL_FIELD* BareosDbPostgresql::SqlFetchField(void)
     Dmsg1(500, "allocating space for %d fields\n", num_fields_);
     fields_ = (SQL_FIELD*)malloc(sizeof(SQL_FIELD) * num_fields_);
     fields_size_ = num_fields_;
+  }
 
-    for (i = 0; i < num_fields_; i++) {
-      Dmsg1(500, "filling field %d\n", i);
-      fields_[i].name = PQfname(result_, i);
-      fields_[i].type = PQftype(result_, i);
-      fields_[i].flags = 0;
-
-      // For a given column, find the max length.
-      max_length = 0;
-      for (j = 0; j < num_rows_; j++) {
-        if (PQgetisnull(result_, j, i)) {
-          this_length = 4; /* "NULL" */
-        } else {
-          this_length = cstrlen(PQgetvalue(result_, j, i));
-        }
-
-        if (max_length < this_length) { max_length = this_length; }
-      }
-      fields_[i].max_length = max_length;
-
-      Dmsg4(500,
-            "SqlFetchField finds field '%s' has length='%d' type='%d' and "
-            "IsNull=%d\n",
-            fields_[i].name, fields_[i].max_length, fields_[i].type,
-            fields_[i].flags);
-    }
+  if (!fields_fetched_) {
+    for (int i = 0; i < num_fields_; i++) { SqlUpdateField(i); }
+    fields_fetched_ = true;
   }
 
   // Increment field number for the next time around

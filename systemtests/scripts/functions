@@ -585,6 +585,24 @@ run_bscan_db()
   run_bscan -n "$db_name" -u "$db_user" -P "$db_password" "$@"
 }
 
+run_query()
+{
+    # hope that no pw is set
+    print_debug "run query $*"
+    PGOPTIONS="--client-min-messages=warning" psql -d "${db_name}" -q -c "$@"
+}
+
+run_headless_dbcheck()
+{
+   print_debug "checking with ${BAREOS_DBCHECK_BINARY}"
+   if test "$debug" -eq 1 ; then
+      "${BAREOS_DBCHECK_BINARY}" "${working_dir}" "${db_name}" "${db_user}" "${db_password}" --verbose -b -d 500 "$@" | tee "${tmp}/dbcheck.out"
+   else
+      "${BAREOS_DBCHECK_BINARY}" "${working_dir}" "${db_name}" "${db_user}" "${db_password}" -b "$@" >"${tmp}/dbcheck.out" 2>&1
+   fi
+}
+
+
 run_bcopy()
 {
    print_debug "bcopying with ${BAREOS_BCOPY_BINARY}"
@@ -593,6 +611,24 @@ run_bcopy()
    else
       "${BAREOS_BCOPY_BINARY}" -c "${conf}" "$@" </dev/null 2>&1 >"${tmp}/bcopy.out"
    fi
+}
+
+run_bdedupestimate()
+{
+   print_debug "bestimating with ${BAREOS_BDEDUPESTIMATE_BINARY}"
+   if test "$debug" -eq 1 ; then
+      "${BAREOS_BDEDUPESTIMATE_BINARY}" -c "${conf}" -d 500 "$@" </dev/null | tee "${tmp}/bdedupestimate.out"
+   else
+      "${BAREOS_BDEDUPESTIMATE_BINARY}" -c "${conf}" "$@" </dev/null 2>&1 >"${tmp}/bdedupestimate.out"
+   fi
+}
+
+generate_testdata()
+{
+   print_debug "creating test data with ${BAREOS_GENTESTDATA_BINARY}"
+   file="$1"
+   shift;
+   ${BAREOS_GENTESTDATA_BINARY} "$@" > "$file"
 }
 
 kill_process() {
@@ -775,14 +811,6 @@ check_two_logs()
       print_debug "Found database encoding error"
       bstat=2
    fi
-}
-
-check_job_canceled()
-{
-    grep "^  Termination: *Backup Canceled" "${tmp}/log1.out" >/dev/null 2>&1
-    if test $? -eq 0; then
-      bstat=2
-    fi
 }
 
 check_log()

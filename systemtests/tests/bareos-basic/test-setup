@@ -2,7 +2,7 @@
 
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2021-2023 Bareos GmbH & Co. KG
+#   Copyright (C) 2021-2024 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -34,7 +34,9 @@ set -u
 # Fill ${BackupDirectory} with data.
 setup_data
 
-generate_test_data data
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    generate_testdata "${BackupDirectory}/testfile$i.bin" --size=1M
+done
 
 #TODO: make this work also on windows!
 if [[ ! "$(uname -s)" =~ _NT ]]; then

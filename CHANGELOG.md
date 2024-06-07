@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - add openssl 3 ulc [PR #1683]
 - Add backport tool [PR #1639]
+- Add FreeBSD 13.3 and 14.0 [PR #1765]
 
 ### Changed
 - github actions: PyPi: install setuptools [PR #1589]
@@ -51,6 +52,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require python3 explicit [PR #1719]
 - cmake: put generated files into CMAKE_BINARY_DIR [PR #1707]
 - increase warning level on C/C++ compiler [PR #1689]
+- VMware Plugin: Backup and Restore NVRAM [PR #1727]
+- doc: add backtick around *.?* description  [PR #1752]
+- PR template: remove backport hints [PR #1762]
+- python-bareos: use TLS-PSK from core ssl module (available since Python >= 3.13) [PR #1756]
+- [percona-xtrabackup] prevent High memory usage for no reason (IO_CLOSE) [PR #1724]
+- docs: improve handling of ResourceItem descriptions [PR #1761]
+- pr-tool: give hint about commit headline length limits [PR #1763]
+- stored: fix some sd error messages; add additional check during restore; split up always-incremental-consolidate test [PR #1722]
+- Generate LICENSE.txt from LICENSE.template [PR #1753]
+- Allow cross-building for Windows on newer compiler [PR #1772]
+- cats: fix subscription view missing mariabackup plugin [PR #1767]
+- contrib: add reschedule_job_as_full.sh [PR #1786]
+- replace https://bugs.bareos.org by  https://github.com/bareos/bareos/issues/ [PR #1808]
+- tools: remove perl in mtx changer [PR #1740]
+- bsmtp: add fixes to be more rfc compliant [PR #1795]
+- pr-tool: update LICENSE.txt [PR #1773]
+- tools: add dedup estimation tool `bdedupestimate` [PR #1654]
+- Build ULC and EL_9 for aarch64 [PR #1821]
+- webui: fix and improve update check [PR #1809]
+- python-bareos: fix description [PR #1840]
 
 ### Removed
 - plugins: remove old deprecated postgres plugin [PR #1606]
@@ -60,6 +81,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - docs: improvements for droplet, jobdefs [PR #1581]
 - docs: fix Pool explanation for migration jobs [PR #1728]
 - github: introduce template for issues [PR #1716]
+- docs: improve pluginAPI docs [PR #1805]
+- Fix mistake in VolumeManagement.rst [PR #1829]
 
 ### Fixed
 - dird: fix `purge oldest volume` [PR #1628]
@@ -69,6 +92,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - core: Fix compile errors on GCC 14 [PR #1687]
 - stored: fix authentication race condition / deadlock [PR #1732]
 - Fix warning about missing delcandidates table in director [PR #1721]
+- stored: fix not counting files correctly in mac jobs when autoxflate is enabled [PR #1745]
+- cats: fixes BigSqlQuery header fetching [PR #1746]
+- Fix issue #1780 libpng icc profil [PR #1788]
+- Fix missing DLL in windows packaging [PR #1807]
+- VMware Plugin: Adapt to older urllib3 versions [PR #1810]
+- fix various memory leaks [PR #1723]
+- fix sql error on bad virtualfull; detect parsing errors with strtod [PR #1725]
 
 [PR #1538]: https://github.com/bareos/bareos/pull/1538
 [PR #1581]: https://github.com/bareos/bareos/pull/1581
@@ -95,6 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [PR #1647]: https://github.com/bareos/bareos/pull/1647
 [PR #1648]: https://github.com/bareos/bareos/pull/1648
 [PR #1649]: https://github.com/bareos/bareos/pull/1649
+[PR #1654]: https://github.com/bareos/bareos/pull/1654
 [PR #1655]: https://github.com/bareos/bareos/pull/1655
 [PR #1656]: https://github.com/bareos/bareos/pull/1656
 [PR #1659]: https://github.com/bareos/bareos/pull/1659
@@ -123,6 +154,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [PR #1718]: https://github.com/bareos/bareos/pull/1718
 [PR #1719]: https://github.com/bareos/bareos/pull/1719
 [PR #1721]: https://github.com/bareos/bareos/pull/1721
+[PR #1722]: https://github.com/bareos/bareos/pull/1722
+[PR #1723]: https://github.com/bareos/bareos/pull/1723
+[PR #1724]: https://github.com/bareos/bareos/pull/1724
+[PR #1725]: https://github.com/bareos/bareos/pull/1725
+[PR #1727]: https://github.com/bareos/bareos/pull/1727
 [PR #1728]: https://github.com/bareos/bareos/pull/1728
 [PR #1732]: https://github.com/bareos/bareos/pull/1732
+[PR #1740]: https://github.com/bareos/bareos/pull/1740
+[PR #1745]: https://github.com/bareos/bareos/pull/1745
+[PR #1746]: https://github.com/bareos/bareos/pull/1746
+[PR #1752]: https://github.com/bareos/bareos/pull/1752
+[PR #1753]: https://github.com/bareos/bareos/pull/1753
+[PR #1756]: https://github.com/bareos/bareos/pull/1756
+[PR #1761]: https://github.com/bareos/bareos/pull/1761
+[PR #1762]: https://github.com/bareos/bareos/pull/1762
+[PR #1763]: https://github.com/bareos/bareos/pull/1763
+[PR #1765]: https://github.com/bareos/bareos/pull/1765
+[PR #1767]: https://github.com/bareos/bareos/pull/1767
+[PR #1772]: https://github.com/bareos/bareos/pull/1772
+[PR #1773]: https://github.com/bareos/bareos/pull/1773
+[PR #1786]: https://github.com/bareos/bareos/pull/1786
+[PR #1788]: https://github.com/bareos/bareos/pull/1788
+[PR #1795]: https://github.com/bareos/bareos/pull/1795
+[PR #1805]: https://github.com/bareos/bareos/pull/1805
+[PR #1807]: https://github.com/bareos/bareos/pull/1807
+[PR #1808]: https://github.com/bareos/bareos/pull/1808
+[PR #1809]: https://github.com/bareos/bareos/pull/1809
+[PR #1810]: https://github.com/bareos/bareos/pull/1810
+[PR #1821]: https://github.com/bareos/bareos/pull/1821
+[PR #1829]: https://github.com/bareos/bareos/pull/1829
+[PR #1840]: https://github.com/bareos/bareos/pull/1840
 [unreleased]: https://github.com/bareos/bareos/tree/master

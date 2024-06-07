@@ -24,7 +24,10 @@
 #ifndef BAREOS_DIRD_DIRECTOR_JCR_IMPL_H_
 #define BAREOS_DIRD_DIRECTOR_JCR_IMPL_H_
 
+#include <optional>
+
 #include "cats/cats.h"
+#include "lib/mem_pool.h"
 #include "dird/client_connection_handshake_mode.h"
 #include "dird/job_trigger.h"
 
@@ -125,7 +128,7 @@ struct DirectorJcrImpl {
   uint32_t FileIndex{};           /**< Last FileIndex processed */
   utime_t MaxRunSchedTime{};      /**< Max run time in seconds from Initial Scheduled time */
   JobDbRecord jr;                 /**< Job DB record for current job */
-  JobDbRecord previous_jr;        /**< Previous job database record */
+  std::optional<JobDbRecord> previous_jr;        /**< Previous job database record */
   JobControlRecord* mig_jcr{};    /**< JobControlRecord for migration/copy job */
   char FSCreateTime[MAX_TIME_LENGTH]{}; /**< FileSet CreateTime as returned from DB */
   char since[MAX_TIME_LENGTH]{};        /**< Since time */
@@ -135,7 +138,7 @@ struct DirectorJcrImpl {
     JobId_t MigrateJobId;               /**< Migration JobId specified by UA */
     JobId_t VerifyJobId;                /**< Verify JobId specified by UA */
   };
-  POOLMEM* fname{};                     /**< Name to put into catalog */
+  PoolMem fname{PM_FNAME};              /**< Name to put into catalog */
   POOLMEM* client_uname{};              /**< Client uname */
   POOLMEM* FDSecureEraseCmd{};          /**< Report: Secure Erase Command  */
   POOLMEM* SDSecureEraseCmd{};          /**< Report: Secure Erase Command  */
