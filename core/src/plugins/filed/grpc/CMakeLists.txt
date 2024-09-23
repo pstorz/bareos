@@ -27,6 +27,6 @@ install(
   DESTINATION ${plugindir}
   COMPONENT filedaemon
 )
-target_link_libraries(grpc-fd bareos)
+target_link_libraries(grpc-fd bareos fmt)
 
 include(DebugEdit)

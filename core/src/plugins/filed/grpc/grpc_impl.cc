@@ -19,7 +19,17 @@
    02110-1301, USA.
 */
 
+#include "plugins/filed/grpc/grpc_impl.h"
 #if 0
+
+#  include <sys/wait.h>
+#  include <unistd.h>
+#  include <cstring>
+#  include <cstdlib>
+#  include <sys/types.h>
+#  include <sys/socket.h>
+#  include <sys/mman.h>
+
 std::optional<int> receive_fd(filedaemon::CoreFunctions* funcs,
                               int socket)
 {
@@ -93,3 +103,103 @@ bool send_fd(int socket, int fd)
     return true;
 }
 #endif
+
+
+plugin_event make_plugin_event(filedaemon::bEvent* event, void* data)
+{
+  using namespace filedaemon;
+  switch ((bEventType)event->eventType) {
+    case bEventJobStart:
+      [[fallthrough]];
+    case bEventPluginCommand:
+      [[fallthrough]];
+    case bEventNewPluginOptions:
+      [[fallthrough]];
+    case bEventBackupCommand:
+      [[fallthrough]];
+    case bEventRestoreCommand:
+      [[fallthrough]];
+    case bEventEstimateCommand:
+      return string_event{(char*)data};
+    case bEventEndFileSet:
+      [[fallthrough]];
+    case bEventJobEnd:
+      [[fallthrough]];
+    case bEventCancelCommand:
+      [[fallthrough]];
+    case bEventStartBackupJob:
+      [[fallthrough]];
+    case bEventEndBackupJob:
+      [[fallthrough]];
+    case bEventStartVerifyJob:
+      [[fallthrough]];
+    case bEventEndVerifyJob:
+      [[fallthrough]];
+    case bEventStartRestoreJob:
+      [[fallthrough]];
+    case bEventEndRestoreJob:
+      [[fallthrough]];
+      /* EventOptionPlugin is unused actually */
+    case bEventOptionPlugin:
+      [[fallthrough]];
+    case bEventVssInitializeForBackup:
+      [[fallthrough]];
+    case bEventVssInitializeForRestore:
+      [[fallthrough]];
+    case bEventVssSetBackupState:
+      [[fallthrough]];
+    case bEventVssPrepareForBackup:
+      [[fallthrough]];
+    case bEventVssBackupAddComponents:
+      [[fallthrough]];
+    case bEventVssPrepareSnapshot:
+      [[fallthrough]];
+    case bEventVssCreateSnapshots:
+      [[fallthrough]];
+    case bEventVssRestoreLoadComponentMetadata:
+      [[fallthrough]];
+    case bEventVssRestoreSetComponentsSelected:
+      [[fallthrough]];
+    case bEventVssCloseRestore:
+      [[fallthrough]];
+    case bEventVssBackupComplete:
+      return simple_event{};
+
+    case bEventLevel:
+      return int_event{reinterpret_cast<intptr_t>(data)};
+
+    case bEventRestoreObject:
+      return rop_event{reinterpret_cast<restore_object_pkt*>(data)};
+
+    case bEventSince:
+      return time_event{reinterpret_cast<time_t>(data)};
+
+    case bEventHandleBackupFile:
+      return save_event{reinterpret_cast<save_pkt*>(data)};
+
+    default:
+      /* TODO: how best to report an error here ? */
+      __builtin_unreachable();
+  }
+}
+
+
+std::optional<grpc_connection> make_connection(std::string_view program_path)
+{
+  // We want to create a two way grpc connection, where both ends act as both
+  // a server and a client.  We do this by using two socket pairs.
+
+  int to_program[2] = {};    // we are the client here
+  int from_program[2] = {};  // we are the server here
+
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, to_program) < 0) {
+    return std::nullopt;
+  }
+
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, from_program) < 0) {
+    return std::nullopt;
+  }
+
+  (void)program_path;
+  return std::nullopt;
+}

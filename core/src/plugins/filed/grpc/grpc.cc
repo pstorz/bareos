@@ -25,196 +25,274 @@
 
 #include "include/bareos.h"
 #include "filed/fd_plugins.h"
-#include "sys/types.h"
-#include "sys/socket.h"
 
-template <typename... Args> void ignore(Args&&...) {}
+#include <fmt/format.h>
 
-#include <sys/wait.h>
-#include <unistd.h>
-#include <cstring>
-#include <cstdlib>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/mman.h>
+namespace {
+namespace globals {
+filedaemon::CoreFunctions* bareos;
+};
 
-#define debug(funcs, num, fmt, ...)                         \
-  (funcs)->DebugMessage(nullptr, __FILE__, __LINE__, (num), \
-                        (fmt)__VA_OPT__(, ) __VA_ARGS__)
+struct source_location {};
 
-bool send_fd(int socket, int fd)
+struct Severity {
+  int severity{};
+  const char* file{};
+  int line{};
+
+  Severity(int severity_,
+           const char* file_ = __builtin_FILE(),
+           int line_ = __builtin_LINE())
+      : severity{severity_}, file{file_}, line{line_}
+  {
+  }
+};
+
+struct Type {
+  int type{};
+  const char* file{};
+  int line{};
+
+  Type(int type_,
+       const char* file_ = __builtin_FILE(),
+       int line_ = __builtin_LINE())
+      : type{type_}, file{file_}, line{line_}
+  {
+  }
+};
+
+template <typename... Args>
+void DebugLog(Severity severity,
+              fmt::format_string<Args...> fmt,
+              Args&&... args)
 {
-  struct msghdr write_msg = {};
+  auto formatted = fmt::vformat(fmt, fmt::make_format_args(args...));
 
-  alignas(struct cmsghdr) char buffer[CMSG_SPACE(sizeof(int))];
+  globals::bareos->DebugMessage(nullptr, severity.file, severity.line,
+                                severity.severity, "%s\n", formatted.c_str());
+}
 
-  struct iovec dummy = {.iov_base = (char*)"", .iov_len = 1};
+template <typename... Args>
+void JobLog(PluginContext* ctx,
+            Type type,
+            fmt::format_string<Args...> fmt,
+            Args&&... args)
+{
+  auto formatted = fmt::format(fmt, args...);
 
-  write_msg.msg_control = buffer;
-  write_msg.msg_controllen = sizeof(buffer);  // set to capacity
-  write_msg.msg_iov = &dummy;
-  write_msg.msg_iovlen = 1;
+  globals::bareos->JobMessage(ctx, type.file, type.line, type.type, 0, "%s\n",
+                              formatted.c_str());
+}
 
-  auto* cmsg = CMSG_FIRSTHDR(&write_msg);
 
-  cmsg->cmsg_level = SOL_SOCKET;
-  cmsg->cmsg_type = SCM_RIGHTS;
-  cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+bool next_section(std::string_view& input, std::string& output, char delimiter)
+{
+  if (input.size() == 0) { return false; }
 
-  memcpy(CMSG_DATA(cmsg), &fd, sizeof(fd));
+  bool escaped = false;
 
-  write_msg.msg_controllen = cmsg->cmsg_len;  // set to actual size
-  if (sendmsg(socket, &write_msg, 0) < 0) { return false; }
+  size_t read_bytes = 0;
 
+  while (input.size() > read_bytes) {
+    auto c = input[read_bytes++];
+
+    if (escaped) {
+      output += c;
+      escaped = false;
+    } else if (c == delimiter) {
+      break;
+    } else if (c == '\\') {
+      escaped = true;
+    } else {
+      output += c;
+    }
+  }
+
+  if (escaped) {
+    DebugLog(
+        100,
+        FMT_STRING("trailing backslash in \"{}\" detected! Refusing to parse!"),
+        input);
+    return false;
+  }
+
+  // we only want to advance the string once we have made sure that the parsing
+  // succeded.
+  input.remove_prefix(read_bytes);
   return true;
 }
 
-std::optional<int> receive_fd(filedaemon::CoreFunctions* funcs, int socket)
-{
-  struct msghdr read_msg = {};
 
-  alignas(struct cmsghdr) char buffer[CMSG_SPACE(sizeof(int))];
+struct plugin_ctx {
+  bool setup(const void* data)
+  {
+    if (!data) { return false; }
 
-  read_msg.msg_control = buffer;
-  read_msg.msg_controllen = sizeof(buffer);
+    std::string_view options_string{(const char*)data};
 
-  auto rc = recvmsg(socket, &read_msg, 0);
+    // we expect options_string to be a ':'-delimited list of kv pairs;
+    // the first "pair" is just the name of the plugin that we are supposed
+    // to load.
 
-  debug(funcs, 100, "rc = %lld\n", rc);
+    std::string plugin_name{};
 
-  if (rc < 0) { return std::nullopt; }
+    if (!next_section(options_string, plugin_name, ':')) {
+      DebugLog(50, FMT_STRING("could not parse plugin name in {}"),
+               options_string);
+      return false;
+    }
 
-  debug(funcs, 100, "clen = %lld\n", read_msg.msg_controllen);
+    if (plugin_name != std::string_view{"grpc"}) {
+      DebugLog(50, FMT_STRING("wrong plugin name ({}) supplied"), plugin_name);
+      return false;
+    }
 
-  if (read_msg.msg_controllen <= 0) { return std::nullopt; }
 
-  auto* hdr = CMSG_FIRSTHDR(&read_msg);
-  if (!hdr) {
-    return std::nullopt;
-    ;
-  }
+    if (!next_section(options_string, name, ':')) {
+      DebugLog(50, FMT_STRING("could not parse name in {}"), options_string);
+      return false;
+    }
 
-  debug(funcs, 100, "hdr = %p, len = %llu\n", hdr, hdr->cmsg_len);
+    DebugLog(100, FMT_STRING("found name = {}"), name);
 
-  if (hdr->cmsg_len != CMSG_LEN(sizeof(int))) { return std::nullopt; }
+    {
+      std::string kv;
 
-  auto* data = CMSG_DATA(hdr);
+      while (kv.clear(), next_section(options_string, kv, ':')) {
+        auto eq = kv.find_first_of("=");
 
-  int fd{-1};
+        if (eq == kv.npos) {
+          DebugLog(50, FMT_STRING("kv pair '{}' does not contain '='"), kv);
+          return false;
+        }
 
-  memcpy(&fd, data, sizeof(int));
+        std::string_view key = std::string_view{kv}.substr(0, eq);
+        std::string_view value = std::string_view{kv}.substr(eq + 1);
 
-  return fd;
-}
+        if (key.size() == 0) {
+          DebugLog(50, FMT_STRING("kv pair '{}' does not contain a key"), kv);
+          return false;
+        }
 
-inline bool TestSocket(filedaemon::CoreFunctions* funcs)
-{
-  int sockets[2] = {};
+        if (value.size() == 0) {
+          DebugLog(
+              50,
+              FMT_STRING("kv pair '{}' does not contain a value (key = {})"),
+              kv, key);
+          return false;
+        }
 
-  if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) < 0) { return false; }
+        DebugLog(100, FMT_STRING("{} => {}"), key, value);
 
-  auto& child_sock = sockets[1];
-  auto& parent_sock = sockets[0];
-
-  char message[] = "Hallo";
-
-  pid_t child = fork();
-  if (child < 0) {
-    close(child_sock);
-    close(parent_sock);
-    return false;
-  } else if (child == 0) {
-    close(parent_sock);
-
-    int fd = memfd_create("test_sockets", 0);
-
-    if (fd < 0) { return false; }
-
-    if (write(fd, message, sizeof(message) - 1) != 5) { return false; }
-
-    if (!send_fd(child_sock, fd)) { exit(1); }
-
-    exit(0);
-  } else {
-    close(child_sock);
-
-    auto opt = receive_fd(funcs, parent_sock);
-
-    bool ok = [&]() {
-      if (!opt) {
-        debug(funcs, 100, "no fd\n");
-        return false;
+        options.emplace_back(key, value);
       }
 
-      int fd = *opt;
-      debug(funcs, 100, "fd = %d\n", fd);
+      if (options_string.size() > 0) {
+        // we stopped prematurely for some reason, so just refuse to continue!
+        DebugLog(50, FMT_STRING("premature exit detected"), options_string);
 
-      char fdbuf[6];
-
-      lseek(fd, 0, SEEK_SET);
-
-      if (auto res = read(fd, fdbuf, sizeof(fdbuf) - 1); res < 5) {
-        debug(funcs, 100, "bad read (%lld)\n", res);
         return false;
-      }
-
-      fdbuf[5] = 0;
-      debug(funcs, 100, "received: %s\n", fdbuf);
-
-      if (memcmp(fdbuf, message, sizeof(message) - 1) != 0) {
-        debug(funcs, 100, "bad data received\n");
-        return false;
-      }
-
-      close(fd);
-      return true;
-    }();
-
-    close(parent_sock);
-
-    for (;;) {
-      int status{};
-      waitpid(child, &status, 0);
-
-      if (WIFEXITED(status)) {
-        auto retval = WEXITSTATUS(status);
-        debug(funcs, 100, "retval = %d\n", retval);
-        if (retval != 0) { return false; }
-        break;
       }
     }
 
-    return ok;
+    const char* path;
+    globals::bareos->getBareosValue(nullptr, filedaemon::bVarExePath, &path);
+
+    DebugLog(10, FMT_STRING("path = {}"), path);
+
+    std::string full_path = path;
+    full_path += "/grpc-plugins/";
+    full_path += name;
+
+    connection = make_connection(full_path);
+
+    return connection.has_value();
   }
-}
 
 
-namespace {
-[[maybe_unused]] bool OpenConnection()
+  bool needs_setup() { return connection.has_value(); }
+
+
+ public:
+  using option = std::pair<std::string, std::string>;
+
+  std::string name;
+  std::vector<option> options;
+
+  std::optional<grpc_connection> connection;
+};
+
+plugin_ctx* get(PluginContext* ctx)
 {
-  int grpc_socket[2] = {};  // used for sett
-  int meta_socket[2] = {};
-
-  if (socketpair(AF_UNIX, SOCK_STREAM, 0, grpc_socket) < 0) { return false; }
-  if (socketpair(AF_UNIX, SOCK_STREAM, 0, meta_socket) < 0) { return false; }
-
-  return 0;
+  return static_cast<plugin_ctx*>(ctx->plugin_private_context);
 }
 
-bRC newPlugin(PluginContext*) { return bRC_Error; }
-bRC freePlugin(PluginContext*) { return bRC_Error; }
+bRC newPlugin(PluginContext* ctx)
+{
+  auto* plugin = new plugin_ctx;
+  ctx->plugin_private_context = plugin;
+
+  /* the actual setup is done inside of handle plugin event, because
+   * at the moment we have no idea which plugin to start! */
+
+  globals::bareos->registerBareosEvents(ctx, 1,
+                                        filedaemon::bEventPluginCommand);
+
+  return bRC_OK;
+}
+bRC freePlugin(PluginContext* ctx)
+{
+  auto* plugin = get(ctx);
+  delete plugin;
+  return bRC_OK;
+}
+
 bRC getPluginValue(PluginContext*, filedaemon::pVariable, void*)
 {
+  /* UNUSED */
   return bRC_Error;
 }
 bRC setPluginValue(PluginContext*, filedaemon::pVariable, void*)
 {
+  /* UNUSED */
   return bRC_Error;
 }
-bRC handlePluginEvent(PluginContext*, filedaemon::bEvent*, void*)
+
+bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
 {
+  auto* plugin = get(ctx);
+
+  if (!plugin) {
+    JobLog(ctx, M_ERROR,
+           FMT_STRING("instructed to handle plugin event by core even though "
+                      "context was not setup"));
+  }
+
+  switch (event->eventType) {
+    using namespace filedaemon;
+    case bEventPluginCommand: {
+      if (!plugin->setup(data)) { return bRC_Error; }
+      return bRC_OK;  // TODO: remove this
+    } break;
+    default: {
+      if (plugin->needs_setup()) {
+        DebugLog(
+            100,
+            FMT_STRING(
+                "cannot handle event {} as context was not set up properly"),
+            event->eventType);
+        return bRC_Error;
+      }
+    } break;
+  }
+
+  auto plugin_event = make_plugin_event(event, data);
+
+  (void)plugin_event;
+
   return bRC_Error;
 }
+
 bRC startBackupFile(PluginContext*, filedaemon::save_pkt*) { return bRC_Error; }
 bRC endBackupFile(PluginContext*) { return bRC_Error; }
 bRC startRestoreFile(PluginContext*, const char*) { return bRC_Error; }
@@ -268,6 +346,9 @@ constexpr filedaemon::PluginFunctions my_functions = {
 
 bool AmICompatibleWith(filedaemon::PluginApiDefinition* core_info)
 {
+  DebugLog(100, FMT_STRING("size = {}/{},  version = {}/{}"), core_info->size,
+           sizeof(*core_info), core_info->version, FD_PLUGIN_INTERFACE_VERSION);
+
   if (core_info->size != sizeof(*core_info)
       || core_info->version != FD_PLUGIN_INTERFACE_VERSION) {
     return false;
@@ -281,21 +362,21 @@ extern "C" int loadPlugin(filedaemon::PluginApiDefinition* core_info,
                           PluginInformation** plugin_info,
                           filedaemon::PluginFunctions** plugin_funcs)
 {
-  if (!AmICompatibleWith(core_info)) { return -1; }
+  globals::bareos = core_funcs;
+
+  if (!AmICompatibleWith(core_info)) {
+    DebugLog(10,
+             FMT_STRING("ABI mismatch detected.  Cannot load plugin.  Expected "
+                        "abi version = {}"),
+             FD_PLUGIN_INTERFACE_VERSION);
+    return -1;
+  }
 
   *plugin_info = const_cast<PluginInformation*>(&my_info);
   *plugin_funcs = const_cast<filedaemon::PluginFunctions*>(&my_functions);
 
-  ignore(core_funcs);
+  DebugLog(100, FMT_STRING("plugin loaded successfully"));
 
-  core_funcs->DebugMessage(nullptr, __FILE__, __LINE__, 100, "Hallo\n");
-
-  if (!TestSocket(core_funcs)) {
-    core_funcs->DebugMessage(nullptr, __FILE__, __LINE__, 100, "Bad\n");
-    return -1;
-  }
-
-  core_funcs->DebugMessage(nullptr, __FILE__, __LINE__, 100, "Good\n");
   return 0;
 }
 

@@ -22,4 +22,39 @@
 #ifndef BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
 #define BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
 
+
+#include <variant>
+#include "include/bareos.h"
+#include "filed/fd_plugins.h"
+
+struct simple_event {};
+struct string_event {
+  std::string_view value;
+};
+struct int_event {
+  intptr_t value;
+};
+struct rop_event {
+  filedaemon::restore_object_pkt* value;
+};
+struct time_event {
+  time_t value;
+};
+struct save_event {
+  filedaemon::save_pkt* value;
+};
+
+using plugin_event = std::variant<simple_event,
+                                  string_event,
+                                  int_event,
+                                  rop_event,
+                                  time_event,
+                                  save_event>;
+
+plugin_event make_plugin_event(filedaemon::bEvent* event, void* data);
+
+struct grpc_connection {};
+
+std::optional<grpc_connection> make_connection(std::string_view program_path);
+
 #endif  // BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
