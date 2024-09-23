@@ -1,0 +1,25 @@
+service Events {
+  rpc Register (RegisterRequest) returns RegisterResponse;
+  rpc Unregister (UnregisterRequest) returns UnregisterResponse;
+};
+
+service Fileset {
+  rpc AddExclude (AddExcludeRequest) returns AddExcludeResponse;
+  rpc AddInclude (AddIncludeRequest) returns AddIncludeResponse;
+  rpc AddOptions (AddOptionsRequest) returns AddOptionsResponse;
+  rpc AddRegex (AddRegexRequest) returns AddRegexResponse;
+  rpc AddWild (AddWildRequest) returns AddWildResponse;
+  rpc NewOptions (NewOptionsRequest) returns NewOptionsResponse;
+  rpc NewInclude (NewIncludeRequest) returns NewIncludeResponse;
+  rpc NewPreInclude (NewPreIncludeRequest) returns NewPreIncludeResponse;
+};
+
+service Bareos {
+  rpc getInstanceCount (getInstanceCountRequest) returns getInstanceCountResponse;
+  rpc checkChanges (checkChangesRequest) returns checkChangesResponse;
+  rpc AcceptFile (AcceptFileRequest) returns AcceptFileResponse;
+  rpc SetSeenBitmap (SetSeenBitmapRequest) returns SetSeenBitmapResponse;
+  rpc ClearSeenBitmap (ClearSeenBitmapRequest) returns ClearSeenBitmapResponse;
+  rpc JobMessage (JobMessageRequest) returns JobMessageResponse;
+  rpc DebugMessage (DebugMessageRequest) returns DebugMessageResponse;
+};

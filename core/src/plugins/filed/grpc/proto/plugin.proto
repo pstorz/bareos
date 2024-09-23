@@ -1,0 +1,15 @@
+service Plugin {
+  rpc handlePluginEvent (handlePluginEventRequest) returns handlePluginEventResponse;
+  rpc startBackupFile (startBackupFileRequest) returns startBackupFileResponse;
+  rpc endBackupFile (endBackupFileRequest) returns endBackupFileResponse;
+  rpc startRestoreFile (startRestoreFileRequest) returns startRestoreFileResponse;
+  rpc endRestoreFile (endRestoreFileRequest) returns endRestoreFileResponse;
+  rpc pluginIO (pluginIORequest) returns pluginIOResponse;
+  rpc createFile (createFileRequest) returns createFileResponse;
+  rpc setFileAttributes (setFileAttributesRequest) returns setFileAttributesResponse;
+  rpc checkFile (checkFileRequest) returns checkFileResponse;
+  rpc getAcl (getAclRequest) returns getAclResponse;
+  rpc setAcl (setAclRequest) returns setAclResponse;
+  rpc getXattr (getXattrRequest) returns getXattrResponse;
+  rpc setXattr (setXattrRequest) returns setXattrResponse;
+}

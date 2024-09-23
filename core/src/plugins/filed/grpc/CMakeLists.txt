@@ -20,7 +20,7 @@
 include(BareosDisableWarnings)
 include(BareosConfigureFile)
 
-add_library(grpc-fd MODULE grpc.cc)
+add_library(grpc-fd MODULE grpc.cc grpc_impl.cc)
 set_target_properties(grpc-fd PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ..)
 install(
   TARGETS grpc-fd
