@@ -104,6 +104,7 @@ bool send_fd(int socket, int fd)
 }
 #endif
 
+#include "bareos_api.h"
 
 plugin_event make_plugin_event(filedaemon::bEvent* event, void* data)
 {
@@ -193,10 +194,14 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
   int from_program[2] = {};  // we are the server here
 
   if (socketpair(AF_UNIX, SOCK_STREAM, 0, to_program) < 0) {
+    DebugLog(50, FMT_STRING("could not create socket pair 1: {}"),
+             strerror(errno));
     return std::nullopt;
   }
 
   if (socketpair(AF_UNIX, SOCK_STREAM, 0, from_program) < 0) {
+    DebugLog(50, FMT_STRING("could not create socket pair 1: {}"),
+             strerror(errno));
     return std::nullopt;
   }
 

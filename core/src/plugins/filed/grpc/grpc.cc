@@ -28,63 +28,9 @@
 
 #include <fmt/format.h>
 
+#include "bareos_api.h"
+
 namespace {
-namespace globals {
-filedaemon::CoreFunctions* bareos;
-};
-
-struct source_location {};
-
-struct Severity {
-  int severity{};
-  const char* file{};
-  int line{};
-
-  Severity(int severity_,
-           const char* file_ = __builtin_FILE(),
-           int line_ = __builtin_LINE())
-      : severity{severity_}, file{file_}, line{line_}
-  {
-  }
-};
-
-struct Type {
-  int type{};
-  const char* file{};
-  int line{};
-
-  Type(int type_,
-       const char* file_ = __builtin_FILE(),
-       int line_ = __builtin_LINE())
-      : type{type_}, file{file_}, line{line_}
-  {
-  }
-};
-
-template <typename... Args>
-void DebugLog(Severity severity,
-              fmt::format_string<Args...> fmt,
-              Args&&... args)
-{
-  auto formatted = fmt::vformat(fmt, fmt::make_format_args(args...));
-
-  globals::bareos->DebugMessage(nullptr, severity.file, severity.line,
-                                severity.severity, "%s\n", formatted.c_str());
-}
-
-template <typename... Args>
-void JobLog(PluginContext* ctx,
-            Type type,
-            fmt::format_string<Args...> fmt,
-            Args&&... args)
-{
-  auto formatted = fmt::format(fmt, args...);
-
-  globals::bareos->JobMessage(ctx, type.file, type.line, type.type, 0, "%s\n",
-                              formatted.c_str());
-}
-
-
 bool next_section(std::string_view& input, std::string& output, char delimiter)
 {
   if (input.size() == 0) { return false; }
@@ -195,8 +141,7 @@ struct plugin_ctx {
       }
     }
 
-    const char* path;
-    globals::bareos->getBareosValue(nullptr, filedaemon::bVarExePath, &path);
+    const char* path = bVar::Get<bVar::ExePath>(nullptr);
 
     DebugLog(10, FMT_STRING("path = {}"), path);
 
@@ -235,11 +180,11 @@ bRC newPlugin(PluginContext* ctx)
   /* the actual setup is done inside of handle plugin event, because
    * at the moment we have no idea which plugin to start! */
 
-  globals::bareos->registerBareosEvents(ctx, 1,
-                                        filedaemon::bEventPluginCommand);
+  RegisterBareosEvent(ctx, filedaemon::bEventPluginCommand);
 
   return bRC_OK;
 }
+
 bRC freePlugin(PluginContext* ctx)
 {
   auto* plugin = get(ctx);
@@ -362,7 +307,7 @@ extern "C" int loadPlugin(filedaemon::PluginApiDefinition* core_info,
                           PluginInformation** plugin_info,
                           filedaemon::PluginFunctions** plugin_funcs)
 {
-  globals::bareos = core_funcs;
+  SetupBareosApi(core_funcs);
 
   if (!AmICompatibleWith(core_info)) {
     DebugLog(10,

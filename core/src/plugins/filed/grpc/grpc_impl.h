@@ -22,7 +22,6 @@
 #ifndef BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
 #define BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
 
-
 #include <variant>
 #include "include/bareos.h"
 #include "filed/fd_plugins.h"

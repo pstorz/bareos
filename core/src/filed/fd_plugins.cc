@@ -2005,10 +2005,10 @@ static bRC bareosGetValue(PluginContext* ctx, bVariable var, void* value)
       *((char**)value) = my_name;
       break;
     case bVarWorkingDir:
-      *(void**)value = me->working_directory;
+      *(char**)value = me->working_directory;
       break;
     case bVarUsedConfig:
-      *(const void**)value = my_config->get_base_config_path().c_str();
+      *(const char**)value = my_config->get_base_config_path().c_str();
       break;
     case bVarExePath:
       *(char**)value = exepath;
