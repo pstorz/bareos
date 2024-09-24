@@ -22,6 +22,7 @@
 #ifndef BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
 #define BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
 
+#include <unistd.h>
 #include <variant>
 #include "include/bareos.h"
 #include "filed/fd_plugins.h"
@@ -51,6 +52,35 @@ using plugin_event = std::variant<simple_event,
                                   save_event>;
 
 plugin_event make_plugin_event(filedaemon::bEvent* event, void* data);
+
+struct Socket {
+  Socket() = default;
+  Socket(int fd) : os{fd} {}
+
+  Socket(const Socket&) = delete;
+  Socket& operator=(const Socket&) = delete;
+
+  Socket(Socket&& other) { *this = std::move(other); }
+
+  Socket& operator=(Socket&& other)
+  {
+    std::swap(os, other.os);
+    return *this;
+  }
+
+  explicit operator bool() { return os >= 0; }
+
+  int& get() { return os; }
+  const int& get() const { return os; }
+
+  ~Socket()
+  {
+    if (os >= 0) close(os);
+  }
+
+ private:
+  int os{-1};
+};
 
 struct grpc_connection {};
 

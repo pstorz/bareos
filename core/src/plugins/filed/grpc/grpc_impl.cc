@@ -20,6 +20,8 @@
 */
 
 #include "plugins/filed/grpc/grpc_impl.h"
+#include <fcntl.h>
+#include <thread>
 #if 0
 
 #  include <sys/wait.h>
@@ -179,32 +181,134 @@ plugin_event make_plugin_event(filedaemon::bEvent* event, void* data)
       return save_event{reinterpret_cast<save_pkt*>(data)};
 
     default:
-      /* TODO: how best to report an error here ? */
+      /* TODO: how best to report an error here ? Maybe return an optional ? */
+      DebugLog(10, FMT_STRING("this should really not happen. event = {}"),
+               event->eventType);
       __builtin_unreachable();
   }
 }
 
+std::optional<std::pair<Socket, Socket>> unix_socket_pair()
+{
+  int sockets[2];
+
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) < 0) {
+    DebugLog(50, FMT_STRING("could not create socket pair: {}"),
+             strerror(errno));
+    return std::nullopt;
+  }
+
+  return std::make_pair(sockets[0], sockets[1]);
+}
+
+std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
+                                     Socket in,
+                                     Socket out)
+{
+  DebugLog(100, FMT_STRING("trying to start {} with sockets {} & {}"),
+           program_path, in.get(), out.get());
+
+  pid_t child = fork();
+
+  if (child < 0) {
+    return std::nullopt;
+  } else if (child == 0) {
+    std::string copy(program_path);
+
+    std::string in_str = std::to_string(in.get());
+    std::string out_str = std::to_string(out.get());
+
+    char* argv[] = {copy.data(), in_str.data(), out_str.data(), nullptr};
+    char* envp[] = {nullptr};
+
+    execve(copy.c_str(), argv, envp);
+
+    // execve only returns if the new process could not be started!
+    exit(99);
+  } else {
+    DebugLog(100, FMT_STRING("Child pid = {}"), child);
+
+    return child;
+  }
+}
 
 std::optional<grpc_connection> make_connection(std::string_view program_path)
 {
   // We want to create a two way grpc connection, where both ends act as both
   // a server and a client.  We do this by using two socket pairs.
 
-  int to_program[2] = {};    // we are the client here
-  int from_program[2] = {};  // we are the server here
+  DebugLog(100, FMT_STRING("creating connection to {} ..."), program_path);
 
-  if (socketpair(AF_UNIX, SOCK_STREAM, 0, to_program) < 0) {
-    DebugLog(50, FMT_STRING("could not create socket pair 1: {}"),
+  auto to_program = unix_socket_pair();
+  auto from_program = unix_socket_pair();
+
+  if (!to_program || !from_program) {
+    DebugLog(50,
+             FMT_STRING("abort creation of connection to {} as socket pairs "
+                        "could not be created"),
+             program_path);
+    return std::nullopt;
+  }
+
+  if (fcntl(to_program->first.get(), F_SETFD, FD_CLOEXEC) < 0) {
+    DebugLog(
+        50,
+        FMT_STRING("could not set CLOEXEC on program input socket {}. Err={}"),
+        to_program->first.get(), strerror(errno));
+  }
+
+  if (fcntl(from_program->first.get(), F_SETFD, FD_CLOEXEC) < 0) {
+    DebugLog(
+        50,
+        FMT_STRING("could not set CLOEXEC on program output socket {}. Err={}"),
+        from_program->first.get(), strerror(errno));
+  }
+
+  auto child = StartDuplexGrpc(program_path, std::move(to_program->second),
+                               std::move(from_program->second));
+
+  if (!child) {
+    DebugLog(50,
+             FMT_STRING("abort creation of connection to {} as program could "
+                        "not get started"),
+             program_path);
+    return std::nullopt;
+  }
+
+  errno = 0;
+  char test[] = "Hallo, Welt!";
+
+  // todo: we need to somehow select() on the events of the child
+  //       and the input/output sockets, so that we do not cause any deadlocks
+  //       waiting for a write of an already dead child
+  DebugLog(100, FMT_STRING("writing to {}"), to_program->first.get());
+  if (auto rc = write(to_program->first.get(), test, sizeof(test));
+      rc != sizeof(test)) {
+    DebugLog(50, FMT_STRING("bad write: rc = {} ({})"), rc, strerror(errno));
+    return std::nullopt;
+  }
+
+  DebugLog(100, FMT_STRING("wrote {} to {}"),
+           std::string_view{test, sizeof(test) - 1}, to_program->first.get());
+
+  DebugLog(100, FMT_STRING("reading from {}"), from_program->first.get());
+
+  char read_buffer[sizeof(test)];
+  auto read_bytes
+      = read(from_program->first.get(), read_buffer, sizeof(read_buffer));
+  DebugLog(100, FMT_STRING("read {} bytes from {}"), read_bytes,
+           from_program->first.get());
+  if (read_bytes != (ssize_t)sizeof(read_buffer)) {
+    DebugLog(50, FMT_STRING("bad read: rc = {} ({})"), read_bytes,
              strerror(errno));
     return std::nullopt;
   }
 
-  if (socketpair(AF_UNIX, SOCK_STREAM, 0, from_program) < 0) {
-    DebugLog(50, FMT_STRING("could not create socket pair 1: {}"),
-             strerror(errno));
+  if (memcmp(test, read_buffer, sizeof(test)) != 0) {
+    DebugLog(50, FMT_STRING("bad data: test = {}"),
+             std::string_view{read_buffer, sizeof(read_buffer)});
     return std::nullopt;
   }
 
-  (void)program_path;
   return std::nullopt;
 }
