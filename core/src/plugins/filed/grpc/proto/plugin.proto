@@ -1,33 +1,33 @@
 syntax = "proto3";
 
-package "bareos.plugin";
+package bareos.plugin;
 
-import "events.proto"
+import "events.proto";
 
 service Plugin {
-  rpc handlePluginEvent (handlePluginEventRequest) returns handlePluginEventResponse;
-  rpc startBackupFile (startBackupFileRequest) returns startBackupFileResponse;
-  rpc endBackupFile (endBackupFileRequest) returns endBackupFileResponse;
-  rpc startRestoreFile (startRestoreFileRequest) returns startRestoreFileResponse;
-  rpc endRestoreFile (endRestoreFileRequest) returns endRestoreFileResponse;
+  rpc handlePluginEvent (handlePluginEventRequest) returns (handlePluginEventResponse);
+  rpc startBackupFile (startBackupFileRequest) returns (startBackupFileResponse);
+  rpc endBackupFile (endBackupFileRequest) returns (endBackupFileResponse);
+  rpc startRestoreFile (startRestoreFileRequest) returns (startRestoreFileResponse);
+  rpc endRestoreFile (endRestoreFileRequest) returns (endRestoreFileResponse);
 
   // rpc pluginIO (pluginIORequest) returns pluginIOResponse;
 
-  rpc FileOpen (fileOpenRequest) returns fileOpenResponse;
+  rpc FileOpen (fileOpenRequest) returns (fileOpenResponse);
   // the following File* operations always operate on the currently
   // open file
-  rpc FileSeek (fileSeekRequest) returns fileSeekResponse;
-  rpc FileRead (fileReadRequest) returns fileReadResponse;
-  rpc FileWrite (fileWriteRequest) returns fileWriteResponse;
-  rpc FileClose (fileCloseRequest) returns fileCloseResponse;
+  rpc FileSeek (fileSeekRequest) returns (fileSeekResponse);
+  rpc FileRead (fileReadRequest) returns (fileReadResponse);
+  rpc FileWrite (fileWriteRequest) returns (fileWriteResponse);
+  rpc FileClose (fileCloseRequest) returns (fileCloseResponse);
 
-  rpc createFile (createFileRequest) returns createFileResponse;
-  rpc setFileAttributes (setFileAttributesRequest) returns setFileAttributesResponse;
-  rpc checkFile (checkFileRequest) returns checkFileResponse;
-  rpc getAcl (getAclRequest) returns getAclResponse;
-  rpc setAcl (setAclRequest) returns setAclResponse;
-  rpc getXattr (getXattrRequest) returns getXattrResponse;
-  rpc setXattr (setXattrRequest) returns setXattrResponse;
+  rpc createFile (createFileRequest) returns (createFileResponse);
+  rpc setFileAttributes (setFileAttributesRequest) returns (setFileAttributesResponse);
+  rpc checkFile (checkFileRequest) returns (checkFileResponse);
+  rpc getAcl (getAclRequest) returns (getAclResponse);
+  rpc setAcl (setAclRequest) returns (setAclResponse);
+  rpc getXattr (getXattrRequest) returns (getXattrResponse);
+  rpc setXattr (setXattrRequest) returns (setXattrResponse);
 }
 
 message RestorePacket {
@@ -49,26 +49,20 @@ message RestorePacket {
 
 // ---- Handle Plugin Events ----
 
-message thing_event {
-};
-
 message handlePluginEventRequest {
-  oneof event {
-    thing_event thing = 1;
-  };
+  bareos.plugin.events.Event to_handle = 1;
 };
 
 message handlePluginEventResponse {
-
 };
 
 // ---- Backup ----
 
 enum StartBackupFileResult {
   START_BACKUP_FILE_RESULT_UNSPECIFIED = 0;
-  OK = 1;
-  Stop = 2;
-  Skip = 3;
+  SBF_OK = 1;
+  SBF_Stop = 2;
+  SBF_Skip = 3;
 };
 
 message startBackupFileRequest {
@@ -87,8 +81,8 @@ message startBackupFileResponse {
 
 enum EndBackupFileResult {
   END_BACKUP_FILE_RESULT_UNSPECIFIED = 0;
-  Done = 1;
-  More = 2;
+  EBF_Done = 1;
+  EBF_More = 2;
 };
 
 message endBackupFileRequest {};
@@ -117,9 +111,9 @@ message fileOpenRequest {
 
 enum SeekStart {
   SEEK_START_UNSPECIFIED = 0;
-  StartOfFile = 1;
-  CurrentPos  = 2;
-  EndOfFile   = 3;
+  SS_StartOfFile = 1;
+  SS_CurrentPos  = 2;
+  SS_EndOfFile   = 3;
 };
 
 message fileSeekRequest {
@@ -157,11 +151,11 @@ message createFileRequest {
 
 enum CreateFileStatus {
   CREATE_FILE_STATUS_UNSPECIFIED = 0;
-  Created = 1; // file created, but no data to extract
-  Extract = 2; // file created, data to extract
-  Skip    = 3; // ignore this file
-  Core    = 4; // let the core handle the file creation
-  Error   = 5; // error during file creation
+  CF_Created = 1; // file created, but no data to extract
+  CF_Extract = 2; // file created, data to extract
+  CF_Skip    = 3; // ignore this file
+  CF_Core    = 4; // let the core handle the file creation
+  CF_Error   = 5; // error during file creation
 };
 
 message createFileResponse {
@@ -175,6 +169,9 @@ message setFileAttributesRequest {
   bytes stats = 2;
   bytes extended_attributes = 3;
   int64 user_id = 4;
+};
+
+message setFileAttributesResponse {
 };
 
 
@@ -197,7 +194,7 @@ message Acl {
 
 message setAclRequest {
   string file = 1;
-  Acl content = 1;
+  Acl content = 2;
 };
 
 message setAclResponse {

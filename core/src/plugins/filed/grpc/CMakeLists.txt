@@ -71,7 +71,10 @@ macro(addgrpcprotofiles protosrcs protohdrs grpcsrcs grpchdrs)
   endforeach()
 endmacro()
 
-addgrpcprotofiles(protosrcs protohdrs grpcsrcs grpchdrs "proto/test.proto")
+addgrpcprotofiles(
+  protosrcs protohdrs grpcsrcs grpchdrs "proto/plugin.proto"
+  "proto/events.proto"
+)
 
 add_library(grpc-proto ${protosrcs} ${protohdrs} ${grpcsrcs} ${grpchdrs})
 target_include_directories(grpc-proto PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
