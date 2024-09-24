@@ -22,6 +22,8 @@
 #include "plugins/filed/grpc/grpc_impl.h"
 #include <fcntl.h>
 #include <thread>
+#include <sys/wait.h>
+
 #if 0
 
 #  include <sys/wait.h>
@@ -308,6 +310,25 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
     DebugLog(50, FMT_STRING("bad data: test = {}"),
              std::string_view{read_buffer, sizeof(read_buffer)});
     return std::nullopt;
+  }
+
+  close(to_program->first.release());
+  close(from_program->first.release());
+
+  // wait for the child to close (for now)
+  for (;;) {
+    int status = 0;
+    if (waitpid(*child, &status, 0) < 0) {
+      DebugLog(50, FMT_STRING("wait pid failed. Err={}"), strerror(errno));
+    }
+
+    if (WIFEXITED(status)) {
+      DebugLog(100, FMT_STRING("child exit status = {}"), WEXITSTATUS(status));
+
+      break;
+    } else {
+      DebugLog(100, FMT_STRING("got status = {}"), status);
+    }
   }
 
   return std::nullopt;

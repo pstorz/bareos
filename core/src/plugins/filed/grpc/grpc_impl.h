@@ -73,6 +73,13 @@ struct Socket {
   int& get() { return os; }
   const int& get() const { return os; }
 
+  int release()
+  {
+    int fd = os;
+    os = -1;
+    return fd;
+  }
+
   ~Socket()
   {
     if (os >= 0) close(os);
