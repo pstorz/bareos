@@ -19,9 +19,15 @@
    02110-1301, USA.
 */
 
+#include "test.grpc.pb.h"
+#include <grpcpp/ext/proto_server_reflection_plugin.h>
+#include <grpcpp/grpcpp.h>
+#include <grpcpp/health_check_service_interface.h>
+
 #include "plugins/filed/grpc/grpc_impl.h"
 #include <fcntl.h>
 #include <thread>
+#include <grpcpp/security/server_credentials.h>
 #include <sys/wait.h>
 
 #if 0
@@ -234,6 +240,45 @@ std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
   }
 }
 
+namespace {
+struct Client {};
+
+struct Server : bareos::plugin::Plugin::Service {};
+
+std::optional<Client> make_client_connection(Socket s)
+{
+  (void)s;
+  return std::nullopt;
+}
+
+std::optional<Server> make_server_connection(Socket s)
+{
+  try {
+    // grpc::EnableDefaultHealthCheckService(true);
+    // grpc::reflection::InitProtoReflectionServerBuilderPlugin();
+
+    // grpc::ServerBuilder builder;
+    // builder.AddListeningPort("", grpc::InsecureServerCredentials());
+    (void)s;
+    return std::nullopt;
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
+
+std::optional<grpc_connection> make_connection_from(Socket in, Socket out)
+{
+  auto client = make_client_connection(std::move(out));
+  auto server = make_server_connection(std::move(in));
+
+  (void)client;
+  (void)server;
+
+  return std::nullopt;
+}
+};  // namespace
+
 std::optional<grpc_connection> make_connection(std::string_view program_path)
 {
   // We want to create a two way grpc connection, where both ends act as both
@@ -312,8 +357,52 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
     return std::nullopt;
   }
 
-  close(to_program->first.release());
-  close(from_program->first.release());
+  {
+    bareos::plugin::TestRequest in;
+    in.set_input(16);
+
+    DebugLog(100, FMT_STRING("Trying to serialize {} bytes to {}"),
+             in.ByteSizeLong(), to_program->first.get());
+    if (!in.SerializeToFileDescriptor(to_program->first.get())) {
+      DebugLog(50, FMT_STRING("could not serialize input"));
+      goto next_step;
+    }
+
+    bareos::plugin::TestRequest out;
+
+    DebugLog(50, FMT_STRING("trying to parse from {} (current size = {})"),
+             from_program->first.get(), out.ByteSizeLong());
+
+    char protobuf[200];
+
+
+    auto proto_bytes
+        = read(from_program->first.get(), protobuf, sizeof(protobuf));
+
+    if (proto_bytes < 0) {
+      DebugLog(50, FMT_STRING("could not read from {}. Err={}"),
+               from_program->first.get(), strerror(errno));
+    } else {
+      DebugLog(100, FMT_STRING("read {} bytes from {}"), proto_bytes,
+               from_program->first.get());
+    }
+
+    if (!out.ParseFromArray(protobuf, proto_bytes)) {
+      DebugLog(50, FMT_STRING("could not parse output"));
+      goto next_step;
+    }
+
+    if (out.input() != in.input()) {
+      DebugLog(50, FMT_STRING("did not parse correctly: {} != {}"), in.input(),
+               out.input());
+    } else {
+      DebugLog(100, FMT_STRING("sucessfully parsed {}"), out.input());
+    }
+  }
+next_step:
+
+  auto con = make_connection_from(std::move(from_program->first),
+                                  std::move(to_program->first));
 
   // wait for the child to close (for now)
   for (;;) {
@@ -331,5 +420,5 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
     }
   }
 
-  return std::nullopt;
+  return con;
 }
