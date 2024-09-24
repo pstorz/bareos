@@ -1,10 +1,26 @@
+syntax = "proto3";
+
+package "bareos.plugin";
+
+import "events.proto"
+
 service Plugin {
   rpc handlePluginEvent (handlePluginEventRequest) returns handlePluginEventResponse;
   rpc startBackupFile (startBackupFileRequest) returns startBackupFileResponse;
   rpc endBackupFile (endBackupFileRequest) returns endBackupFileResponse;
   rpc startRestoreFile (startRestoreFileRequest) returns startRestoreFileResponse;
   rpc endRestoreFile (endRestoreFileRequest) returns endRestoreFileResponse;
-  rpc pluginIO (pluginIORequest) returns pluginIOResponse;
+
+  // rpc pluginIO (pluginIORequest) returns pluginIOResponse;
+
+  rpc FileOpen (fileOpenRequest) returns fileOpenResponse;
+  // the following File* operations always operate on the currently
+  // open file
+  rpc FileSeek (fileSeekRequest) returns fileSeekResponse;
+  rpc FileRead (fileReadRequest) returns fileReadResponse;
+  rpc FileWrite (fileWriteRequest) returns fileWriteResponse;
+  rpc FileClose (fileCloseRequest) returns fileCloseResponse;
+
   rpc createFile (createFileRequest) returns createFileResponse;
   rpc setFileAttributes (setFileAttributesRequest) returns setFileAttributesResponse;
   rpc checkFile (checkFileRequest) returns checkFileResponse;
@@ -13,3 +29,207 @@ service Plugin {
   rpc getXattr (getXattrRequest) returns getXattrResponse;
   rpc setXattr (setXattrRequest) returns setXattrResponse;
 }
+
+message RestorePacket {
+  int32 stream_id = 1;
+  int32 data_stream = 2;
+  int32 type = 3;
+  int64 file_index = 4;
+  int64 link_fi = 5;
+  bytes user_id = 6;
+  bytes stat = 7;
+  string extended_attributes = 8;
+  string ofname = 9;
+  string olname = 10;
+  string where = 11;
+  string regex_where = 12;
+  int64 replace = 13;
+  int32 delta_seq = 14;
+};
+
+// ---- Handle Plugin Events ----
+
+message thing_event {
+};
+
+message handlePluginEventRequest {
+  oneof event {
+    thing_event thing = 1;
+  };
+};
+
+message handlePluginEventResponse {
+
+};
+
+// ---- Backup ----
+
+enum StartBackupFileResult {
+  START_BACKUP_FILE_RESULT_UNSPECIFIED = 0;
+  OK = 1;
+  Stop = 2;
+  Skip = 3;
+};
+
+message startBackupFileRequest {
+  // no idea what these do
+  bool portable = 1;
+  bool no_read = 2;
+  // ---
+
+
+  bytes flags = 3;
+  string cmd = 4;
+};
+message startBackupFileResponse {
+  StartBackupFileResult result = 1;
+};
+
+enum EndBackupFileResult {
+  END_BACKUP_FILE_RESULT_UNSPECIFIED = 0;
+  Done = 1;
+  More = 2;
+};
+
+message endBackupFileRequest {};
+
+message endBackupFileResponse {
+  EndBackupFileResult result = 1;
+};
+
+// ---- Restore ----
+
+message startRestoreFileRequest {
+  string command = 1;
+};
+message startRestoreFileResponse {};
+
+message endRestoreFileRequest {};
+message endRestoreFileResponse {};
+
+// ---- Plugin IO ----
+
+message fileOpenRequest {
+  string file = 1;
+  int32 flags = 2;
+  int32 mode = 3;
+};
+
+enum SeekStart {
+  SEEK_START_UNSPECIFIED = 0;
+  StartOfFile = 1;
+  CurrentPos  = 2;
+  EndOfFile   = 3;
+};
+
+message fileSeekRequest {
+  SeekStart whence = 1;
+  int64 offset = 2;
+};
+
+message fileReadRequest {
+  int64 num_bytes = 1;
+};
+message fileWriteRequest {
+  int64 num_bytes = 1;
+  bytes content = 2;
+};
+message fileCloseRequest {
+};
+message fileOpenResponse {
+};
+message fileSeekResponse {
+};
+message fileReadResponse {
+  bytes content = 1;
+};
+message fileWriteResponse {
+  int64 bytes_written = 1;
+};
+message fileCloseResponse {
+};
+
+// ---- Create File ----
+
+message createFileRequest {
+  RestorePacket pkt = 1;
+};
+
+enum CreateFileStatus {
+  CREATE_FILE_STATUS_UNSPECIFIED = 0;
+  Created = 1; // file created, but no data to extract
+  Extract = 2; // file created, data to extract
+  Skip    = 3; // ignore this file
+  Core    = 4; // let the core handle the file creation
+  Error   = 5; // error during file creation
+};
+
+message createFileResponse {
+  CreateFileStatus status = 1;
+};
+
+// ---- Set File Attributes ----
+
+message setFileAttributesRequest {
+  string file = 1;
+  bytes stats = 2;
+  bytes extended_attributes = 3;
+  int64 user_id = 4;
+};
+
+
+// ---- Check File ----
+
+message checkFileRequest {
+  string file = 1;
+};
+
+message checkFileResponse {
+  bool seen = 1;
+};
+
+
+// ----  ACL ----
+
+message Acl {
+  bytes data = 1;
+};
+
+message setAclRequest {
+  string file = 1;
+  Acl content = 1;
+};
+
+message setAclResponse {
+};
+
+message getAclRequest {
+  string file = 1;
+};
+
+message getAclResponse {
+  Acl content = 1;
+};
+
+// ----  XATTR ----
+
+message Xattribute {
+  string name = 1;
+  string value = 2;
+};
+
+message setXattrRequest {
+  string file = 1;
+  repeated Xattribute attributes = 2;
+};
+
+message setXattrResponse {
+};
+
+message getXattrRequest {
+  string file = 1;
+}
+
+message getXattrResponse {
+  repeated Xattribute attributes = 1;
+};
