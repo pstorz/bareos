@@ -2242,7 +2242,7 @@ static bRC bareosJobMsg(PluginContext* ctx,
   return bRC_OK;
 }
 
-static bRC bareosDebugMsg(PluginContext*,
+static bRC bareosDebugMsg(PluginContext* ctx,
                           const char* fname,
                           int line,
                           int level,
@@ -2255,7 +2255,8 @@ static bRC bareosDebugMsg(PluginContext*,
   va_start(arg_ptr, fmt);
   buffer.Bvsprintf(fmt, arg_ptr);
   va_end(arg_ptr);
-  d_msg(fname, line, level, "%s", buffer.c_str());
+  d_msg(fname, line, level, "%s: %s",
+        ctx ? ctx->plugin->file : "<unknown plugin>", buffer.c_str());
 
   return bRC_OK;
 }
