@@ -89,8 +89,25 @@ struct Socket {
   int os{-1};
 };
 
-struct grpc_connection {};
+struct grpc_connection {
+  bRC startBackupFile(filedaemon::save_pkt* pkt);
+  bRC endBackupFile();
+  bRC startRestoreFile(std::string_view cmd);
+  bRC endRestoreFile();
+
+  bRC pluginIO(filedaemon::io_pkt* pkt);
+
+  bRC createFile(filedaemon::restore_pkt* pkt);
+  bRC setFileAttributes(filedaemon::restore_pkt* pkt);
+  bRC checkFile(const char* fname);
+
+  bRC getAcl(filedaemon::acl_pkt* pkt);
+  bRC setAcl(filedaemon::acl_pkt* pkt);
+  bRC getXattr(filedaemon::xattr_pkt* pkt);
+  bRC setXattr(filedaemon::xattr_pkt* pkt);
+};
 
 std::optional<grpc_connection> make_connection(std::string_view program_path);
+
 
 #endif  // BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_

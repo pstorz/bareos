@@ -36,7 +36,7 @@ message RestorePacket {
   int32 type = 3;
   int64 file_index = 4;
   int64 link_fi = 5;
-  bytes user_id = 6;
+  int64 user_id = 6;
   bytes stat = 7;
   string extended_attributes = 8;
   string ofname = 9;
@@ -122,15 +122,15 @@ message fileSeekRequest {
 };
 
 message fileReadRequest {
-  int64 num_bytes = 1;
+  uint64 num_bytes = 1;
 };
 message fileWriteRequest {
-  int64 num_bytes = 1;
-  bytes content = 2;
+  bytes content = 1;
 };
 message fileCloseRequest {
 };
 message fileOpenResponse {
+  // here we should somehow allow `do_io_in_core` stuff
 };
 message fileSeekResponse {
 };
@@ -211,13 +211,13 @@ message getAclResponse {
 // ----  XATTR ----
 
 message Xattribute {
-  string name = 1;
+  string key = 1;
   string value = 2;
 };
 
 message setXattrRequest {
   string file = 1;
-  repeated Xattribute attributes = 2;
+  Xattribute attribute = 2;
 };
 
 message setXattrResponse {

@@ -19,7 +19,10 @@
    02110-1301, USA.
 */
 
-#include "test.grpc.pb.h"
+#include "events.pb.h"
+#include "plugin.grpc.pb.h"
+#include "plugin.pb.h"
+#include "filed/fd_plugins.h"
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/health_check_service_interface.h>
@@ -358,48 +361,104 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
   }
 
   {
-    bareos::plugin::TestRequest in;
-    in.set_input(16);
+    bareos::plugin::RestorePacket orig;
+    orig.set_file_index(3434);
+    {
+      auto out_stream
+          = google::protobuf::io::FileOutputStream(to_program->first.get());
+      google::protobuf::io::CodedOutputStream s{&out_stream};
 
-    DebugLog(100, FMT_STRING("Trying to serialize {} bytes to {}"),
-             in.ByteSizeLong(), to_program->first.get());
-    if (!in.SerializeToFileDescriptor(to_program->first.get())) {
-      DebugLog(50, FMT_STRING("could not serialize input"));
-      goto next_step;
+      size_t len = orig.ByteSizeLong();
+      s.WriteRaw(&len, sizeof(len));
+      DebugLog(100, FMT_STRING("wrote len = {}"), len);
+      if (!orig.SerializeToCodedStream(&s)) {
+        DebugLog(50, FMT_STRING("could not serialize input"));
+        goto next_step;
+      }
+      DebugLog(100, FMT_STRING("wrote obj"));
     }
 
-    bareos::plugin::TestRequest out;
+    {
+      auto in_stream
+          = google::protobuf::io::FileInputStream(from_program->first.get());
+      google::protobuf::io::CodedInputStream is{&in_stream};
 
-    DebugLog(50, FMT_STRING("trying to parse from {} (current size = {})"),
-             from_program->first.get(), out.ByteSizeLong());
+      size_t len = 0;
 
-    char protobuf[200];
+      decltype(orig) copy;
 
+      if (!is.ReadRaw(&len, sizeof(len))) {
+        DebugLog(50, FMT_STRING("could not read len output"));
+        goto next_step;
+      }
 
-    auto proto_bytes
-        = read(from_program->first.get(), protobuf, sizeof(protobuf));
+      DebugLog(100, FMT_STRING("read len = {}"), len);
 
-    if (proto_bytes < 0) {
-      DebugLog(50, FMT_STRING("could not read from {}. Err={}"),
-               from_program->first.get(), strerror(errno));
-    } else {
-      DebugLog(100, FMT_STRING("read {} bytes from {}"), proto_bytes,
-               from_program->first.get());
-    }
+      std::vector<char> bytes;
+      bytes.resize(len);
 
-    if (!out.ParseFromArray(protobuf, proto_bytes)) {
-      DebugLog(50, FMT_STRING("could not parse output"));
-      goto next_step;
-    }
+      is.ReadRaw(bytes.data(), bytes.size());
 
-    if (out.input() != in.input()) {
-      DebugLog(50, FMT_STRING("did not parse correctly: {} != {}"), in.input(),
-               out.input());
-    } else {
-      DebugLog(100, FMT_STRING("sucessfully parsed {}"), out.input());
+      if (!copy.ParseFromArray(bytes.data(), bytes.size())) {
+        DebugLog(50, FMT_STRING("could not parse output"));
+        goto next_step;
+      }
+
+      if (orig.file_index() != copy.file_index()) {
+        DebugLog(50, FMT_STRING("file_inedx difference detected: {} != {}"),
+                 orig.file_index(), copy.file_index());
+        goto next_step;
+      }
+
+      DebugLog(100, FMT_STRING("everything worked!"));
     }
   }
 next_step:
+
+  // {
+  //   bareos::plugin::TestRequest in;
+  //   in.set_input(16);
+
+  //   DebugLog(100, FMT_STRING("Trying to serialize {} bytes to {}"),
+  //            in.ByteSizeLong(), to_program->first.get());
+  //   if (!in.SerializeToFileDescriptor(to_program->first.get())) {
+  //     DebugLog(50, FMT_STRING("could not serialize input"));
+  //     goto next_step;
+  //   }
+
+  //   bareos::plugin::TestRequest out;
+
+  //   DebugLog(50, FMT_STRING("trying to parse from {} (current size = {})"),
+  //            from_program->first.get(), out.ByteSizeLong());
+
+  //   char protobuf[200];
+
+
+  //   auto proto_bytes
+  //       = read(from_program->first.get(), protobuf, sizeof(protobuf));
+
+  //   if (proto_bytes < 0) {
+  //     DebugLog(50, FMT_STRING("could not read from {}. Err={}"),
+  //              from_program->first.get(), strerror(errno));
+  //   } else {
+  //     DebugLog(100, FMT_STRING("read {} bytes from {}"), proto_bytes,
+  //              from_program->first.get());
+  //   }
+
+  //   if (!out.ParseFromArray(protobuf, proto_bytes)) {
+  //     DebugLog(50, FMT_STRING("could not parse output"));
+  //     goto next_step;
+  //   }
+
+  //   if (out.input() != in.input()) {
+  //     DebugLog(50, FMT_STRING("did not parse correctly: {} != {}"),
+  //     in.input(),
+  //              out.input());
+  //   } else {
+  //     DebugLog(100, FMT_STRING("sucessfully parsed {}"), out.input());
+  //   }
+  // }
+  // next_step:
 
   auto con = make_connection_from(std::move(from_program->first),
                                   std::move(to_program->first));
@@ -421,4 +480,645 @@ next_step:
   }
 
   return con;
+}
+
+// struct PluginService : bareos::plugin::Plugin::Service {
+//   grpc::Status handlePluginEvent(grpc::ServerContext*,
+//                                  const
+//                                  bareos::plugin::handlePluginEventRequest*
+//                                  req,
+//                                  bareos::plugin::handlePluginEventResponse*
+//                                  resp
+//                                 ) override {
+//     return grpc::Status::CANCELLED;
+//   }
+// };
+
+
+namespace {
+namespace bp = bareos::plugin;
+
+class PluginClient {
+ public:
+  PluginClient(std::shared_ptr<grpc::ChannelInterface> channel)
+      : stub_(bp::Plugin::NewStub(channel))
+  {
+  }
+
+  bRC handlePluginEvent(filedaemon::bEventType type, void* data)
+  {
+    bp::handlePluginEventRequest req;
+    auto* event = req.mutable_to_handle();
+
+    switch (type) {
+      case filedaemon::bEventJobStart: {
+        auto* inner = event->mutable_job_start();
+        inner->set_data((char*)data);
+      } break;
+      case filedaemon::bEventJobEnd: {
+        auto* inner = event->mutable_job_end();
+        (void)inner;
+      } break;
+      case filedaemon::bEventStartBackupJob: {
+        auto* inner = event->mutable_start_backup_job();
+        (void)inner;
+      } break;
+      case filedaemon::bEventEndBackupJob: {
+        auto* inner = event->mutable_end_backup_job();
+        (void)inner;
+      } break;
+      case filedaemon::bEventStartRestoreJob: {
+        auto* inner = event->mutable_start_restore_job();
+        (void)inner;
+      } break;
+      case filedaemon::bEventEndRestoreJob: {
+        auto* inner = event->mutable_end_restore_job();
+        (void)inner;
+      } break;
+      case filedaemon::bEventStartVerifyJob: {
+        auto* inner = event->mutable_start_verify_job();
+        (void)inner;
+      } break;
+      case filedaemon::bEventEndVerifyJob: {
+        auto* inner = event->mutable_end_verify_job();
+        (void)inner;
+      } break;
+      case filedaemon::bEventBackupCommand: {
+        auto* inner = event->mutable_backup_command();
+        inner->set_data((char*)data);
+      } break;
+      case filedaemon::bEventRestoreCommand: {
+        auto* inner = event->mutable_restore_command();
+        inner->set_data((char*)data);
+      } break;
+      case filedaemon::bEventEstimateCommand: {
+        auto* inner = event->mutable_estimate_command();
+        inner->set_data((char*)data);
+      } break;
+      case filedaemon::bEventLevel: {
+        auto* inner = event->mutable_level();
+        inner->set_level((intptr_t)data);
+      } break;
+      case filedaemon::bEventSince: {
+        auto* inner = event->mutable_since();
+        time_t since_time = (intptr_t)data;
+        inner->mutable_since()->set_seconds(since_time);
+      } break;
+      case filedaemon::bEventCancelCommand: {
+        auto* inner = event->mutable_cancel_command();
+        (void)inner;
+      } break;
+      case filedaemon::bEventRestoreObject: {
+        auto* inner = event->mutable_restore_object();
+        // TODO
+        (void)inner;
+      } break;
+      case filedaemon::bEventEndFileSet: {
+        auto* inner = event->mutable_end_fileset();
+        (void)inner;
+      } break;
+      case filedaemon::bEventPluginCommand: {
+        auto* inner = event->mutable_plugin_command();
+        inner->set_data((char*)data);
+      } break;
+      case filedaemon::bEventOptionPlugin: {
+        auto* inner = event->mutable_option_plugin();
+        (void)inner;
+      } break;
+      case filedaemon::bEventHandleBackupFile: {
+        auto* inner = event->mutable_handle_backup_file();
+        // TODO
+        (void)inner;
+      } break;
+      case filedaemon::bEventNewPluginOptions: {
+        auto* inner = event->mutable_new_plugin_options();
+        inner->set_data((char*)data);
+      } break;
+      case filedaemon::bEventVssInitializeForBackup: {
+        auto* inner = event->mutable_vss_init_backup();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssInitializeForRestore: {
+        auto* inner = event->mutable_vss_init_restore();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssSetBackupState: {
+        auto* inner = event->mutable_vss_set_backup_state();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssPrepareForBackup: {
+        auto* inner = event->mutable_vss_prepare_snapshot();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssBackupAddComponents: {
+        auto* inner = event->mutable_vss_backup_add_components();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssPrepareSnapshot: {
+        auto* inner = event->mutable_vss_prepare_snapshot();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssCreateSnapshots: {
+        auto* inner = event->mutable_vss_create_snapshot();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssRestoreLoadComponentMetadata: {
+        auto* inner = event->mutable_vss_restore_load_companents_metadata();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssRestoreSetComponentsSelected: {
+        auto* inner = event->mutable_vss_restore_set_components_selected();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssCloseRestore: {
+        auto* inner = event->mutable_vss_close_restore();
+        (void)inner;
+      } break;
+      case filedaemon::bEventVssBackupComplete: {
+        auto* inner = event->mutable_vss_backup_complete();
+        (void)inner;
+      } break;
+    }
+
+    bp::handlePluginEventResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->handlePluginEvent(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+
+  bRC startBackupFile(bool portable,
+                      bool no_read,
+                      std::string_view flags,
+                      std::string_view cmd)
+  {
+    bp::startBackupFileRequest req;
+    req.set_no_read(no_read);
+    req.set_portable(portable);
+    req.set_cmd(cmd.data(), cmd.size());
+    req.set_flags(flags.data(), flags.size());
+
+    bp::startBackupFileResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->startBackupFile(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    switch (resp.result()) {
+      case bareos::plugin::SBF_OK:
+        return bRC_OK;
+      case bareos::plugin::SBF_Stop:
+        return bRC_Stop;
+      case bareos::plugin::SBF_Skip:
+        return bRC_Skip;
+      default:
+        return bRC_Error;
+    }
+  }
+
+  bRC endBackupFile()
+  {
+    bp::endBackupFileRequest req;
+
+    bp::endBackupFileResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->endBackupFile(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    switch (resp.result()) {
+      case bareos::plugin::EBF_Done:
+        return bRC_OK;
+      case bareos::plugin::EBF_More:
+        return bRC_More;
+      default:
+        return bRC_Error;
+    }
+  }
+
+  bRC startRestoreFile(std::string_view cmd)
+  {
+    bp::startRestoreFileRequest req;
+    req.set_command(cmd.data(), cmd.size());
+
+    bp::startRestoreFileResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->startRestoreFile(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+
+  bRC endRestoreFile()
+  {
+    bp::endRestoreFileRequest req;
+
+    bp::endRestoreFileResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->endRestoreFile(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+
+
+  bRC FileOpen(std::string_view name, int32_t flags, int32_t mode)
+  {
+    bp::fileOpenRequest req;
+    req.set_mode(mode);
+    req.set_flags(flags);
+    req.set_file(name.data(), name.size());
+
+    bp::fileOpenResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->FileOpen(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+
+  bRC FileSeek(int whence, int64_t offset)
+  {
+    bp::SeekStart start;
+    switch (whence) {
+      case SEEK_SET: {
+        start = bp::SS_StartOfFile;
+      } break;
+      case SEEK_CUR: {
+        start = bp::SS_CurrentPos;
+      } break;
+      case SEEK_END: {
+        start = bp::SS_EndOfFile;
+      } break;
+      default: {
+        return bRC_Error;
+      }
+    }
+
+    bp::fileSeekRequest req;
+    req.set_whence(start);
+    req.set_offset(offset);
+
+    bp::fileSeekResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->FileSeek(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+
+  bRC FileRead(char* buffer, size_t size, size_t* num_bytes_read)
+  {
+    bp::fileReadRequest req;
+    req.set_num_bytes(size);
+
+    bp::fileReadResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->FileRead(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    auto& cnt = resp.content();
+    *num_bytes_read = cnt.size();
+
+    // ASSERT(cnt.size() <= size);
+
+    memcpy(buffer, cnt.data(), cnt.size());
+
+    return bRC_OK;
+  }
+
+  bRC FileWrite(char* buffer, size_t size, size_t* num_bytes_written)
+  {
+    bp::fileWriteRequest req;
+    req.set_content(buffer, size);
+
+    bp::fileWriteResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->FileWrite(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    *num_bytes_written = resp.bytes_written();
+
+    // ASSERT(num_bytes_written <= size);
+
+    return bRC_OK;
+  }
+
+  bRC FileClose()
+  {
+    bp::fileCloseRequest req;
+
+    bp::fileCloseResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->FileClose(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+
+  bRC createFile(filedaemon::restore_pkt* pkt)
+  {
+    bp::createFileRequest req;
+    auto* grpc_pkt = req.mutable_pkt();
+
+    grpc_pkt->set_stream_id(pkt->stream);
+    grpc_pkt->set_data_stream(pkt->data_stream);
+    grpc_pkt->set_type(pkt->type);
+    grpc_pkt->set_file_index(pkt->file_index);
+    grpc_pkt->set_link_fi(pkt->LinkFI);
+    grpc_pkt->set_user_id(pkt->uid);
+    grpc_pkt->set_stat((char*)&pkt->statp, sizeof(pkt->statp));
+    grpc_pkt->set_extended_attributes(pkt->attrEx);
+    grpc_pkt->set_ofname(pkt->ofname);
+    grpc_pkt->set_olname(pkt->olname);
+    grpc_pkt->set_where(pkt->where);
+    grpc_pkt->set_regex_where(pkt->RegexWhere);
+    grpc_pkt->set_replace(pkt->replace);
+    grpc_pkt->set_delta_seq(pkt->delta_seq);
+
+    bp::createFileResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->createFile(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    switch (resp.status()) {
+      case bareos::plugin::CF_Created: {
+        pkt->create_status = CF_CREATED;
+      } break;
+      case bareos::plugin::CF_Extract: {
+        pkt->create_status = CF_EXTRACT;
+      } break;
+      case bareos::plugin::CF_Skip: {
+        pkt->create_status = CF_SKIP;
+      } break;
+      case bareos::plugin::CF_Core: {
+        pkt->create_status = CF_CORE;
+      } break;
+      case bareos::plugin::CF_Error: {
+        pkt->create_status = CF_ERROR;
+      } break;
+      default:
+        return bRC_Term;
+    }
+
+    return bRC_OK;
+  }
+  bRC setFileAttributes(std::string_view name,
+                        const struct stat& statp,
+                        std::string_view extended_attributes,
+                        uid_t user_id)
+  {
+    bp::setFileAttributesRequest req;
+    req.set_file(name.data(), name.size());
+    req.set_stats((char*)&statp, sizeof(statp));
+    req.set_extended_attributes(extended_attributes.data(),
+                                extended_attributes.size());
+    req.set_user_id(user_id);
+
+    bp::setFileAttributesResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->setFileAttributes(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+  bRC checkFile(std::string_view name)
+  {
+    bp::checkFileRequest req;
+    req.set_file(name.data(), name.size());
+    bp::checkFileResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->checkFile(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    if (resp.seen()) { return bRC_Seen; }
+
+    return bRC_OK;
+  }
+
+  bRC setAcl(std::string_view file, std::string_view content)
+  {
+    bp::setAclRequest req;
+    req.set_file(file.data(), file.size());
+    req.mutable_content()->set_data(content.data(), content.size());
+
+    bp::setAclResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->setAcl(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+
+  bRC getAcl(std::string_view file, char** buffer, size_t* size)
+  {
+    bp::getAclRequest req;
+    req.set_file(file.data(), file.size());
+
+    bp::getAclResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->getAcl(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    auto& data = resp.content().data();
+    *buffer = reinterpret_cast<char*>(malloc(data.size() + 1));
+    *size = data.size();
+
+    memcpy(buffer, data.data(), data.size() + 1);
+
+    return bRC_OK;
+  }
+
+  bRC setXattr(std::string_view file,
+               std::string_view key,
+               std::string_view value)
+  {
+    bp::setXattrRequest req;
+    req.set_file(file.data(), file.size());
+    auto* xattr = req.mutable_attribute();
+    xattr->set_key(key.data(), key.size());
+    xattr->set_value(value.data(), value.size());
+
+    bp::setXattrResponse resp;
+    grpc::ClientContext ctx;
+    grpc::Status status = stub_->setXattr(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
+  }
+
+  bRC getXattr(std::string_view file,
+               char** name_buf,
+               size_t* name_size,
+               char** value_buf,
+               size_t* value_size)
+  {
+    // The idea here is that we grab all xattributes at once
+    // and then trickle them out for each call
+
+    if (current_xattr_index == std::numeric_limits<size_t>::max()) {
+      // we need to grab them now
+      bp::getXattrRequest req;
+      req.set_file(file.data(), file.size());
+
+      bp::getXattrResponse resp;
+      grpc::ClientContext ctx;
+      grpc::Status status = stub_->getXattr(&ctx, req, &resp);
+
+      if (!status.ok()) { return bRC_Error; }
+
+      xattribute_cache.assign(
+          std::make_move_iterator(std::begin(resp.attributes())),
+          std::make_move_iterator(std::end(resp.attributes())));
+
+      current_xattr_index = 0;
+    }
+
+    if (current_xattr_index == xattribute_cache.size()) {
+      current_xattr_index = -1;  // reset
+      return bRC_OK;
+    }
+
+    auto& current = xattribute_cache[current_xattr_index++];
+
+    auto& key = current.key();
+    auto& val = current.value();
+
+    *name_size = key.size();
+    *name_buf = reinterpret_cast<char*>(malloc(key.size() + 1));
+    memcpy(name_buf, key.data(), key.size() + 1);
+
+    *value_size = val.size();
+    *value_buf = reinterpret_cast<char*>(malloc(val.size() + 1));
+    memcpy(value_buf, val.data(), val.size() + 1);
+
+    return bRC_More;
+  }
+
+ private:
+  std::unique_ptr<bp::Plugin::Stub> stub_;
+
+
+  size_t current_xattr_index{std::numeric_limits<size_t>::max()};
+  std::vector<bp::Xattribute> xattribute_cache;
+};
+}  // namespace
+
+bRC grpc_connection::startBackupFile(filedaemon::save_pkt* pkt)
+{
+  PluginClient* client = nullptr;
+  return client->startBackupFile(
+      pkt->portable, pkt->no_read,
+      std::string_view{pkt->flags, sizeof(pkt->flags)}, pkt->cmd);
+}
+bRC grpc_connection::endBackupFile()
+{
+  PluginClient* client = nullptr;
+  return client->endBackupFile();
+}
+bRC grpc_connection::startRestoreFile(std::string_view cmd)
+{
+  PluginClient* client = nullptr;
+  return client->startRestoreFile(cmd);
+}
+bRC grpc_connection::endRestoreFile()
+{
+  PluginClient* client = nullptr;
+  return client->endRestoreFile();
+}
+bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt)
+{
+  PluginClient* client = nullptr;
+  switch (pkt->func) {
+    case filedaemon::IO_OPEN: {
+      return client->FileOpen(pkt->fname, pkt->flags, pkt->mode);
+    } break;
+    case filedaemon::IO_READ: {
+      size_t count = 0;
+      auto res = client->FileRead(pkt->buf, pkt->count, &count);
+      pkt->status = count;
+      return res;
+    } break;
+    case filedaemon::IO_WRITE: {
+      size_t count = 0;
+      auto res = client->FileWrite(pkt->buf, pkt->count, &count);
+      pkt->status = count;
+      return res;
+    } break;
+    case filedaemon::IO_CLOSE: {
+      return client->FileClose();
+    } break;
+    case filedaemon::IO_SEEK: {
+      return client->FileSeek(pkt->whence, pkt->offset);
+    } break;
+    default: {
+      return bRC_Error;
+    } break;
+  }
+}
+bRC grpc_connection::createFile(filedaemon::restore_pkt* pkt)
+{
+  PluginClient* client = nullptr;
+  return client->createFile(pkt);
+}
+bRC grpc_connection::setFileAttributes(filedaemon::restore_pkt* pkt)
+{
+  PluginClient* client = nullptr;
+  return client->setFileAttributes(pkt->ofname, pkt->statp, pkt->attrEx,
+                                   pkt->uid);
+}
+bRC grpc_connection::checkFile(const char* fname)
+{
+  PluginClient* client = nullptr;
+  return client->checkFile(fname);
+}
+bRC grpc_connection::getAcl(filedaemon::acl_pkt* pkt)
+{
+  PluginClient* client = nullptr;
+  size_t size = 0;
+  bRC result = client->getAcl(pkt->fname, &pkt->content, &size);
+  pkt->content_length = size;
+  return result;
+}
+bRC grpc_connection::setAcl(filedaemon::acl_pkt* pkt)
+{
+  PluginClient* client = nullptr;
+  return client->setAcl(pkt->fname,
+                        std::string_view{pkt->content, pkt->content_length});
+}
+bRC grpc_connection::getXattr(filedaemon::xattr_pkt* pkt)
+{
+  PluginClient* client = nullptr;
+  size_t name_len = 0, value_len = 0;
+
+  bRC result = client->getXattr(pkt->fname, &pkt->name, &name_len, &pkt->value,
+                                &value_len);
+
+  pkt->name_length = name_len;
+  pkt->value_length = value_len;
+
+  return result;
+}
+bRC grpc_connection::setXattr(filedaemon::xattr_pkt* pkt)
+{
+  PluginClient* client = nullptr;
+
+  return client->setXattr(pkt->fname,
+                          std::string_view{pkt->name, pkt->name_length},
+                          std::string_view{pkt->value, pkt->value_length});
 }
