@@ -25,9 +25,7 @@
 #include "bareos.grpc.pb.h"
 #include "bareos.pb.h"
 #include "filed/fd_plugins.h"
-#include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/grpcpp.h>
-#include <grpcpp/health_check_service_interface.h>
 #include <grpc/grpc_posix.h>
 #include <grpc/grpc_security.h>
 
@@ -37,90 +35,6 @@
 #include <grpcpp/impl/codegen/channel_interface.h>
 #include <grpcpp/security/server_credentials.h>
 #include <sys/wait.h>
-
-#if 0
-
-#  include <sys/wait.h>
-#  include <unistd.h>
-#  include <cstring>
-#  include <cstdlib>
-#  include <sys/types.h>
-#  include <sys/socket.h>
-#  include <sys/mman.h>
-
-std::optional<int> receive_fd(filedaemon::CoreFunctions* funcs,
-                              int socket)
-{
-    struct msghdr read_msg = {};
-
-    alignas(struct cmsghdr) char buffer[CMSG_SPACE(sizeof(int))];
-
-    read_msg.msg_control = buffer;
-    read_msg.msg_controllen = sizeof(buffer);
-
-    auto rc = recvmsg(socket, &read_msg, 0);
-
-    debug(funcs, 100, "rc = %lld\n", rc);
-
-    if (rc < 0) {
-      return std::nullopt;
-    }
-
-    debug(funcs, 100, "clen = %lld\n", read_msg.msg_controllen);
-
-    if (read_msg.msg_controllen <= 0) {
-      return std::nullopt;
-    }
-
-    auto* hdr = CMSG_FIRSTHDR(&read_msg);
-    if (!hdr) {
-      return std::nullopt;;
-    }
-
-    debug(funcs, 100, "hdr = %p, len = %llu\n", hdr, hdr->cmsg_len);
-
-    if (hdr->cmsg_len != CMSG_LEN(sizeof(int))) {
-      return std::nullopt;
-    }
-
-    auto* data = CMSG_DATA(hdr);
-
-    int fd{-1};
-
-    memcpy(&fd, data, sizeof(int));
-
-    return fd;
-}
-
-bool send_fd(int socket, int fd)
-{
-    struct msghdr write_msg = {};
-
-    alignas(struct cmsghdr) char buffer[CMSG_SPACE(sizeof(int))];
-
-    struct iovec dummy = { .iov_base = (char*)"", .iov_len = 1 };
-
-    write_msg.msg_control = buffer;
-    write_msg.msg_controllen = sizeof(buffer); // set to capacity
-    write_msg.msg_iov = &dummy;
-    write_msg.msg_iovlen = 1;
-
-    auto* cmsg = CMSG_FIRSTHDR(&write_msg);
-
-    cmsg->cmsg_level = SOL_SOCKET;
-    cmsg->cmsg_type = SCM_RIGHTS;
-    cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-
-    memcpy(CMSG_DATA(cmsg), &fd, sizeof(fd));
-
-    write_msg.msg_controllen = cmsg->cmsg_len; // set to actual size
-    if (sendmsg(socket, &write_msg, 0) < 0) {
-      return false;
-    }
-
-    return true;
-}
-#endif
 
 #include "bareos_api.h"
 
@@ -247,19 +161,6 @@ std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
     return child;
   }
 }
-
-// struct PluginService : bareos::plugin::Plugin::Service {
-//   grpc::Status handlePluginEvent(grpc::ServerContext*,
-//                                  const
-//                                  bareos::plugin::handlePluginEventRequest*
-//                                  req,
-//                                  bareos::plugin::handlePluginEventResponse*
-//                                  resp
-//                                 ) override {
-//     return grpc::Status::CANCELLED;
-//   }
-// };
-
 
 namespace {
 namespace bp = bareos::plugin;
@@ -777,10 +678,10 @@ class PluginClient {
   }
 
  private:
-  std::unique_ptr<bp::Plugin::Stub> stub_;
+  std::unique_ptr<bp::Plugin::Stub> stub_{};
 
   size_t current_xattr_index{std::numeric_limits<size_t>::max()};
-  std::vector<bp::Xattribute> xattribute_cache;
+  std::vector<bp::Xattribute> xattribute_cache{};
 };
 
 namespace bc = bareos::core;
@@ -817,13 +718,13 @@ struct grpc_connection_members {
 
 
 struct connection_builder {
-  std::optional<PluginClient> opt_client;
-  std::optional<std::unique_ptr<grpc::Server>> opt_server;
-  std::vector<std::unique_ptr<grpc::Service>> services;
+  std::optional<PluginClient> opt_client{};
+  std::unique_ptr<grpc::Server> opt_server{};
+  std::vector<std::unique_ptr<grpc::Service>> services{};
 
-  template <typename... Args>
-  connection_builder(Args... args) : services{std::forward<Args>(args)...}
+  template <typename... Args> connection_builder(Args&&... args)
   {
+    (services.emplace_back(std::forward<Args>(args)), ...);
   }
 
   connection_builder& connect_client(Socket s)
@@ -853,18 +754,24 @@ struct connection_builder {
 
       for (auto& service : services) { builder.RegisterService(service.get()); }
 
-      auto ccserver = builder.BuildAndStart();
+      opt_server = builder.BuildAndStart();
 
-      auto* server = ccserver->c_server();
+      if (!opt_server) {
+        DebugLog(50, FMT_STRING("grpc server could not get started"), s.get());
+        return *this;
+      }
+
+      auto* server = opt_server->c_server();
 
       grpc_server_add_channel_from_fd(
           server, s.get(), grpc_insecure_server_credentials_create());
+
     } catch (const std::exception& e) {
       DebugLog(50, FMT_STRING("could not attach socket {} to server: Err={}"),
                s.get(), e.what());
-      opt_server = std::nullopt;
+      opt_server.reset();
     } catch (...) {
-      opt_server = std::nullopt;
+      opt_server.reset();
     }
     return *this;
   }
@@ -878,7 +785,7 @@ struct connection_builder {
     grpc_connection con{};
 
     con.members = new grpc_connection_members{std::move(opt_client.value()),
-                                              std::move(opt_server.value()),
+                                              std::move(opt_server),
                                               std::move(services)};
 
     return con;
@@ -937,95 +844,100 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
     return std::nullopt;
   }
 
-  errno = 0;
-  char test[] = "Hallo, Welt!";
+  // {
+  //   errno = 0;
+  //   char test[] = "Hallo, Welt!";
 
-  // todo: we need to somehow select() on the events of the child
-  //       and the input/output sockets, so that we do not cause any deadlocks
-  //       waiting for a write of an already dead child
-  DebugLog(100, FMT_STRING("writing to {}"), to_program->first.get());
-  if (auto rc = write(to_program->first.get(), test, sizeof(test));
-      rc != sizeof(test)) {
-    DebugLog(50, FMT_STRING("bad write: rc = {} ({})"), rc, strerror(errno));
-    return std::nullopt;
-  }
+  //   // todo: we need to somehow select() on the events of the child
+  //   //       and the input/output sockets, so that we do not cause any
+  //   deadlocks
+  //   //       waiting for a write of an already dead child
+  //   DebugLog(100, FMT_STRING("writing to {}"), to_program->first.get());
+  //   if (auto rc = write(to_program->first.get(), test, sizeof(test));
+  //       rc != sizeof(test)) {
+  //     DebugLog(50, FMT_STRING("bad write: rc = {} ({})"), rc,
+  //     strerror(errno)); return std::nullopt;
+  //   }
 
-  DebugLog(100, FMT_STRING("wrote {} to {}"),
-           std::string_view{test, sizeof(test) - 1}, to_program->first.get());
+  //   DebugLog(100, FMT_STRING("wrote {} to {}"),
+  //            std::string_view{test, sizeof(test) - 1},
+  //            to_program->first.get());
 
-  DebugLog(100, FMT_STRING("reading from {}"), from_program->first.get());
+  //   DebugLog(100, FMT_STRING("reading from {}"), from_program->first.get());
 
-  char read_buffer[sizeof(test)];
-  auto read_bytes
-      = read(from_program->first.get(), read_buffer, sizeof(read_buffer));
-  DebugLog(100, FMT_STRING("read {} bytes from {}"), read_bytes,
-           from_program->first.get());
-  if (read_bytes != (ssize_t)sizeof(read_buffer)) {
-    DebugLog(50, FMT_STRING("bad read: rc = {} ({})"), read_bytes,
-             strerror(errno));
-    return std::nullopt;
-  }
+  //   char read_buffer[sizeof(test)];
+  //   auto read_bytes
+  //     = read(from_program->first.get(), read_buffer, sizeof(read_buffer));
+  //   DebugLog(100, FMT_STRING("read {} bytes from {}"), read_bytes,
+  //            from_program->first.get());
+  //   if (read_bytes != (ssize_t)sizeof(read_buffer)) {
+  //     DebugLog(50, FMT_STRING("bad read: rc = {} ({})"), read_bytes,
+  //              strerror(errno));
+  //     return std::nullopt;
+  //   }
 
-  if (memcmp(test, read_buffer, sizeof(test)) != 0) {
-    DebugLog(50, FMT_STRING("bad data: test = {}"),
-             std::string_view{read_buffer, sizeof(read_buffer)});
-    return std::nullopt;
-  }
+  //   if (memcmp(test, read_buffer, sizeof(test)) != 0) {
+  //     DebugLog(50, FMT_STRING("bad data: test = {}"),
+  //              std::string_view{read_buffer, sizeof(read_buffer)});
+  //     return std::nullopt;
+  //   }
 
-  {
-    bareos::plugin::RestorePacket orig;
-    orig.set_file_index(3434);
-    {
-      auto out_stream
-          = google::protobuf::io::FileOutputStream(to_program->first.get());
-      google::protobuf::io::CodedOutputStream s{&out_stream};
+  //   {
+  //     bareos::plugin::RestorePacket orig;
+  //     orig.set_file_index(3434);
+  //     {
+  //       auto out_stream
+  //         = google::protobuf::io::FileOutputStream(to_program->first.get());
+  //       google::protobuf::io::CodedOutputStream s{&out_stream};
 
-      size_t len = orig.ByteSizeLong();
-      s.WriteRaw(&len, sizeof(len));
-      DebugLog(100, FMT_STRING("wrote len = {}"), len);
-      if (!orig.SerializeToCodedStream(&s)) {
-        DebugLog(50, FMT_STRING("could not serialize input"));
-        goto next_step;
-      }
-      DebugLog(100, FMT_STRING("wrote obj"));
-    }
+  //       size_t len = orig.ByteSizeLong();
+  //       s.WriteRaw(&len, sizeof(len));
+  //       DebugLog(100, FMT_STRING("wrote len = {}"), len);
+  //       if (!orig.SerializeToCodedStream(&s)) {
+  //         DebugLog(50, FMT_STRING("could not serialize input"));
+  //         goto next_step;
+  //       }
+  //       DebugLog(100, FMT_STRING("wrote obj"));
+  //     }
 
-    {
-      auto in_stream
-          = google::protobuf::io::FileInputStream(from_program->first.get());
-      google::protobuf::io::CodedInputStream is{&in_stream};
+  //     {
+  //       auto in_stream
+  //         = google::protobuf::io::FileInputStream(from_program->first.get());
+  //       google::protobuf::io::CodedInputStream is{&in_stream};
 
-      size_t len = 0;
+  //       size_t len = 0;
 
-      decltype(orig) copy;
+  //       decltype(orig) copy;
 
-      if (!is.ReadRaw(&len, sizeof(len))) {
-        DebugLog(50, FMT_STRING("could not read len output"));
-        goto next_step;
-      }
+  //       if (!is.ReadRaw(&len, sizeof(len))) {
+  //         DebugLog(50, FMT_STRING("could not read len output"));
+  //         goto next_step;
+  //       }
 
-      DebugLog(100, FMT_STRING("read len = {}"), len);
+  //       DebugLog(100, FMT_STRING("read len = {}"), len);
 
-      std::vector<char> bytes;
-      bytes.resize(len);
+  //       std::vector<char> bytes;
+  //       bytes.resize(len);
 
-      is.ReadRaw(bytes.data(), bytes.size());
+  //       is.ReadRaw(bytes.data(), bytes.size());
 
-      if (!copy.ParseFromArray(bytes.data(), bytes.size())) {
-        DebugLog(50, FMT_STRING("could not parse output"));
-        goto next_step;
-      }
+  //       if (!copy.ParseFromArray(bytes.data(), bytes.size())) {
+  //         DebugLog(50, FMT_STRING("could not parse output"));
+  //         goto next_step;
+  //       }
 
-      if (orig.file_index() != copy.file_index()) {
-        DebugLog(50, FMT_STRING("file_inedx difference detected: {} != {}"),
-                 orig.file_index(), copy.file_index());
-        goto next_step;
-      }
+  //       if (orig.file_index() != copy.file_index()) {
+  //         DebugLog(50, FMT_STRING("file_inedx difference detected: {} !=
+  //         {}"),
+  //                  orig.file_index(), copy.file_index());
+  //         goto next_step;
+  //       }
 
-      DebugLog(100, FMT_STRING("everything worked!"));
-    }
-  }
-next_step:
+  //       DebugLog(100, FMT_STRING("everything worked!"));
+  //     }
+  //   }
+  // next_step:
+  // }
 
   // {
   //   bareos::plugin::TestRequest in;
@@ -1075,19 +987,35 @@ next_step:
   auto con = make_connection_from(std::move(from_program->first),
                                   std::move(to_program->first));
 
+  if (!con) {
+    DebugLog(50, FMT_STRING("no connection for me :("));
+    kill(*child, SIGKILL);
+  } else {
+    DebugLog(100, FMT_STRING("a connection for me :)"));
+
+    auto res = con->startRestoreFile("filename");
+
+    DebugLog(100, FMT_STRING("got result = {}"), int(res));
+  }
+
+  con.reset();
+
+
   // wait for the child to close (for now)
   for (;;) {
     int status = 0;
     if (waitpid(*child, &status, 0) < 0) {
       DebugLog(50, FMT_STRING("wait pid failed. Err={}"), strerror(errno));
-    }
-
-    if (WIFEXITED(status)) {
-      DebugLog(100, FMT_STRING("child exit status = {}"), WEXITSTATUS(status));
-
       break;
     } else {
-      DebugLog(100, FMT_STRING("got status = {}"), status);
+      if (WIFEXITED(status)) {
+        DebugLog(100, FMT_STRING("child exit status = {}"),
+                 WEXITSTATUS(status));
+
+        break;
+      } else {
+        DebugLog(100, FMT_STRING("got status = {}"), status);
+      }
     }
   }
 

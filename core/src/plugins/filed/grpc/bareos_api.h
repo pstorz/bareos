@@ -188,6 +188,10 @@ struct UsedConfig {
   using type = const char*;
   constexpr static auto value = filedaemon::bVarUsedConfig;
 };
+struct PluginPath {
+  using type = const char*;
+  constexpr static auto value = filedaemon::bVarPluginPath;
+};
 
 template <typename T> auto Get(PluginContext* ctx) -> typename T::type
 {

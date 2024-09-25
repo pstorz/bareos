@@ -27,6 +27,7 @@
 #include "filed/fd_plugins.h"
 
 #include <fmt/format.h>
+#include <grpc/grpc.h>
 
 #include "bareos_api.h"
 
@@ -364,6 +365,7 @@ extern "C" int loadPlugin(filedaemon::PluginApiDefinition* core_info,
                           PluginInformation** plugin_info,
                           filedaemon::PluginFunctions** plugin_funcs)
 {
+  grpc_init();
   SetupBareosApi(core_funcs);
 
   if (!AmICompatibleWith(core_info)) {
@@ -382,4 +384,8 @@ extern "C" int loadPlugin(filedaemon::PluginApiDefinition* core_info,
   return 0;
 }
 
-extern "C" int unloadPlugin() { return 0; }
+extern "C" int unloadPlugin()
+{
+  grpc_shutdown();
+  return 0;
+}

@@ -111,6 +111,15 @@ class grpc_connection {
 
   friend struct connection_builder;
 
+  grpc_connection(const grpc_connection&) = delete;
+  grpc_connection& operator=(const grpc_connection&) = delete;
+  grpc_connection(grpc_connection&& other) { *this = std::move(other); }
+  grpc_connection& operator=(grpc_connection&& other)
+  {
+    std::swap(members, other.members);
+    return *this;
+  }
+
   ~grpc_connection();
 
  private:
