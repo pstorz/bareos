@@ -686,23 +686,35 @@ class PluginClient {
 
 namespace bc = bareos::core;
 
-class BareosEvents : public bc::Events::Service {
-  grpc::Status Register(grpc::ServerContext*,
-                        const bc::RegisterRequest* req,
-                        bc::RegisterResponse* resp) override
+class BareosEvents : public bc::Core::Service {
+  grpc::Status Events_Register(grpc::ServerContext*,
+                               const bc::RegisterRequest* req,
+                               bc::RegisterResponse* resp) override
   {
     (void)req;
     (void)resp;
     return grpc::Status::CANCELLED;
   }
 
-  grpc::Status Unregister(grpc::ServerContext*,
-                          const bc::UnregisterRequest* req,
-                          bc::UnregisterResponse* resp) override
+  grpc::Status Events_Unregister(grpc::ServerContext*,
+                                 const bc::UnregisterRequest* req,
+                                 bc::UnregisterResponse* resp) override
   {
     (void)req;
     (void)resp;
     return grpc::Status::CANCELLED;
+  }
+
+  grpc::Status Bareos_DebugMessage(grpc::ServerContext*,
+                                   const bc::DebugMessageRequest* req,
+                                   bc::DebugMessageResponse* resp) override
+  {
+    DebugLog(Severity{(int)req->level(), req->file().c_str(), (int)req->line()},
+             FMT_STRING("{}"), req->msg());
+
+    (void)resp;
+
+    return grpc::Status::OK;
   }
 };
 }  // namespace
@@ -880,6 +892,7 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
   } else {
     DebugLog(100, FMT_STRING("a connection for me :)"));
 
+    // TODO: remove status(), as its not supported on foreign fds
     auto pre = con->status(false);
     auto post = con->status(true);
 

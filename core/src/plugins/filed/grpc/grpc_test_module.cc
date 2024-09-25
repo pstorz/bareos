@@ -37,11 +37,29 @@ namespace bc = bareos::core;
 
 struct BareosClient {
   BareosClient(std::shared_ptr<grpc::ChannelInterface> channel)
-      : stub_(bc::Events::NewStub(channel))
+      : stub_(bc::Core::NewStub(channel))
   {
   }
 
-  std::unique_ptr<bc::Events::Stub> stub_;
+  void DebugMessage(int level,
+                    std::string_view v,
+                    int line,
+                    const char* file,
+                    const char* fun)
+  {
+    bc::DebugMessageRequest req;
+    req.set_level(level);
+    req.set_msg(v.data(), v.size());
+    req.set_line(line);
+    req.set_file(file);
+    req.set_function(fun);
+
+    bc::DebugMessageResponse resp;
+    grpc::ClientContext ctx;
+    (void)stub_->Bareos_DebugMessage(&ctx, req, &resp);
+  }
+
+  std::unique_ptr<bc::Core::Stub> stub_;
 };
 
 struct grpc_connection {
@@ -117,6 +135,9 @@ void HandleConnection(int server_sock, int client_sock)
             .build();
 
   if (!con) { exit(1); }
+
+  con->client.DebugMessage(100, "My debug message!", __builtin_LINE(),
+                           __builtin_FILE(), __builtin_FUNCTION());
 
   con->server->Wait();
 }

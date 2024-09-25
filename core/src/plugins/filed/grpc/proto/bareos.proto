@@ -4,9 +4,24 @@ package bareos.core;
 
 import "google/protobuf/timestamp.proto";
 
-service Events {
-  rpc Register (RegisterRequest) returns (RegisterResponse);
-  rpc Unregister (UnregisterRequest) returns (UnregisterResponse);
+service Core {
+  rpc Events_Register (RegisterRequest) returns (RegisterResponse);
+  rpc Events_Unregister (UnregisterRequest) returns (UnregisterResponse);
+  rpc Fileset_AddExclude (AddExcludeRequest) returns (AddExcludeResponse);
+  rpc Fileset_AddInclude (AddIncludeRequest) returns (AddIncludeResponse);
+  rpc Fileset_AddOptions (AddOptionsRequest) returns (AddOptionsResponse);
+  rpc Fileset_AddRegex (AddRegexRequest) returns (AddRegexResponse);
+  rpc Fileset_AddWild (AddWildRequest) returns (AddWildResponse);
+  rpc Fileset_NewOptions (NewOptionsRequest) returns (NewOptionsResponse);
+  rpc Fileset_NewInclude (NewIncludeRequest) returns (NewIncludeResponse);
+  rpc Fileset_NewPreInclude (NewPreIncludeRequest) returns (NewPreIncludeResponse);
+  rpc Bareos_getInstanceCount (getInstanceCountRequest) returns (getInstanceCountResponse);
+  rpc Bareos_checkChanges (checkChangesRequest) returns (checkChangesResponse);
+  rpc Bareos_AcceptFile (AcceptFileRequest) returns (AcceptFileResponse);
+  rpc Bareos_SetSeen (SetSeenRequest) returns (SetSeenResponse);
+  rpc Bareos_ClearSeen (ClearSeenRequest) returns (ClearSeenResponse);
+  rpc Bareos_JobMessage (JobMessageRequest) returns (JobMessageResponse);
+  rpc Bareos_DebugMessage (DebugMessageRequest) returns (DebugMessageResponse);
 };
 
 enum EventType {
@@ -22,17 +37,6 @@ message UnregisterRequest {
   repeated EventType event_types = 1;
 };
 message UnregisterResponse {
-};
-
-service Fileset {
-  rpc AddExclude (AddExcludeRequest) returns (AddExcludeResponse);
-  rpc AddInclude (AddIncludeRequest) returns (AddIncludeResponse);
-  rpc AddOptions (AddOptionsRequest) returns (AddOptionsResponse);
-  rpc AddRegex (AddRegexRequest) returns (AddRegexResponse);
-  rpc AddWild (AddWildRequest) returns (AddWildResponse);
-  rpc NewOptions (NewOptionsRequest) returns (NewOptionsResponse);
-  rpc NewInclude (NewIncludeRequest) returns (NewIncludeResponse);
-  rpc NewPreInclude (NewPreIncludeRequest) returns (NewPreIncludeResponse);
 };
 
 message AddExcludeRequest {
@@ -68,15 +72,6 @@ message NewPreIncludeRequest {
 message NewPreIncludeResponse {
 };
 
-service Bareos {
-  rpc getInstanceCount (getInstanceCountRequest) returns (getInstanceCountResponse);
-  rpc checkChanges (checkChangesRequest) returns (checkChangesResponse);
-  rpc AcceptFile (AcceptFileRequest) returns (AcceptFileResponse);
-  rpc SetSeen (SetSeenRequest) returns (SetSeenResponse);
-  rpc ClearSeen (ClearSeenRequest) returns (ClearSeenResponse);
-  rpc JobMessage (JobMessageRequest) returns (JobMessageResponse);
-  rpc DebugMessage (DebugMessageRequest) returns (DebugMessageResponse);
-};
 
 message getInstanceCountRequest {
 };
@@ -179,8 +174,13 @@ message JobMessageRequest {
 message JobMessageResponse {
 };
 message DebugMessageRequest {
-  int64  level = 1;
+  int64 level = 1;
+
   string msg = 2;
+
+  int64 line = 3;
+  string file = 4;
+  string function = 5;
 };
 message DebugMessageResponse {
 };
