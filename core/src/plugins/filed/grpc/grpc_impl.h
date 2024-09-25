@@ -89,7 +89,10 @@ struct Socket {
   int os{-1};
 };
 
-struct grpc_connection {
+struct grpc_connection_members;
+
+class grpc_connection {
+ public:
   bRC startBackupFile(filedaemon::save_pkt* pkt);
   bRC endBackupFile();
   bRC startRestoreFile(std::string_view cmd);
@@ -105,6 +108,15 @@ struct grpc_connection {
   bRC setAcl(filedaemon::acl_pkt* pkt);
   bRC getXattr(filedaemon::xattr_pkt* pkt);
   bRC setXattr(filedaemon::xattr_pkt* pkt);
+
+  friend struct connection_builder;
+
+  ~grpc_connection();
+
+ private:
+  grpc_connection() = default;
+
+  grpc_connection_members* members{nullptr};
 };
 
 std::optional<grpc_connection> make_connection(std::string_view program_path);
