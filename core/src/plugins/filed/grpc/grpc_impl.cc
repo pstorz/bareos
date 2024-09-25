@@ -26,8 +26,8 @@
 #include "bareos.pb.h"
 #include "filed/fd_plugins.h"
 #include <grpcpp/grpcpp.h>
-#include <grpc/grpc_posix.h>
-#include <grpc/grpc_security.h>
+#include <grpcpp/server_posix.h>
+#include <grpcpp/create_channel_posix.h>
 
 #include "plugins/filed/grpc/grpc_impl.h"
 #include <fcntl.h>
@@ -710,6 +710,7 @@ class BareosEvents : public bc::Events::Service {
 // namespace {
 struct grpc_connection_members {
   PluginClient client;
+  std::shared_ptr<grpc::Channel> channel;
   std::unique_ptr<grpc::Server> server;
   std::vector<std::unique_ptr<grpc::Service>> services;
 
@@ -718,6 +719,7 @@ struct grpc_connection_members {
 
 
 struct connection_builder {
+  std::shared_ptr<grpc::Channel> channel{};
   std::optional<PluginClient> opt_client{};
   std::unique_ptr<grpc::Server> opt_server{};
   std::vector<std::unique_ptr<grpc::Service>> services{};
@@ -729,16 +731,15 @@ struct connection_builder {
 
   connection_builder& connect_client(Socket s)
   {
-    auto* channel = grpc_channel_create_from_fd(
-        "plugin", s.get(), grpc_insecure_credentials_create(), nullptr);
+    channel = grpc::CreateInsecureChannelFromFd("", s.get());
 
     if (channel) {
       DebugLog(100, FMT_STRING("could connect to client over socket {}"),
                s.get());
 
       s.release();
+      opt_client.emplace(channel);
 
-      opt_client.emplace(grpc::CreateChannelInternal("", channel, {}));
     } else {
       DebugLog(50, FMT_STRING("could not connect to client over socket {}"),
                s.get());
@@ -761,10 +762,7 @@ struct connection_builder {
         return *this;
       }
 
-      auto* server = opt_server->c_server();
-
-      grpc_server_add_channel_from_fd(
-          server, s.get(), grpc_insecure_server_credentials_create());
+      grpc::AddInsecureChannelFromFd(opt_server.get(), s.release());
 
     } catch (const std::exception& e) {
       DebugLog(50, FMT_STRING("could not attach socket {} to server: Err={}"),
@@ -773,6 +771,7 @@ struct connection_builder {
     } catch (...) {
       opt_server.reset();
     }
+
     return *this;
   }
 
@@ -784,9 +783,9 @@ struct connection_builder {
 
     grpc_connection con{};
 
-    con.members = new grpc_connection_members{std::move(opt_client.value()),
-                                              std::move(opt_server),
-                                              std::move(services)};
+    con.members = new grpc_connection_members{
+        std::move(opt_client.value()), std::move(channel),
+        std::move(opt_server), std::move(services)};
 
     return con;
   }
@@ -801,6 +800,25 @@ std::optional<grpc_connection> make_connection_from(Socket in, Socket out)
       .build();
 }
 
+bool SetNonBlocking(Socket& s)
+{
+  int flags = fcntl(s.get(), F_GETFL);
+  if (flags == -1) {
+    DebugLog(50, FMT_STRING("could not get flags for socket {}: Err={}"),
+             s.get(), strerror(errno));
+    return false;
+  }
+
+  if (fcntl(s.get(), F_SETFL, flags | O_NONBLOCK) < 0) {
+    DebugLog(
+        50, FMT_STRING("could not add non blocking flags to socket {}: Err={}"),
+        s.get(), strerror(errno));
+    return false;
+  }
+
+  return true;
+}
+
 std::optional<grpc_connection> make_connection(std::string_view program_path)
 {
   // We want to create a two way grpc connection, where both ends act as both
@@ -811,6 +829,12 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
   auto to_program = unix_socket_pair();
   auto from_program = unix_socket_pair();
 
+  if (!SetNonBlocking(to_program->first) || !SetNonBlocking(to_program->second)
+      || !SetNonBlocking(from_program->first)
+      || !SetNonBlocking(from_program->second)) {
+    return std::nullopt;
+  }
+
   if (!to_program || !from_program) {
     DebugLog(50,
              FMT_STRING("abort creation of connection to {} as socket pairs "
@@ -818,6 +842,10 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
              program_path);
     return std::nullopt;
   }
+
+  DebugLog(100, FMT_STRING("Created socket pairs {} <> {} | {} <> {}"),
+           to_program->first.get(), to_program->second.get(),
+           from_program->first.get(), from_program->second.get());
 
   if (fcntl(to_program->first.get(), F_SETFD, FD_CLOEXEC) < 0) {
     DebugLog(
@@ -844,154 +872,20 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
     return std::nullopt;
   }
 
-  // {
-  //   errno = 0;
-  //   char test[] = "Hallo, Welt!";
-
-  //   // todo: we need to somehow select() on the events of the child
-  //   //       and the input/output sockets, so that we do not cause any
-  //   deadlocks
-  //   //       waiting for a write of an already dead child
-  //   DebugLog(100, FMT_STRING("writing to {}"), to_program->first.get());
-  //   if (auto rc = write(to_program->first.get(), test, sizeof(test));
-  //       rc != sizeof(test)) {
-  //     DebugLog(50, FMT_STRING("bad write: rc = {} ({})"), rc,
-  //     strerror(errno)); return std::nullopt;
-  //   }
-
-  //   DebugLog(100, FMT_STRING("wrote {} to {}"),
-  //            std::string_view{test, sizeof(test) - 1},
-  //            to_program->first.get());
-
-  //   DebugLog(100, FMT_STRING("reading from {}"), from_program->first.get());
-
-  //   char read_buffer[sizeof(test)];
-  //   auto read_bytes
-  //     = read(from_program->first.get(), read_buffer, sizeof(read_buffer));
-  //   DebugLog(100, FMT_STRING("read {} bytes from {}"), read_bytes,
-  //            from_program->first.get());
-  //   if (read_bytes != (ssize_t)sizeof(read_buffer)) {
-  //     DebugLog(50, FMT_STRING("bad read: rc = {} ({})"), read_bytes,
-  //              strerror(errno));
-  //     return std::nullopt;
-  //   }
-
-  //   if (memcmp(test, read_buffer, sizeof(test)) != 0) {
-  //     DebugLog(50, FMT_STRING("bad data: test = {}"),
-  //              std::string_view{read_buffer, sizeof(read_buffer)});
-  //     return std::nullopt;
-  //   }
-
-  //   {
-  //     bareos::plugin::RestorePacket orig;
-  //     orig.set_file_index(3434);
-  //     {
-  //       auto out_stream
-  //         = google::protobuf::io::FileOutputStream(to_program->first.get());
-  //       google::protobuf::io::CodedOutputStream s{&out_stream};
-
-  //       size_t len = orig.ByteSizeLong();
-  //       s.WriteRaw(&len, sizeof(len));
-  //       DebugLog(100, FMT_STRING("wrote len = {}"), len);
-  //       if (!orig.SerializeToCodedStream(&s)) {
-  //         DebugLog(50, FMT_STRING("could not serialize input"));
-  //         goto next_step;
-  //       }
-  //       DebugLog(100, FMT_STRING("wrote obj"));
-  //     }
-
-  //     {
-  //       auto in_stream
-  //         = google::protobuf::io::FileInputStream(from_program->first.get());
-  //       google::protobuf::io::CodedInputStream is{&in_stream};
-
-  //       size_t len = 0;
-
-  //       decltype(orig) copy;
-
-  //       if (!is.ReadRaw(&len, sizeof(len))) {
-  //         DebugLog(50, FMT_STRING("could not read len output"));
-  //         goto next_step;
-  //       }
-
-  //       DebugLog(100, FMT_STRING("read len = {}"), len);
-
-  //       std::vector<char> bytes;
-  //       bytes.resize(len);
-
-  //       is.ReadRaw(bytes.data(), bytes.size());
-
-  //       if (!copy.ParseFromArray(bytes.data(), bytes.size())) {
-  //         DebugLog(50, FMT_STRING("could not parse output"));
-  //         goto next_step;
-  //       }
-
-  //       if (orig.file_index() != copy.file_index()) {
-  //         DebugLog(50, FMT_STRING("file_inedx difference detected: {} !=
-  //         {}"),
-  //                  orig.file_index(), copy.file_index());
-  //         goto next_step;
-  //       }
-
-  //       DebugLog(100, FMT_STRING("everything worked!"));
-  //     }
-  //   }
-  // next_step:
-  // }
-
-  // {
-  //   bareos::plugin::TestRequest in;
-  //   in.set_input(16);
-
-  //   DebugLog(100, FMT_STRING("Trying to serialize {} bytes to {}"),
-  //            in.ByteSizeLong(), to_program->first.get());
-  //   if (!in.SerializeToFileDescriptor(to_program->first.get())) {
-  //     DebugLog(50, FMT_STRING("could not serialize input"));
-  //     goto next_step;
-  //   }
-
-  //   bareos::plugin::TestRequest out;
-
-  //   DebugLog(50, FMT_STRING("trying to parse from {} (current size = {})"),
-  //            from_program->first.get(), out.ByteSizeLong());
-
-  //   char protobuf[200];
-
-
-  //   auto proto_bytes
-  //       = read(from_program->first.get(), protobuf, sizeof(protobuf));
-
-  //   if (proto_bytes < 0) {
-  //     DebugLog(50, FMT_STRING("could not read from {}. Err={}"),
-  //              from_program->first.get(), strerror(errno));
-  //   } else {
-  //     DebugLog(100, FMT_STRING("read {} bytes from {}"), proto_bytes,
-  //              from_program->first.get());
-  //   }
-
-  //   if (!out.ParseFromArray(protobuf, proto_bytes)) {
-  //     DebugLog(50, FMT_STRING("could not parse output"));
-  //     goto next_step;
-  //   }
-
-  //   if (out.input() != in.input()) {
-  //     DebugLog(50, FMT_STRING("did not parse correctly: {} != {}"),
-  //     in.input(),
-  //              out.input());
-  //   } else {
-  //     DebugLog(100, FMT_STRING("sucessfully parsed {}"), out.input());
-  //   }
-  // }
-  // next_step:
-
   auto con = make_connection_from(std::move(from_program->first),
                                   std::move(to_program->first));
 
   if (!con) {
     DebugLog(50, FMT_STRING("no connection for me :("));
-    kill(*child, SIGKILL);
   } else {
     DebugLog(100, FMT_STRING("a connection for me :)"));
+
+    auto pre = con->status(false);
+    auto post = con->status(true);
+
+    DebugLog(100, FMT_STRING("channel status: {} -> {}"),
+             grpc_connection::status_name(pre),
+             grpc_connection::status_name(post));
 
     auto res = con->startRestoreFile("filename");
 
@@ -999,6 +893,7 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
   }
 
   con.reset();
+  kill(*child, SIGKILL);
 
 
   // wait for the child to close (for now)
@@ -1012,6 +907,9 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
         DebugLog(100, FMT_STRING("child exit status = {}"),
                  WEXITSTATUS(status));
 
+        break;
+      } else if (WIFSIGNALED(status)) {
+        DebugLog(100, FMT_STRING("child signaled with {}"), WTERMSIG(status));
         break;
       } else {
         DebugLog(100, FMT_STRING("got status = {}"), status);
@@ -1125,4 +1023,20 @@ bRC grpc_connection::setXattr(filedaemon::xattr_pkt* pkt)
   return client->setXattr(pkt->fname,
                           std::string_view{pkt->name, pkt->name_length},
                           std::string_view{pkt->value, pkt->value_length});
+}
+auto grpc_connection::status(bool try_to_connect) -> Status
+{
+  switch (members->channel->GetState(try_to_connect)) {
+    case GRPC_CHANNEL_IDLE:
+      return Status::Idle;
+    case GRPC_CHANNEL_CONNECTING:
+      return Status::Connecting;
+    case GRPC_CHANNEL_READY:
+      return Status::Ready;
+    case GRPC_CHANNEL_TRANSIENT_FAILURE:
+      return Status::Failure;
+    case GRPC_CHANNEL_SHUTDOWN:
+      return Status::Shutdown;
+  }
+  return Status::Failure;
 }

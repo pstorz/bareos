@@ -120,6 +120,35 @@ class grpc_connection {
     return *this;
   }
 
+  enum class Status
+  {
+    Idle,
+    Connecting,
+    Ready,
+    Failure,
+    Shutdown,
+  };
+
+  static constexpr std::string_view status_name(Status status)
+  {
+    switch (status) {
+      case Status::Idle:
+        return "Idle";
+      case Status::Connecting:
+        return "Connecting";
+      case Status::Ready:
+        return "Ready";
+      case Status::Failure:
+        return "Failure";
+      case Status::Shutdown:
+        return "Shutdown";
+        break;
+    }
+    return "";
+  }
+
+  Status status(bool try_to_connect = false);
+
   ~grpc_connection();
 
  private:

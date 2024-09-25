@@ -26,8 +26,8 @@
 #include "bareos.pb.h"
 #include "filed/fd_plugins.h"
 #include <grpcpp/grpcpp.h>
-#include <grpc/grpc_posix.h>
-#include <grpc/grpc_security.h>
+#include <grpcpp/create_channel_posix.h>
+#include <grpcpp/server_posix.h>
 
 #include <fmt/format.h>
 
@@ -54,7 +54,7 @@ struct grpc_connection {
 
 struct connection_builder {
   std::optional<BareosClient> opt_client;
-  std::optional<std::unique_ptr<grpc::Server>> opt_server;
+  std::unique_ptr<grpc::Server> opt_server;
   std::vector<std::unique_ptr<grpc::Service>> services;
 
   template <typename... Args> connection_builder(Args&&... args)
@@ -64,18 +64,7 @@ struct connection_builder {
 
   connection_builder& connect_client(int sockfd)
   {
-    auto* channel = grpc_channel_create_from_fd(
-        "plugin", sockfd, grpc_insecure_credentials_create(), nullptr);
-
-    if (channel) {
-      // DebugLog(100, FMT_STRING("could connect to client over socket {}"),
-      //          sockfd);
-
-      opt_client.emplace(grpc::CreateChannelInternal("", channel, {}));
-    } else {
-      // DebugLog(50, FMT_STRING("could not connect to client over socket {}"),
-      //          sockfd);
-    }
+    opt_client = BareosClient{grpc::CreateInsecureChannelFromFd("", sockfd)};
 
     return *this;
   }
@@ -87,19 +76,18 @@ struct connection_builder {
 
       for (auto& service : services) { builder.RegisterService(service.get()); }
 
-      auto ccserver = builder.BuildAndStart();
+      opt_server = builder.BuildAndStart();
 
-      auto* server = ccserver->c_server();
+      if (!opt_server) { return *this; }
 
-      grpc_server_add_channel_from_fd(
-          server, sockfd, grpc_insecure_server_credentials_create());
+      grpc::AddInsecureChannelFromFd(opt_server.get(), sockfd);
     } catch (const std::exception& e) {
       // DebugLog(50, FMT_STRING("could not attach socket {} to server:
       // Err={}"),
       //          sockfd, e.what());
-      opt_server = std::nullopt;
+      opt_server.reset();
     } catch (...) {
-      opt_server = std::nullopt;
+      opt_server.reset();
     }
     return *this;
   }
@@ -110,8 +98,8 @@ struct connection_builder {
     if (!opt_client) { return std::nullopt; }
     if (!opt_server) { return std::nullopt; }
 
-    grpc_connection con{std::move(opt_client.value()),
-                        std::move(opt_server.value()), std::move(services)};
+    grpc_connection con{std::move(opt_client.value()), std::move(opt_server),
+                        std::move(services)};
 
     return con;
   }
@@ -123,18 +111,14 @@ std::optional<grpc_connection> con;
 
 void HandleConnection(int server_sock, int client_sock)
 {
-  grpc_init();
-
   con = connection_builder{std::make_unique<PluginService>()}
-            .connect_server(server_sock)
             .connect_client(client_sock)
+            .connect_server(server_sock)
             .build();
 
   if (!con) { exit(1); }
 
   con->server->Wait();
-
-  grpc_shutdown();
 }
 
 
