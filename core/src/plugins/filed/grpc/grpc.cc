@@ -142,12 +142,12 @@ struct plugin_ctx {
       }
     }
 
-    const char* path = bVar::Get<bVar::ExePath>(nullptr);
+    const char* path = bVar::Get<bVar::PluginPath>(nullptr);
 
     DebugLog(10, FMT_STRING("path = {}"), path);
 
     std::string full_path = path;
-    full_path += "/grpc-plugins/";
+    full_path += "/grpc/";
     full_path += name;
 
     connection = make_connection(full_path);
