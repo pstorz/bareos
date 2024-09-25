@@ -85,6 +85,18 @@ void DebugLog(Severity severity,
 }
 
 template <typename... Args>
+void DebugLog(PluginContext* ctx,
+              Severity severity,
+              fmt::format_string<Args...> fmt,
+              Args&&... args)
+{
+  auto formatted = fmt::vformat(fmt, fmt::make_format_args(args...));
+
+  internal::DebugMessage(ctx, severity.file, severity.line, severity.severity,
+                         formatted.c_str());
+}
+
+template <typename... Args>
 void JobLog(PluginContext* ctx,
             Type type,
             fmt::format_string<Args...> fmt,
