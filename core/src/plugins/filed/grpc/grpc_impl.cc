@@ -22,6 +22,8 @@
 #include "events.pb.h"
 #include "plugin.grpc.pb.h"
 #include "plugin.pb.h"
+#include "bareos.grpc.pb.h"
+#include "bareos.pb.h"
 #include "filed/fd_plugins.h"
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/grpcpp.h>
@@ -1017,6 +1019,29 @@ class PluginClient {
   size_t current_xattr_index{std::numeric_limits<size_t>::max()};
   std::vector<bp::Xattribute> xattribute_cache;
 };
+
+namespace bc = bareos::core;
+
+class BareosEvents : public bc::Events::Service {
+  grpc::Status Register(grpc::ServerContext*,
+                        const bc::RegisterRequest* req,
+                        bc::RegisterResponse* resp) override
+  {
+    (void)req;
+    (void)resp;
+    return grpc::Status::CANCELLED;
+  }
+
+  grpc::Status Unregister(grpc::ServerContext*,
+                          const bc::UnregisterRequest* req,
+                          bc::UnregisterResponse* resp) override
+  {
+    (void)req;
+    (void)resp;
+    return grpc::Status::CANCELLED;
+  }
+};
+
 }  // namespace
 
 bRC grpc_connection::startBackupFile(filedaemon::save_pkt* pkt)
