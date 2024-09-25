@@ -238,21 +238,78 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
   return bRC_Error;
 }
 
-bRC startBackupFile(PluginContext*, filedaemon::save_pkt*) { return bRC_Error; }
-bRC endBackupFile(PluginContext*) { return bRC_Error; }
-bRC startRestoreFile(PluginContext*, const char*) { return bRC_Error; }
-bRC endRestoreFile(PluginContext*) { return bRC_Error; }
-bRC pluginIO(PluginContext*, filedaemon::io_pkt*) { return bRC_Error; }
-bRC createFile(PluginContext*, filedaemon::restore_pkt*) { return bRC_Error; }
-bRC setFileAttributes(PluginContext*, filedaemon::restore_pkt*)
+bRC startBackupFile(PluginContext* ctx, filedaemon::save_pkt* pkt)
 {
-  return bRC_Error;
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->startBackupFile(pkt);
 }
-bRC checkFile(PluginContext*, char*) { return bRC_Error; }
-bRC getAcl(PluginContext*, filedaemon::acl_pkt*) { return bRC_Error; }
-bRC setAcl(PluginContext*, filedaemon::acl_pkt*) { return bRC_Error; }
-bRC getXattr(PluginContext*, filedaemon::xattr_pkt*) { return bRC_Error; }
-bRC setXattr(PluginContext*, filedaemon::xattr_pkt*) { return bRC_Error; }
+bRC endBackupFile(PluginContext* ctx)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->endBackupFile();
+}
+bRC startRestoreFile(PluginContext* ctx, const char* file_name)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->startRestoreFile(file_name);
+}
+bRC endRestoreFile(PluginContext* ctx)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->endRestoreFile();
+}
+bRC pluginIO(PluginContext* ctx, filedaemon::io_pkt* pkt)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->pluginIO(pkt);
+}
+bRC createFile(PluginContext* ctx, filedaemon::restore_pkt* pkt)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->createFile(pkt);
+}
+bRC setFileAttributes(PluginContext* ctx, filedaemon::restore_pkt* pkt)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->setFileAttributes(pkt);
+}
+bRC checkFile(PluginContext* ctx, char* file_name)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->checkFile(file_name);
+}
+bRC getAcl(PluginContext* ctx, filedaemon::acl_pkt* pkt)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->getAcl(pkt);
+}
+bRC setAcl(PluginContext* ctx, filedaemon::acl_pkt* pkt)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->setAcl(pkt);
+}
+bRC getXattr(PluginContext* ctx, filedaemon::xattr_pkt* pkt)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->getXattr(pkt);
+}
+bRC setXattr(PluginContext* ctx, filedaemon::xattr_pkt* pkt)
+{
+  auto* plugin = get(ctx);
+  if (!plugin || !plugin->connection) { return bRC_Error; }
+  return plugin->connection->setXattr(pkt);
+}
 }  // namespace
 
 constexpr PluginInformation my_info = {
