@@ -1,25 +1,186 @@
+syntax = "proto3";
+
+package bareos.core;
+
+import "google/protobuf/timestamp.proto";
+
 service Events {
-  rpc Register (RegisterRequest) returns RegisterResponse;
-  rpc Unregister (UnregisterRequest) returns UnregisterResponse;
+  rpc Register (RegisterRequest) returns (RegisterResponse);
+  rpc Unregister (UnregisterRequest) returns (UnregisterResponse);
+};
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+};
+
+message RegisterRequest {
+  repeated EventType event_types = 1;
+};
+message RegisterResponse {
+};
+message UnregisterRequest {
+  repeated EventType event_types = 1;
+};
+message UnregisterResponse {
 };
 
 service Fileset {
-  rpc AddExclude (AddExcludeRequest) returns AddExcludeResponse;
-  rpc AddInclude (AddIncludeRequest) returns AddIncludeResponse;
-  rpc AddOptions (AddOptionsRequest) returns AddOptionsResponse;
-  rpc AddRegex (AddRegexRequest) returns AddRegexResponse;
-  rpc AddWild (AddWildRequest) returns AddWildResponse;
-  rpc NewOptions (NewOptionsRequest) returns NewOptionsResponse;
-  rpc NewInclude (NewIncludeRequest) returns NewIncludeResponse;
-  rpc NewPreInclude (NewPreIncludeRequest) returns NewPreIncludeResponse;
+  rpc AddExclude (AddExcludeRequest) returns (AddExcludeResponse);
+  rpc AddInclude (AddIncludeRequest) returns (AddIncludeResponse);
+  rpc AddOptions (AddOptionsRequest) returns (AddOptionsResponse);
+  rpc AddRegex (AddRegexRequest) returns (AddRegexResponse);
+  rpc AddWild (AddWildRequest) returns (AddWildResponse);
+  rpc NewOptions (NewOptionsRequest) returns (NewOptionsResponse);
+  rpc NewInclude (NewIncludeRequest) returns (NewIncludeResponse);
+  rpc NewPreInclude (NewPreIncludeRequest) returns (NewPreIncludeResponse);
+};
+
+message AddExcludeRequest {
+};
+message AddExcludeResponse {
+};
+message AddIncludeRequest {
+};
+message AddIncludeResponse {
+};
+message AddOptionsRequest {
+};
+message AddOptionsResponse {
+};
+message AddRegexRequest {
+};
+message AddRegexResponse {
+};
+message AddWildRequest {
+};
+message AddWildResponse {
+};
+message NewOptionsRequest {
+};
+message NewOptionsResponse {
+};
+message NewIncludeRequest {
+};
+message NewIncludeResponse {
+};
+message NewPreIncludeRequest {
+};
+message NewPreIncludeResponse {
 };
 
 service Bareos {
-  rpc getInstanceCount (getInstanceCountRequest) returns getInstanceCountResponse;
-  rpc checkChanges (checkChangesRequest) returns checkChangesResponse;
-  rpc AcceptFile (AcceptFileRequest) returns AcceptFileResponse;
-  rpc SetSeenBitmap (SetSeenBitmapRequest) returns SetSeenBitmapResponse;
-  rpc ClearSeenBitmap (ClearSeenBitmapRequest) returns ClearSeenBitmapResponse;
-  rpc JobMessage (JobMessageRequest) returns JobMessageResponse;
-  rpc DebugMessage (DebugMessageRequest) returns DebugMessageResponse;
+  rpc getInstanceCount (getInstanceCountRequest) returns (getInstanceCountResponse);
+  rpc checkChanges (checkChangesRequest) returns (checkChangesResponse);
+  rpc AcceptFile (AcceptFileRequest) returns (AcceptFileResponse);
+  rpc SetSeen (SetSeenRequest) returns (SetSeenResponse);
+  rpc ClearSeen (ClearSeenRequest) returns (ClearSeenResponse);
+  rpc JobMessage (JobMessageRequest) returns (JobMessageResponse);
+  rpc DebugMessage (DebugMessageRequest) returns (DebugMessageResponse);
+};
+
+message getInstanceCountRequest {
+};
+message getInstanceCountResponse {
+  uint64 instance_count = 1;
+};
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+};
+
+message checkChangesRequest {
+  FileType type = 1;
+  string file = 2;
+  optional string link_target = 3;
+  optional google.protobuf.Timestamp since_time = 4;
+  bytes stats = 5;
+};
+message checkChangesResponse {
+  bool old = 1; // file has not changed since 'since_time'
+};
+message AcceptFileRequest {
+  string file = 1;
+  bytes stats = 2;
+};
+message AcceptFileResponse {
+  bool skip = 1;
+};
+message SetSeenRequest {
+  // if no file given, then all files are marked as seen
+  optional string file = 1;
+};
+message SetSeenResponse {
+};
+message ClearSeenRequest {
+  // if no file given, then all files are marked as unseen
+  optional string file = 1;
+};
+message ClearSeenResponse {
+};
+
+/**
+ * Most of these message levels are more or less obvious.
+ * They have evolved somewhat during the development of BAREOS,
+ * and here are some of the details of where I am trying to
+ * head (in the process of changing the code) as of 15 June 2002.
+ *
+ * JMSG_ABORT       BAREOS immediately aborts and tries to produce a traceback
+ *                  This is for really serious errors like segmentation fault.
+ * JMSG_ERROR_TERM  BAREOS immediately terminates but no dump. This is for
+ *                  "obvious" serious errors like daemon already running or
+ *                  cannot open critical file, ... where a dump is not wanted.
+ * JMSG_TERM        BAREOS daemon shutting down because of request (SIGTERM).
+ * JMSG_DEBUG       Debug Messages
+ *
+ * The remaining apply to Jobs rather than the daemon.
+ *
+ * JMSG_FATAL       BAREOS detected a fatal Job error. The Job will be killed,
+ *                  but BAREOS continues running.
+ * JMSG_ERROR       BAREOS detected a Job error. The Job will continue running
+ *                  but the termination status will be error.
+ * JMSG_WARNING     Job warning message.
+ * JMSG_INFO        Job information message.
+ * JMSG_SAVED       Info on saved file
+ * JMSG_NOTSAVED    Info on not saved file
+ * JMSG_RESTORED    An ls -l of each restored file.
+ * JMSG_SKIPPED     File skipped during backup by option setting
+ * JMSG_SECURITY    For security viloations. This is equivalent to FATAL.
+ * JMSG_ALERT       For Tape Alert messages.
+ * JMSG_VOLMGMT     Volume Management message
+ * JMSG_AUDIT       Auditing message
+ * JMSG_MOUNT       Mount requests
+ */
+enum JMsgType {
+  JMSG_TYPE_UNSPECIFIED = 0;
+  JMSG_ABORT = 1;
+  JMSG_DEBUG = 2;
+  JMSG_FATAL = 3;
+  JMSG_ERROR = 4;
+  JMSG_WARNING = 5;
+  JMSG_INFO = 6;
+  JMSG_SAVED = 7;
+  JMSG_NOTSAVED = 8;
+  JMSG_SKIPPED = 9;
+  JMSG_MOUNT = 10;
+  JMSG_ERROR_TERM = 11;
+  JMSG_TERM = 12;
+  JMSG_RESTORED = 13;
+  JMSG_SECURITY = 14;
+  JMSG_ALERT = 15;
+  JMSG_VOLMGMT = 16;
+  JMSG_AUDIT = 17;
+  JMSG_CONFIG_ERROR = 18;
+};
+
+message JobMessageRequest {
+  JMsgType type = 1;
+  string msg = 2;
+};
+message JobMessageResponse {
+};
+message DebugMessageRequest {
+  int64  level = 1;
+  string msg = 2;
+};
+message DebugMessageResponse {
 };

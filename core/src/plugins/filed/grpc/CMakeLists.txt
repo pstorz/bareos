@@ -73,7 +73,7 @@ endmacro()
 
 addgrpcprotofiles(
   protosrcs protohdrs grpcsrcs grpchdrs "proto/plugin.proto"
-  "proto/events.proto"
+  "proto/events.proto" "proto/bareos.proto"
 )
 
 add_library(grpc-proto ${protosrcs} ${protohdrs} ${grpcsrcs} ${grpchdrs})
