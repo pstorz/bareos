@@ -32,10 +32,10 @@
 #include <fmt/format.h>
 
 #include "plugin_service.h"
-#include "bareos_client.h"
+#include "test_module.h"
 
 struct grpc_connection {
-  BareosClient client;
+  std::unique_ptr<bc::Core::Stub> stub;
   std::unique_ptr<grpc::Server> server;
   std::vector<std::unique_ptr<grpc::Service>> services;
 
@@ -43,7 +43,7 @@ struct grpc_connection {
 };
 
 struct connection_builder {
-  std::optional<BareosClient> opt_client;
+  std::optional<std::unique_ptr<bc::Core::Stub>> opt_stub;
   std::unique_ptr<grpc::Server> opt_server;
   std::vector<std::unique_ptr<grpc::Service>> services;
 
@@ -54,7 +54,7 @@ struct connection_builder {
 
   connection_builder& connect_client(int sockfd)
   {
-    opt_client = BareosClient{grpc::CreateInsecureChannelFromFd("", sockfd)};
+    opt_stub = bc::Core::NewStub(grpc::CreateInsecureChannelFromFd("", sockfd));
 
     return *this;
   }
@@ -85,10 +85,10 @@ struct connection_builder {
 
   std::optional<grpc_connection> build()
   {
-    if (!opt_client) { return std::nullopt; }
+    if (!opt_stub) { return std::nullopt; }
     if (!opt_server) { return std::nullopt; }
 
-    grpc_connection con{std::move(opt_client.value()), std::move(opt_server),
+    grpc_connection con{std::move(opt_stub.value()), std::move(opt_server),
                         std::move(services)};
 
     return con;
@@ -99,6 +99,164 @@ struct connection_builder {
 
 std::optional<grpc_connection> con;
 
+static inline bc::Core::Stub* stub() { return con->stub.get(); }
+
+bool Register(std::basic_string_view<bc::EventType> types)
+{
+  bc::RegisterRequest req;
+
+  for (auto type : types) { req.add_event_types(type); }
+
+
+  bc::RegisterResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Events_Register(&ctx, req, &resp);
+
+  if (!status.ok()) { return false; }
+
+  return true;
+}
+bool Unregister(std::basic_string_view<bc::EventType> types)
+{
+  bc::UnregisterRequest req;
+
+  for (auto type : types) { req.add_event_types(type); }
+
+
+  bc::UnregisterResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Events_Unregister(&ctx, req, &resp);
+
+  if (!status.ok()) { return false; }
+
+  return true;
+}
+
+// TODO: implement these
+
+void AddExclude() { return; }
+void AddInclude() { return; }
+void AddOptions() { return; }
+void AddRegex() { return; }
+void AddWild() { return; }
+void NewOptions() { return; }
+void NewInclude() { return; }
+void NewPreInclude() { return; }
+
+//
+
+std::optional<size_t> getInstanceCount()
+{
+  bc::getInstanceCountRequest req;
+  bc::getInstanceCountResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_getInstanceCount(&ctx, req, &resp);
+
+  if (!status.ok()) { return std::nullopt; }
+
+  return resp.instance_count();
+}
+
+std::optional<bool> checkChanges(bc::FileType ft,
+                                 std::string_view name,
+                                 std::optional<std::string_view> link_name,
+                                 time_t timestamp,
+                                 const struct stat& statp)
+{
+  bc::checkChangesRequest req;
+  req.set_type(ft);
+  req.set_file(name.data(), name.size());
+  if (link_name) { req.set_link_target(link_name->data(), link_name->size()); }
+  req.mutable_since_time()->set_seconds(timestamp);
+  req.set_stats(&statp, sizeof(statp));
+
+  bc::checkChangesResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_checkChanges(&ctx, req, &resp);
+
+  if (!status.ok()) { return std::nullopt; }
+
+  return resp.old();
+}
+std::optional<bool> AcceptFile(std::string_view name, const struct stat& statp)
+{
+  bc::AcceptFileRequest req;
+  req.set_file(name.data(), name.size());
+  req.set_stats(&statp, sizeof(statp));
+
+  bc::AcceptFileResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_AcceptFile(&ctx, req, &resp);
+
+  if (!status.ok()) { return std::nullopt; }
+
+  return resp.skip();
+}
+
+bool SetSeen(std::optional<std::string_view> name)
+{
+  bc::SetSeenRequest req;
+  if (name) { req.set_file(name->data(), name->size()); }
+
+  bc::SetSeenResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_SetSeen(&ctx, req, &resp);
+
+  if (!status.ok()) { return false; }
+
+  return true;
+}
+bool ClearSeen(std::optional<std::string_view> name)
+{
+  bc::ClearSeenRequest req;
+  if (name) { req.set_file(name->data(), name->size()); }
+
+  bc::ClearSeenResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_ClearSeen(&ctx, req, &resp);
+
+  if (!status.ok()) { return false; }
+
+  return true;
+}
+void JobMessage(bc::JMsgType type,
+                int line,
+                const char* file,
+                const char* fun,
+                std::string_view msg)
+{
+  bc::JobMessageRequest req;
+  req.set_type(type);
+  req.set_msg(msg.data(), msg.size());
+  req.set_line(line);
+  req.set_file(file);
+  req.set_function(fun);
+
+  bc::JobMessageResponse resp;
+  grpc::ClientContext ctx;
+  (void)stub()->Bareos_JobMessage(&ctx, req, &resp);
+}
+
+void DebugMessage(int level,
+                  std::string_view msg,
+                  int line,
+                  const char* file,
+                  const char* fun)
+{
+  bc::DebugMessageRequest req;
+  req.set_level(level);
+  req.set_msg(msg.data(), msg.size());
+  req.set_line(line);
+  req.set_file(file);
+  req.set_function(fun);
+
+  bc::DebugMessageResponse resp;
+  grpc::ClientContext ctx;
+  (void)stub()->Bareos_DebugMessage(&ctx, req, &resp);
+}
+
+void shutdown_plugin() { con->server->Shutdown(); }
+
 void HandleConnection(int server_sock, int client_sock)
 {
   con = connection_builder{std::make_unique<PluginService>()}
@@ -108,20 +266,22 @@ void HandleConnection(int server_sock, int client_sock)
 
   if (!con) { exit(1); }
 
-  con->client.DebugMessage(100, "My debug message!", __builtin_LINE(),
-                           __builtin_FILE(), __builtin_FUNCTION());
+
+  DebugMessage(100, "My debug message!", __builtin_LINE(), __builtin_FILE(),
+               __builtin_FUNCTION());
 
   auto events
       = std::array{bc::EventType::Event_JobStart, bc::EventType::Event_JobEnd};
 
-  if (!con->client.Register({events.data(), events.size()})) {
-    con->client.DebugMessage(100, "Could not register events!",
-                             __builtin_LINE(), __builtin_FILE(),
-                             __builtin_FUNCTION());
+  if (!Register({events.data(), events.size()})) {
+    DebugMessage(100, "Could not register events!", __builtin_LINE(),
+                 __builtin_FILE(), __builtin_FUNCTION());
   }
 
 
   con->server->Wait();
+
+  con.reset();
 }
 
 
@@ -142,7 +302,4 @@ int main(int argc, char* argv[])
   }
 
   HandleConnection(sock1, sock2);
-
-  close(sock1);
-  close(sock2);
 }
