@@ -38,86 +38,6 @@
 
 #include "bareos_api.h"
 
-plugin_event make_plugin_event(filedaemon::bEvent* event, void* data)
-{
-  using namespace filedaemon;
-  switch ((bEventType)event->eventType) {
-    case bEventJobStart:
-      [[fallthrough]];
-    case bEventPluginCommand:
-      [[fallthrough]];
-    case bEventNewPluginOptions:
-      [[fallthrough]];
-    case bEventBackupCommand:
-      [[fallthrough]];
-    case bEventRestoreCommand:
-      [[fallthrough]];
-    case bEventEstimateCommand:
-      return string_event{(char*)data};
-    case bEventEndFileSet:
-      [[fallthrough]];
-    case bEventJobEnd:
-      [[fallthrough]];
-    case bEventCancelCommand:
-      [[fallthrough]];
-    case bEventStartBackupJob:
-      [[fallthrough]];
-    case bEventEndBackupJob:
-      [[fallthrough]];
-    case bEventStartVerifyJob:
-      [[fallthrough]];
-    case bEventEndVerifyJob:
-      [[fallthrough]];
-    case bEventStartRestoreJob:
-      [[fallthrough]];
-    case bEventEndRestoreJob:
-      [[fallthrough]];
-      /* EventOptionPlugin is unused actually */
-    case bEventOptionPlugin:
-      [[fallthrough]];
-    case bEventVssInitializeForBackup:
-      [[fallthrough]];
-    case bEventVssInitializeForRestore:
-      [[fallthrough]];
-    case bEventVssSetBackupState:
-      [[fallthrough]];
-    case bEventVssPrepareForBackup:
-      [[fallthrough]];
-    case bEventVssBackupAddComponents:
-      [[fallthrough]];
-    case bEventVssPrepareSnapshot:
-      [[fallthrough]];
-    case bEventVssCreateSnapshots:
-      [[fallthrough]];
-    case bEventVssRestoreLoadComponentMetadata:
-      [[fallthrough]];
-    case bEventVssRestoreSetComponentsSelected:
-      [[fallthrough]];
-    case bEventVssCloseRestore:
-      [[fallthrough]];
-    case bEventVssBackupComplete:
-      return simple_event{};
-
-    case bEventLevel:
-      return int_event{reinterpret_cast<intptr_t>(data)};
-
-    case bEventRestoreObject:
-      return rop_event{reinterpret_cast<restore_object_pkt*>(data)};
-
-    case bEventSince:
-      return time_event{reinterpret_cast<time_t>(data)};
-
-    case bEventHandleBackupFile:
-      return save_event{reinterpret_cast<save_pkt*>(data)};
-
-    default:
-      /* TODO: how best to report an error here ? Maybe return an optional ? */
-      DebugLog(10, FMT_STRING("this should really not happen. event = {}"),
-               event->eventType);
-      __builtin_unreachable();
-  }
-}
-
 std::optional<std::pair<Socket, Socket>> unix_socket_pair()
 {
   int sockets[2];
@@ -170,6 +90,19 @@ class PluginClient {
   PluginClient(std::shared_ptr<grpc::ChannelInterface> channel)
       : stub_(bp::Plugin::NewStub(channel))
   {
+  }
+
+  bRC Setup()
+  {
+    bp::SetupRequest req;
+    bp::SetupResponse resp;
+    grpc::ClientContext ctx;
+
+    auto status = stub_->Setup(&ctx, req, &resp);
+
+    if (!status.ok()) { return bRC_Error; }
+
+    return bRC_OK;
   }
 
   bRC handlePluginEvent(filedaemon::bEventType type, void* data)
@@ -687,52 +620,309 @@ class PluginClient {
 namespace bc = bareos::core;
 
 class BareosCore : public bc::Core::Service {
-  PluginContext* current_context() { return nullptr; }
+ public:
+  BareosCore(PluginContext* ctx) : core{ctx} {}
+
+  std::optional<filedaemon::bEventType> from_grpc(bc::EventType type)
+  {
+    switch (type) {
+      case bc::Event_JobStart:
+        return filedaemon::bEventJobStart;
+      case bc::Event_JobEnd:
+        return filedaemon::bEventJobEnd;
+      case bc::Event_StartBackupJob:
+        return filedaemon::bEventStartBackupJob;
+      case bc::Event_EndBackupJob:
+        return filedaemon::bEventEndBackupJob;
+      case bc::Event_StartRestoreJob:
+        return filedaemon::bEventStartRestoreJob;
+      case bc::Event_EndRestoreJob:
+        return filedaemon::bEventEndRestoreJob;
+      case bc::Event_StartVerifyJob:
+        return filedaemon::bEventStartVerifyJob;
+      case bc::Event_EndVerifyJob:
+        return filedaemon::bEventEndVerifyJob;
+      case bc::Event_BackupCommand:
+        return filedaemon::bEventBackupCommand;
+      case bc::Event_RestoreCommand:
+        return filedaemon::bEventRestoreCommand;
+      case bc::Event_EstimateCommand:
+        return filedaemon::bEventEstimateCommand;
+      case bc::Event_Level:
+        return filedaemon::bEventLevel;
+      case bc::Event_Since:
+        return filedaemon::bEventSince;
+      case bc::Event_CancelCommand:
+        return filedaemon::bEventCancelCommand;
+      case bc::Event_RestoreObject:
+        return filedaemon::bEventRestoreObject;
+      case bc::Event_EndFileSet:
+        return filedaemon::bEventEndFileSet;
+      case bc::Event_PluginCommand:
+        return filedaemon::bEventPluginCommand;
+      case bc::Event_OptionPlugin:
+        return filedaemon::bEventOptionPlugin;
+      case bc::Event_HandleBackupFile:
+        return filedaemon::bEventHandleBackupFile;
+      case bc::Event_NewPluginOptions:
+        return filedaemon::bEventNewPluginOptions;
+      case bc::Event_VssInitializeForBackup:
+        return filedaemon::bEventVssInitializeForBackup;
+      case bc::Event_VssInitializeForRestore:
+        return filedaemon::bEventVssInitializeForRestore;
+      case bc::Event_VssSetBackupState:
+        return filedaemon::bEventVssSetBackupState;
+      case bc::Event_VssPrepareForBackup:
+        return filedaemon::bEventVssPrepareForBackup;
+      case bc::Event_VssBackupAddComponents:
+        return filedaemon::bEventVssBackupAddComponents;
+      case bc::Event_VssPrepareSnapshot:
+        return filedaemon::bEventVssPrepareSnapshot;
+      case bc::Event_VssCreateSnapshots:
+        return filedaemon::bEventVssCreateSnapshots;
+      case bc::Event_VssRestoreLoadComponentMetadata:
+        return filedaemon::bEventVssRestoreLoadComponentMetadata;
+      case bc::Event_VssRestoreSetComponentsSelected:
+        return filedaemon::bEventVssRestoreSetComponentsSelected;
+      case bc::Event_VssCloseRestore:
+        return filedaemon::bEventVssCloseRestore;
+      case bc::Event_VssBackupComplete:
+        return filedaemon::bEventVssBackupComplete;
+      default:
+        return std::nullopt;
+    }
+  }
 
 
+ private:
   grpc::Status Events_Register(grpc::ServerContext*,
                                const bc::RegisterRequest* req,
-                               bc::RegisterResponse* resp) override
+                               bc::RegisterResponse*) override
   {
-    (void)req;
-    (void)resp;
-    return grpc::Status::CANCELLED;
+    for (auto event : req->event_types()) {
+      if (!bc::EventType_IsValid(event)) {
+        return grpc::Status(
+            grpc::StatusCode::INVALID_ARGUMENT,
+            fmt::format(FMT_STRING("event {} is not a valid bareos event"),
+                        event));
+      }
+    }
+
+    for (auto event : req->event_types()) {
+      // for some reason event is an int ??
+      std::optional bareos_type = from_grpc(static_cast<bc::EventType>(event));
+      if (!bareos_type) {
+        return grpc::Status(
+            grpc::StatusCode::INTERNAL,
+            fmt::format(
+                FMT_STRING("could not convert valid event {} to bareos event"),
+                event));
+      }
+
+      RegisterBareosEvent(core, *bareos_type);
+    }
+
+    return grpc::Status::OK;
   }
 
   grpc::Status Events_Unregister(grpc::ServerContext*,
                                  const bc::UnregisterRequest* req,
-                                 bc::UnregisterResponse* resp) override
+                                 bc::UnregisterResponse*) override
   {
-    (void)req;
-    (void)resp;
-    return grpc::Status::CANCELLED;
+    for (auto event : req->event_types()) {
+      if (!bc::EventType_IsValid(event)) {
+        return grpc::Status(
+            grpc::StatusCode::INVALID_ARGUMENT,
+            fmt::format(FMT_STRING("event {} is not a valid bareos event"),
+                        event));
+      }
+    }
+
+    for (auto event : req->event_types()) {
+      // for some reason event is an int ??
+      std::optional bareos_type = from_grpc(static_cast<bc::EventType>(event));
+      if (!bareos_type) {
+        return grpc::Status(
+            grpc::StatusCode::INTERNAL,
+            fmt::format(
+                FMT_STRING("could not convert valid event {} to bareos event"),
+                event));
+      }
+
+      UnregisterBareosEvent(core, *bareos_type);
+    }
+
+    return grpc::Status::OK;
+  }
+
+  // grpc::Status Fileset_AddExclude(grpc::ServerContext*, const
+  // bc::AddExcludeRequest* request, bc::AddExcludeResponse* response) override
+  // {
+  // }
+  // grpc::Status Fileset_AddInclude(grpc::ServerContext*, const
+  // bc::AddIncludeRequest* request, bc::AddIncludeResponse* response) override
+  // {
+  // }
+  // grpc::Status Fileset_AddOptions(grpc::ServerContext*, const
+  // bc::AddOptionsRequest* request, bc::AddOptionsResponse* response) override
+  // {
+  // }
+  // grpc::Status Fileset_AddRegex(grpc::ServerContext*, const
+  // bc::AddRegexRequest* request, bc::AddRegexResponse* response) override {
+  // }
+  // grpc::Status Fileset_AddWild(grpc::ServerContext*, const
+  // bc::AddWildRequest* request, bc::AddWildResponse* response) override {
+  // }
+  // grpc::Status Fileset_NewOptions(grpc::ServerContext*, const
+  // bc::NewOptionsRequest* request, bc::NewOptionsResponse* response) override
+  // {
+  // }
+  // grpc::Status Fileset_NewInclude(grpc::ServerContext*, const
+  // bc::NewIncludeRequest* request, bc::NewIncludeResponse* response) override
+  // {
+  // }
+  // grpc::Status Fileset_NewPreInclude(grpc::ServerContext*, const
+  // bc::NewPreIncludeRequest* request, bc::NewPreIncludeResponse* response)
+  // override {
+  // }
+  grpc::Status Bareos_getInstanceCount(
+      grpc::ServerContext*,
+      const bc::getInstanceCountRequest*,
+      bc::getInstanceCountResponse* response) override
+  {
+    // there is only one instance per process.  Its also pretty easy to give a
+    // real answer here (i guess).
+    response->set_instance_count(1);
+    return grpc::Status::OK;
+  }
+
+  std::optional<int> from_grpc(bc::FileType type)
+  {
+    switch (type) {
+      default:
+        return std::nullopt;
+    }
+  }
+
+  grpc::Status Bareos_checkChanges(grpc::ServerContext*,
+                                   const bc::checkChangesRequest* request,
+                                   bc::checkChangesResponse* response) override
+  {
+    auto type = request->type();
+
+    auto bareos_type = from_grpc(type);
+
+    if (!bareos_type) {
+      return grpc::Status(
+          grpc::StatusCode::INVALID_ARGUMENT,
+          fmt::format(FMT_STRING("could not parse {} as bareos type"),
+                      int(type)));
+    }
+
+    auto& stats = request->stats();
+    struct stat statp;
+
+    if (stats.size() != sizeof(statp)) {
+      return grpc::Status(
+          grpc::StatusCode::INVALID_ARGUMENT,
+          fmt::format(
+              FMT_STRING(
+                  "stats is not a valid stats object: size mismatch {} != {}"),
+              stats.size(), sizeof(statp)));
+    }
+
+    memcpy(&statp, stats.data(), stats.size());
+
+    auto result
+        = checkChanges(core, request->file(), *bareos_type, statp,
+                       static_cast<time_t>(request->since_time().seconds()));
+
+    response->set_old(!result);
+
+    return grpc::Status::OK;
+  }
+  grpc::Status Bareos_AcceptFile(grpc::ServerContext*,
+                                 const bc::AcceptFileRequest* request,
+                                 bc::AcceptFileResponse* response) override
+  {
+    auto& stats = request->stats();
+    struct stat statp;
+
+    if (stats.size() != sizeof(statp)) {
+      return grpc::Status(
+          grpc::StatusCode::INVALID_ARGUMENT,
+          fmt::format(
+              FMT_STRING(
+                  "stats is not a valid stats object: size mismatch {} != {}"),
+              stats.size(), sizeof(statp)));
+    }
+
+    memcpy(&statp, stats.data(), stats.size());
+
+    auto result = AcceptFile(core, request->file(), statp);
+
+    response->set_skip(!result);
+
+    return grpc::Status::OK;
+  }
+  grpc::Status Bareos_SetSeen(grpc::ServerContext*,
+                              const bc::SetSeenRequest* request,
+                              bc::SetSeenResponse*) override
+  {
+    auto result = [&] {
+      if (request->has_file()) {
+        return SetSeenBitmap(core, false, request->file().c_str());
+      } else {
+        return SetSeenBitmap(core, true, nullptr);
+      }
+    }();
+
+    if (result == bRC_Error) {
+      return grpc::Status(grpc::StatusCode::INTERNAL, "something went wrong!");
+    }
+    return grpc::Status::OK;
+  }
+  grpc::Status Bareos_ClearSeen(grpc::ServerContext*,
+                                const bc::ClearSeenRequest* request,
+                                bc::ClearSeenResponse*) override
+  {
+    auto result = [&] {
+      if (request->has_file()) {
+        return ClearSeenBitmap(core, false, request->file().c_str());
+      } else {
+        return ClearSeenBitmap(core, true, nullptr);
+      }
+    }();
+
+    if (result == bRC_Error) {
+      return grpc::Status(grpc::StatusCode::INTERNAL, "something went wrong!");
+    }
+    return grpc::Status::OK;
   }
 
   grpc::Status Bareos_JobMessage(grpc::ServerContext*,
                                  const bc::JobMessageRequest* req,
-                                 bc::JobMessageResponse* resp) override
+                                 bc::JobMessageResponse*) override
   {
-    JobLog(current_context(),
-           Type{req->type(), req->file().c_str(), (int)req->line()},
+    JobLog(core, Type{req->type(), req->file().c_str(), (int)req->line()},
            FMT_STRING("{}"), req->msg());
-
-    (void)resp;
 
     return grpc::Status::OK;
   }
 
   grpc::Status Bareos_DebugMessage(grpc::ServerContext*,
                                    const bc::DebugMessageRequest* req,
-                                   bc::DebugMessageResponse* resp) override
+                                   bc::DebugMessageResponse*) override
   {
-    DebugLog(current_context(),
+    DebugLog(core,
              Severity{(int)req->level(), req->file().c_str(), (int)req->line()},
              FMT_STRING("{}"), req->msg());
 
-    (void)resp;
-
     return grpc::Status::OK;
   }
+
+ private:
+  PluginContext* core{nullptr};
 };
 }  // namespace
 
@@ -821,9 +1011,11 @@ struct connection_builder {
 };
 //};  // namespace
 
-std::optional<grpc_connection> make_connection_from(Socket in, Socket out)
+std::optional<grpc_connection> make_connection_from(PluginContext* ctx,
+                                                    Socket in,
+                                                    Socket out)
 {
-  return connection_builder{std::make_unique<BareosCore>()}
+  return connection_builder{std::make_unique<BareosCore>(ctx)}
       .connect_client(std::move(out))
       .connect_server(std::move(in))
       .build();
@@ -848,7 +1040,8 @@ bool SetNonBlocking(Socket& s)
   return true;
 }
 
-std::optional<grpc_connection> make_connection(std::string_view program_path)
+std::optional<grpc_child> make_connection(PluginContext* ctx,
+                                          std::string_view program_path)
 {
   // We want to create a two way grpc connection, where both ends act as both
   // a server and a client.  We do this by using two socket pairs.
@@ -901,35 +1094,39 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
     return std::nullopt;
   }
 
-  auto con = make_connection_from(std::move(from_program->first),
+  process p{*child};
+  child.reset();
+
+  auto con = make_connection_from(ctx, std::move(from_program->first),
                                   std::move(to_program->first));
 
   if (!con) {
     DebugLog(50, FMT_STRING("no connection for me :("));
-  } else {
-    DebugLog(100, FMT_STRING("a connection for me :)"));
-
-    // TODO: remove status(), as its not supported on foreign fds
-    auto pre = con->status(false);
-    auto post = con->status(true);
-
-    DebugLog(100, FMT_STRING("channel status: {} -> {}"),
-             grpc_connection::status_name(pre),
-             grpc_connection::status_name(post));
-
-    auto res = con->startRestoreFile("filename");
-
-    DebugLog(100, FMT_STRING("got result = {}"), int(res));
+    return std::nullopt;
   }
 
-  con.reset();
-  kill(*child, SIGKILL);
+  DebugLog(100, FMT_STRING("a connection for me.  Finishing setup..."));
 
+  if (con->Setup() == bRC_Error) {
+    DebugLog(100, FMT_STRING("... unsuccessfully."));
+    return std::nullopt;
+  }
+
+  DebugLog(100, FMT_STRING("... successfully."));
+
+  return grpc_child{std::move(p), std::move(con.value())};
+}
+
+process::~process()
+{
+  if (pid < 0) { return; }
+
+  kill(pid, SIGKILL);
 
   // wait for the child to close (for now)
   for (;;) {
     int status = 0;
-    if (waitpid(*child, &status, 0) < 0) {
+    if (waitpid(pid, &status, 0) < 0) {
       DebugLog(50, FMT_STRING("wait pid failed. Err={}"), strerror(errno));
       break;
     } else {
@@ -946,11 +1143,14 @@ std::optional<grpc_connection> make_connection(std::string_view program_path)
       }
     }
   }
-
-  return con;
 }
 
 grpc_connection::~grpc_connection() { delete members; }
+bRC grpc_connection::handlePluginEvent(filedaemon::bEventType type, void* data)
+{
+  PluginClient* client = &members->client;
+  return client->handlePluginEvent(type, data);
+}
 bRC grpc_connection::startBackupFile(filedaemon::save_pkt* pkt)
 {
   PluginClient* client = &members->client;
@@ -1013,6 +1213,11 @@ bRC grpc_connection::setFileAttributes(filedaemon::restore_pkt* pkt)
   PluginClient* client = &members->client;
   return client->setFileAttributes(pkt->ofname, pkt->statp, pkt->attrEx,
                                    pkt->uid);
+}
+bRC grpc_connection::Setup()
+{
+  PluginClient* client = &members->client;
+  return client->Setup();
 }
 bRC grpc_connection::checkFile(const char* fname)
 {

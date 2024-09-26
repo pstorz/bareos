@@ -70,9 +70,9 @@ bool next_section(std::string_view& input, std::string& output, char delimiter)
 
 
 struct plugin_ctx {
-  bool setup(const void* data)
+  bool setup(PluginContext* bareos_ctx, const void* data)
   {
-    if (!data) { return false; }
+    if (!bareos_ctx || !data) { return false; }
 
     std::string_view options_string{(const char*)data};
 
@@ -149,13 +149,13 @@ struct plugin_ctx {
     full_path += "/grpc/";
     full_path += name;
 
-    connection = make_connection(full_path);
+    child = make_connection(bareos_ctx, full_path);
 
-    return connection.has_value();
+    return child.has_value();
   }
 
 
-  bool needs_setup() { return connection.has_value(); }
+  bool needs_setup() { return child.has_value(); }
 
 
  public:
@@ -164,7 +164,7 @@ struct plugin_ctx {
   std::string name;
   std::vector<option> options;
 
-  std::optional<grpc_connection> connection;
+  std::optional<grpc_child> child;
 };
 
 plugin_ctx* get(PluginContext* ctx)
@@ -216,7 +216,7 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
   switch (event->eventType) {
     using namespace filedaemon;
     case bEventPluginCommand: {
-      if (!plugin->setup(data)) { return bRC_Error; }
+      if (!plugin->setup(ctx, data)) { return bRC_Error; }
       return bRC_OK;  // TODO: remove this
     } break;
     default: {
@@ -231,9 +231,8 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
     } break;
   }
 
-  auto plugin_event = make_plugin_event(event, data);
-
-  (void)plugin_event;
+  plugin->child->con.handlePluginEvent(
+      (filedaemon::bEventType)(event->eventType), data);
 
   return bRC_Error;
 }
@@ -241,74 +240,74 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
 bRC startBackupFile(PluginContext* ctx, filedaemon::save_pkt* pkt)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->startBackupFile(pkt);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.startBackupFile(pkt);
 }
 bRC endBackupFile(PluginContext* ctx)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->endBackupFile();
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.endBackupFile();
 }
 bRC startRestoreFile(PluginContext* ctx, const char* file_name)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->startRestoreFile(file_name);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.startRestoreFile(file_name);
 }
 bRC endRestoreFile(PluginContext* ctx)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->endRestoreFile();
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.endRestoreFile();
 }
 bRC pluginIO(PluginContext* ctx, filedaemon::io_pkt* pkt)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->pluginIO(pkt);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.pluginIO(pkt);
 }
 bRC createFile(PluginContext* ctx, filedaemon::restore_pkt* pkt)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->createFile(pkt);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.createFile(pkt);
 }
 bRC setFileAttributes(PluginContext* ctx, filedaemon::restore_pkt* pkt)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->setFileAttributes(pkt);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.setFileAttributes(pkt);
 }
 bRC checkFile(PluginContext* ctx, char* file_name)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->checkFile(file_name);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.checkFile(file_name);
 }
 bRC getAcl(PluginContext* ctx, filedaemon::acl_pkt* pkt)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->getAcl(pkt);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.getAcl(pkt);
 }
 bRC setAcl(PluginContext* ctx, filedaemon::acl_pkt* pkt)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->setAcl(pkt);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.setAcl(pkt);
 }
 bRC getXattr(PluginContext* ctx, filedaemon::xattr_pkt* pkt)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->getXattr(pkt);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.getXattr(pkt);
 }
 bRC setXattr(PluginContext* ctx, filedaemon::xattr_pkt* pkt)
 {
   auto* plugin = get(ctx);
-  if (!plugin || !plugin->connection) { return bRC_Error; }
-  return plugin->connection->setXattr(pkt);
+  if (!plugin || !plugin->child) { return bRC_Error; }
+  return plugin->child->con.setXattr(pkt);
 }
 }  // namespace
 

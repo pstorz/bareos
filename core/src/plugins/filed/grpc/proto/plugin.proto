@@ -5,6 +5,8 @@ package bareos.plugin;
 import "events.proto";
 
 service Plugin {
+  rpc Setup (SetupRequest) returns (SetupResponse);
+
   rpc handlePluginEvent (handlePluginEventRequest) returns (handlePluginEventResponse);
   rpc startBackupFile (startBackupFileRequest) returns (startBackupFileResponse);
   rpc endBackupFile (endBackupFileRequest) returns (endBackupFileResponse);
@@ -29,6 +31,9 @@ service Plugin {
   rpc getXattr (getXattrRequest) returns (getXattrResponse);
   rpc setXattr (setXattrRequest) returns (setXattrResponse);
 }
+
+message SetupRequest {};
+message SetupResponse {};
 
 message RestorePacket {
   int32 stream_id = 1;

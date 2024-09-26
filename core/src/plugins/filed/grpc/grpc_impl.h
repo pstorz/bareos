@@ -27,32 +27,6 @@
 #include "include/bareos.h"
 #include "filed/fd_plugins.h"
 
-struct simple_event {};
-struct string_event {
-  std::string_view value;
-};
-struct int_event {
-  intptr_t value;
-};
-struct rop_event {
-  filedaemon::restore_object_pkt* value;
-};
-struct time_event {
-  time_t value;
-};
-struct save_event {
-  filedaemon::save_pkt* value;
-};
-
-using plugin_event = std::variant<simple_event,
-                                  string_event,
-                                  int_event,
-                                  rop_event,
-                                  time_event,
-                                  save_event>;
-
-plugin_event make_plugin_event(filedaemon::bEvent* event, void* data);
-
 struct Socket {
   Socket() = default;
   Socket(int fd) : os{fd} {}
@@ -93,6 +67,10 @@ struct grpc_connection_members;
 
 class grpc_connection {
  public:
+  bRC Setup();
+
+  bRC handlePluginEvent(filedaemon::bEventType type, void* data);
+
   bRC startBackupFile(filedaemon::save_pkt* pkt);
   bRC endBackupFile();
   bRC startRestoreFile(std::string_view cmd);
@@ -157,7 +135,34 @@ class grpc_connection {
   grpc_connection_members* members{nullptr};
 };
 
-std::optional<grpc_connection> make_connection(std::string_view program_path);
+struct process {
+  pid_t pid{-1};
+
+  process() = default;
+  process(pid_t p) : pid{p} {}
+
+  process(const process&) = delete;
+  process& operator=(const process&) = delete;
+
+  process(process&& other) { *this = std::move(other); }
+  process& operator=(process&& other)
+  {
+    std::swap(pid, other.pid);
+    return *this;
+  }
+
+  pid_t get() { return pid; }
+
+  ~process();
+};
+
+struct grpc_child {
+  process child_pid;  // we want this to be destructed last!
+  grpc_connection con;
+};
+
+std::optional<grpc_child> make_connection(PluginContext* ctx,
+                                          std::string_view program_path);
 
 
 #endif  // BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
