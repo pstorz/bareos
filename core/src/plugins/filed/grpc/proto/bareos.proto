@@ -26,6 +26,38 @@ service Core {
 
 enum EventType {
   EVENT_TYPE_UNSPECIFIED = 0;
+
+  Event_JobStart = 1;
+  Event_JobEnd = 2;
+  Event_StartBackupJob = 3;
+  Event_EndBackupJob = 4;
+  Event_StartRestoreJob = 5;
+  Event_EndRestoreJob = 6;
+  Event_StartVerifyJob = 7;
+  Event_EndVerifyJob = 8;
+  Event_BackupCommand = 9;
+  Event_RestoreCommand = 10;
+  Event_EstimateCommand = 11;
+  Event_Level = 12;
+  Event_Since = 13;
+  Event_CancelCommand = 14;
+  Event_RestoreObject = 15;
+  Event_EndFileSet = 16;
+  Event_PluginCommand = 17;
+  Event_OptionPlugin = 18;
+  Event_HandleBackupFile = 19;
+  Event_NewPluginOptions = 20;
+  Event_VssInitializeForBackup = 21;
+  Event_VssInitializeForRestore = 22;
+  Event_VssSetBackupState = 23;
+  Event_VssPrepareForBackup = 24;
+  Event_VssBackupAddComponents = 25;
+  Event_VssPrepareSnapshot = 26;
+  Event_VssCreateSnapshots = 27;
+  Event_VssRestoreLoadComponentMetadata = 28;
+  Event_VssRestoreSetComponentsSelected = 29;
+  Event_VssCloseRestore = 30;
+  Event_VssBackupComplete = 31;
 };
 
 message RegisterRequest {
@@ -170,6 +202,10 @@ enum JMsgType {
 message JobMessageRequest {
   JMsgType type = 1;
   string msg = 2;
+
+  int64 line = 3;
+  string file = 4;
+  string function = 5;
 };
 message JobMessageResponse {
 };
