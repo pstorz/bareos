@@ -58,6 +58,11 @@ void RegisterBareosEvent(PluginContext* ctx, filedaemon::bEventType event)
   if (fd.core) { fd.core->registerBareosEvents(ctx, 1, event); }
 }
 
+void UnregisterBareosEvent(PluginContext* ctx, filedaemon::bEventType event)
+{
+  if (fd.core) { fd.core->unregisterBareosEvents(ctx, 1, event); }
+}
+
 void SetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value)
 {
   if (fd.core) { fd.core->setBareosValue(ctx, var, value); }
@@ -66,4 +71,73 @@ void SetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value)
 void GetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value)
 {
   if (fd.core) { fd.core->getBareosValue(ctx, var, value); }
+}
+
+bool checkChanges(PluginContext* ctx,
+                  const std::string& file,
+                  int type,
+                  const struct stat& statp,
+                  time_t since)
+{
+  if (fd.core) {
+    filedaemon::save_pkt pkt{};
+
+    // depending on whether the paket is a file or a directory,
+    // checkChanges uses either the link or fname field to get the file name.
+    // We just set both to the correct name here and hope for the best!
+
+    // im not happy about this
+    pkt.fname = const_cast<char*>(file.c_str());
+    pkt.statp = statp;
+    pkt.link = const_cast<char*>(file.c_str());
+    pkt.type = type;
+    pkt.save_time = since;
+
+    auto result = fd.core->checkChanges(ctx, &pkt);
+
+    // TODO: also return the delta sequence number
+
+    return result != bRC_Seen;
+  }
+
+  return false;
+}
+
+bool AcceptFile(PluginContext* ctx,
+                const std::string& file,
+                const struct stat& statp)
+{
+  if (fd.core) {
+    filedaemon::save_pkt pkt{};
+
+    // depending on whether the paket is a file or a directory,
+    // checkChanges uses either the link or fname field to get the file name.
+    // We just set both to the correct name here and hope for the best!
+
+    // im not happy about this
+    pkt.fname = const_cast<char*>(file.c_str());
+    pkt.statp = statp;
+    pkt.link = const_cast<char*>(file.c_str());
+
+    auto result = fd.core->AcceptFile(ctx, &pkt);
+
+    // TODO: also return the delta sequence number
+
+    return result != bRC_Seen;
+  }
+
+  return false;
+}
+
+bRC SetSeenBitmap(PluginContext* ctx, bool all, const char* fname)
+{
+  if (fd.core) {
+    return fd.core->SetSeenBitmap(ctx, all, const_cast<char*>(fname));
+  }
+  return bRC_Error;
+}
+bRC ClearSeenBitmap(PluginContext* ctx, bool all, const char* fname)
+{
+  if (fd.core) { fd.core->ClearSeenBitmap(ctx, all, const_cast<char*>(fname)); }
+  return bRC_Error;
 }

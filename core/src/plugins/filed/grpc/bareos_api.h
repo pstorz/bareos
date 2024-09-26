@@ -42,8 +42,29 @@ void JobMessage(PluginContext* ctx,
 
 void SetupBareosApi(const filedaemon::CoreFunctions* core);
 void RegisterBareosEvent(PluginContext* ctx, filedaemon::bEventType event);
+void UnregisterBareosEvent(PluginContext* ctx, filedaemon::bEventType event);
 void SetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value);
 void GetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value);
+
+// bRC AddExclude(PluginContext* ctx, const char* file);
+// bRC AddInclude(PluginContext* ctx, const char* file);
+// bRC AddOptions(PluginContext* ctx, const char* opts);
+// bRC AddRegex(PluginContext* ctx, const char* item, int type);
+// bRC AddWild(PluginContext* ctx, const char* item, int type);
+// bRC NewOptions(PluginContext* ctx);
+// bRC NewInclude(PluginContext* ctx);
+// bRC NewPreInclude(PluginContext* ctx);
+bool checkChanges(PluginContext* ctx,
+                  const std::string& file,
+                  int type,
+                  const struct stat& statp,
+                  time_t since);
+bool AcceptFile(PluginContext* ctx,
+                const std::string& file,
+                const struct stat& statp);
+
+bRC SetSeenBitmap(PluginContext* ctx, bool all, const char* fname);
+bRC ClearSeenBitmap(PluginContext* ctx, bool all, const char* fname);
 
 struct Severity {
   int severity{};

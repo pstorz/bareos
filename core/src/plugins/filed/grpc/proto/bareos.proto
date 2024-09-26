@@ -124,6 +124,7 @@ message checkChangesRequest {
 };
 message checkChangesResponse {
   bool old = 1; // file has not changed since 'since_time'
+  optional int64 delta_seq = 2;
 };
 message AcceptFileRequest {
   string file = 1;
