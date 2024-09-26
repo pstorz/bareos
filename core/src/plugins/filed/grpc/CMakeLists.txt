@@ -98,7 +98,9 @@ install(
 )
 target_link_libraries(grpc-fd bareos fmt grpc-proto)
 
-add_executable(grpc-test-module grpc_test_module.cc plugin_service.cc)
+add_executable(
+  grpc-test-module grpc_test_module.cc plugin_service.cc bareos_client.cc
+)
 set_target_properties(grpc-fd PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ..)
 install(
   TARGETS grpc-test-module
