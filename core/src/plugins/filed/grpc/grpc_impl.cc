@@ -686,7 +686,10 @@ class PluginClient {
 
 namespace bc = bareos::core;
 
-class BareosEvents : public bc::Core::Service {
+class BareosCore : public bc::Core::Service {
+  PluginContext* current_context() { return nullptr; }
+
+
   grpc::Status Events_Register(grpc::ServerContext*,
                                const bc::RegisterRequest* req,
                                bc::RegisterResponse* resp) override
@@ -705,11 +708,25 @@ class BareosEvents : public bc::Core::Service {
     return grpc::Status::CANCELLED;
   }
 
+  grpc::Status Bareos_JobMessage(grpc::ServerContext*,
+                                 const bc::JobMessageRequest* req,
+                                 bc::JobMessageResponse* resp) override
+  {
+    JobLog(current_context(),
+           Type{req->type(), req->file().c_str(), (int)req->line()},
+           FMT_STRING("{}"), req->msg());
+
+    (void)resp;
+
+    return grpc::Status::OK;
+  }
+
   grpc::Status Bareos_DebugMessage(grpc::ServerContext*,
                                    const bc::DebugMessageRequest* req,
                                    bc::DebugMessageResponse* resp) override
   {
-    DebugLog(Severity{(int)req->level(), req->file().c_str(), (int)req->line()},
+    DebugLog(current_context(),
+             Severity{(int)req->level(), req->file().c_str(), (int)req->line()},
              FMT_STRING("{}"), req->msg());
 
     (void)resp;
@@ -806,7 +823,7 @@ struct connection_builder {
 
 std::optional<grpc_connection> make_connection_from(Socket in, Socket out)
 {
-  return connection_builder{std::make_unique<BareosEvents>()}
+  return connection_builder{std::make_unique<BareosCore>()}
       .connect_client(std::move(out))
       .connect_server(std::move(in))
       .build();
