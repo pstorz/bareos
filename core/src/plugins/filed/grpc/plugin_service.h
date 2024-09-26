@@ -31,6 +31,10 @@ class PluginService : public bp::Plugin::Service {
   using ServerContext = ::grpc::ServerContext;
   using Status = ::grpc::Status;
 
+  Status Setup(ServerContext*,
+               const bp::SetupRequest*,
+               bp::SetupResponse*) override;
+
   Status handlePluginEvent(ServerContext*,
                            const bp::handlePluginEventRequest* request,
                            bp::handlePluginEventResponse* response) override;

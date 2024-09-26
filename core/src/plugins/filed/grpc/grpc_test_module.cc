@@ -266,21 +266,10 @@ void HandleConnection(int server_sock, int client_sock)
 
   if (!con) { exit(1); }
 
-
-  DebugMessage(100, "My debug message!", __builtin_LINE(), __builtin_FILE(),
-               __builtin_FUNCTION());
-
-  auto events
-      = std::array{bc::EventType::Event_JobStart, bc::EventType::Event_JobEnd};
-
-  if (!Register({events.data(), events.size()})) {
-    DebugMessage(100, "Could not register events!", __builtin_LINE(),
-                 __builtin_FILE(), __builtin_FUNCTION());
-  }
-
-
+  DebugLog(100, FMT_STRING("waiting for server to finish ..."));
   con->server->Wait();
 
+  DebugLog(100, FMT_STRING("grpc server finished: closing connections"));
   con.reset();
 }
 

@@ -26,12 +26,29 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
+auto PluginService::Setup(ServerContext*,
+                          const bp::SetupRequest*,
+                          bp::SetupResponse*) -> Status
+{
+  auto events
+      = std::array{bc::EventType::Event_JobStart, bc::EventType::Event_JobEnd};
+
+  if (!Register({events.data(), events.size()})) {
+    DebugLog(50, FMT_STRING("could not register events!"));
+  } else {
+    DebugLog(100, FMT_STRING("managed to register my events!"));
+  }
+  return Status::OK;
+}
+
 auto PluginService::handlePluginEvent(
     ServerContext*,
     const bp::handlePluginEventRequest* request,
     bp::handlePluginEventResponse* response) -> Status
 {
   auto& event = request->to_handle();
+
+  DebugLog(100, FMT_STRING("got some event"));
 
   if (event.has_level()) {
     auto& inner = event.level();
