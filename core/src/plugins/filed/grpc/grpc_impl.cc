@@ -1652,19 +1652,3 @@ bRC grpc_connection::setXattr(filedaemon::xattr_pkt* pkt)
                           std::string_view{pkt->name, pkt->name_length},
                           std::string_view{pkt->value, pkt->value_length});
 }
-auto grpc_connection::status(bool try_to_connect) -> Status
-{
-  switch (members->channel->GetState(try_to_connect)) {
-    case GRPC_CHANNEL_IDLE:
-      return Status::Idle;
-    case GRPC_CHANNEL_CONNECTING:
-      return Status::Connecting;
-    case GRPC_CHANNEL_READY:
-      return Status::Ready;
-    case GRPC_CHANNEL_TRANSIENT_FAILURE:
-      return Status::Failure;
-    case GRPC_CHANNEL_SHUTDOWN:
-      return Status::Shutdown;
-  }
-  return Status::Failure;
-}
