@@ -118,7 +118,7 @@ void JobLog(Type type, fmt::format_string<Args...> fmt, Args&&... args)
 {
   auto formatted = fmt::format(fmt, args...);
 
-  JobMessage(type.type, formatted, type.line, type.file, type.function);
+  JobMessage(type.type, type.line, type.file, type.function, formatted);
 }
 
 bool Bareos_SetString(bc::BareosStringVariable var, std::string_view val);

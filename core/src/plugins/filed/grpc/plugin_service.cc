@@ -21,10 +21,13 @@
 
 #include "plugin_service.h"
 #include <fcntl.h>
+#include <grpc/compression.h>
 #include "bareos.pb.h"
 #include "common.pb.h"
 #include "plugin.pb.h"
 #include "test_module.h"
+
+#include <filesystem>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -102,16 +105,32 @@ auto PluginService::handlePluginEvent(
     auto& inner = event.estimate_command();
   } else if (event.has_start_backup_job()) {
     auto& inner = event.start_backup_job();
-    DebugLog(100, FMT_STRING("got backup end event ({})."),
+    DebugLog(100, FMT_STRING("got start backup job event ({})."),
              inner.DebugString());
 
-    std::optional path = Bareos_GetString(bc::BV_ExePath);
+    if (std::optional path = Bareos_GetString(bc::BV_ExePath); path) {
+      while (path->size() > 0 && path->back() == '/') { path->pop_back(); }
+      DebugLog(100, FMT_STRING("adding exe path {}"), *path);
+      files_to_backup.emplace_back(std::move(*path));
+    } else {
+      DebugLog(100, FMT_STRING("added no exe path"));
+    }
 
-    if (path) { files_to_backup.emplace_back(std::move(*path)); }
+    if (std::optional path = Bareos_GetString(bc::BV_PluginPath); path) {
+      while (path->size() > 0 && path->back() == '/') { path->pop_back(); }
+      DebugLog(100, FMT_STRING("adding plugin path {}"), *path);
+      files_to_backup.emplace_back(std::move(*path));
+    } else {
+      DebugLog(100, FMT_STRING("added no plugin path"));
+    }
+
 
     if (files_to_backup.empty()) {
+      DebugLog(100, FMT_STRING("no files added -> stop"));
       response->set_res(bp::RC_Stop);
     } else {
+      DebugLog(100, FMT_STRING("{} files added -> start"),
+               files_to_backup.size());
       response->set_res(bp::RC_OK);
     }
   } else if (event.has_start_verify_job()) {
@@ -164,29 +183,49 @@ auto PluginService::startBackupFile(ServerContext*,
     return grpc::Status::OK;
   }
 
-  auto& file = files_to_backup.back();
-  DebugLog(100, FMT_STRING("starting backup of file {}"),
-           std::string_view{file});
+  auto file = std::move(files_to_backup.back());
+  files_to_backup.pop_back();
+  DebugLog(100, FMT_STRING("starting backup of file {}"), file);
 
   struct stat statp;
-  if (stat(file.c_str(), &statp) < 0) {
+  if (lstat(file.c_str(), &statp) < 0) {
     DebugLog(100, FMT_STRING("could not stat {}"), file);
     response->set_result(bp::StartBackupFileResult::SBF_Skip);
     return grpc::Status::OK;
   }
 
   auto* f = response->mutable_file();
-  f->set_file(std::move(file));
   f->set_stats(&statp, sizeof(statp));
   f->set_delta_seq(0);
   if (S_ISDIR(statp.st_mode)) {
     f->set_ft(bco::FT_DIREND);
     f->set_no_read(true);
+
+    namespace fs = std::filesystem;
+
+    JobLog(bc::JMSG_INFO, FMT_STRING("directory {}"), file);
+    DebugLog(100, FMT_STRING("searching {}"), file);
+
+    for (const auto& entry : fs::directory_iterator(file)) {
+      auto path = entry.path().string();
+
+      JobLog(bc::JMSG_INFO, FMT_STRING("adding {}"), path);
+      DebugLog(100, FMT_STRING("adding {}"), path);
+
+      files_to_backup.push_back(path);
+    }
+  } else if (S_ISLNK(statp.st_mode)) {
+    JobLog(bc::JMSG_INFO, FMT_STRING("link {}"), file);
+    f->set_ft(bco::FT_LNK);
+    f->set_no_read(true);
   } else {
+    JobLog(bc::JMSG_INFO, FMT_STRING("file {} (mode = {}, {}, {})"), file,
+           statp.st_mode, statp.st_mode & S_IFMT, S_IFLNK);
     f->set_ft(bco::FT_REG);
     f->set_no_read(false);
   }
   f->set_portable(true);  // default value
+  f->set_file(std::move(file));
 
   response->set_result(bp::SBF_OK);
 
@@ -197,6 +236,11 @@ auto PluginService::endBackupFile(ServerContext*,
                                   bp::endBackupFileResponse* response) -> Status
 {
   if (current_file) { current_file.reset(); }
+  if (files_to_backup.size() > 0) {
+    response->set_result(bp::EndBackupFileResult::EBF_More);
+  } else {
+    response->set_result(bp::EndBackupFileResult::EBF_Done);
+  }
   return Status::OK;
   // im not sure if this is really the case!
   //  else {
@@ -283,10 +327,14 @@ auto PluginService::FileSeek(ServerContext*,
 
   return Status::OK;
 }
-auto PluginService::FileRead(ServerContext*,
+auto PluginService::FileRead(ServerContext* ctx,
                              const bp::fileReadRequest* request,
                              bp::fileReadResponse* response) -> Status
 {
+  ctx->set_compression_algorithm(GRPC_COMPRESS_GZIP);
+  ctx->set_compression_level(GRPC_COMPRESS_LEVEL_LOW);
+  // GRPC_COMPRESS_LEVEL_MED,
+  // GRPC_COMPRESS_LEVEL_HIGH,
   if (!current_file) {
     DebugLog(100, FMT_STRING("trying to read file while it is not open"));
     return Status(grpc::StatusCode::FAILED_PRECONDITION,
@@ -307,6 +355,7 @@ auto PluginService::FileRead(ServerContext*,
                               strerror(errno)));
   }
 
+  buffer.resize(res);
   response->set_content(std::move(buffer));
   return Status::OK;
 }
