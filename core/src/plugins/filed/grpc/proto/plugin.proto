@@ -3,6 +3,7 @@ syntax = "proto3";
 package bareos.plugin;
 
 import "events.proto";
+import "common.proto";
 
 service Plugin {
   rpc Setup (SetupRequest) returns (SetupResponse);
@@ -58,7 +59,21 @@ message handlePluginEventRequest {
   bareos.plugin.events.Event to_handle = 1;
 };
 
+enum ReturnCode {
+  RETURN_CODE_UNSPECIFIED = 0;
+  RC_OK = 1;     /* OK */
+  RC_Stop = 2;   /* Stop calling other plugins */
+  RC_Error = 3;  /* Some kind of error */
+  RC_More = 4;   /* More files to backup */
+  RC_Term = 5;   /* Unload me */
+  RC_Seen = 6;   /* Return code from checkFiles */
+  RC_Core = 7;   /* Let BAREOS core handles this file */
+  RC_Skip = 8;   /* Skip the proposed file */
+  RC_Cancel = 9; /* Job cancelled */
+};
+
 message handlePluginEventResponse {
+  ReturnCode res = 1;
 };
 
 // ---- Backup ----
@@ -80,8 +95,35 @@ message startBackupFileRequest {
   bytes flags = 3;
   string cmd = 4;
 };
+
+message plugin_object {
+  string name = 1;
+  bytes data = 2;
+  int64 index = 3;
+};
+
+message plugin_file {
+  string file = 1;
+  bytes stats = 2;
+  bareos.common.FileType ft = 3;
+  optional int64 delta_seq = 4;
+
+
+  bool no_read = 5;
+  bool portable = 6; // no idea what this means!
+
+  // these flags change how the data is getting backed up
+  // but neither of them are supported for now
+  bool offset_backup = 7;
+  bool sparse_backup = 8;
+};
+
 message startBackupFileResponse {
   StartBackupFileResult result = 1;
+  oneof payload {
+    plugin_object object = 2;
+    plugin_file file = 3;
+  };
 };
 
 enum EndBackupFileResult {

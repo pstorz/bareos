@@ -30,6 +30,7 @@
 #include <grpcpp/server_posix.h>
 
 #include <fmt/format.h>
+#include <condition_variable>
 
 #include "plugin_service.h"
 #include "test_module.h"
@@ -157,16 +158,16 @@ std::optional<size_t> getInstanceCount()
   return resp.instance_count();
 }
 
-std::optional<bool> checkChanges(bc::FileType ft,
+std::optional<bool> checkChanges(bco::FileType ft,
                                  std::string_view name,
-                                 std::optional<std::string_view> link_name,
                                  time_t timestamp,
                                  const struct stat& statp)
 {
   bc::checkChangesRequest req;
   req.set_type(ft);
   req.set_file(name.data(), name.size());
-  if (link_name) { req.set_link_target(link_name->data(), link_name->size()); }
+  // if (link_name) { req.set_link_target(link_name->data(), link_name->size());
+  // }
   req.mutable_since_time()->set_seconds(timestamp);
   req.set_stats(&statp, sizeof(statp));
 
@@ -254,11 +255,100 @@ void DebugMessage(int level,
   grpc::ClientContext ctx;
   (void)stub()->Bareos_DebugMessage(&ctx, req, &resp);
 }
+bool Bareos_SetString(bc::BareosStringVariable var, std::string_view val)
+{
+  bc::SetStringRequest req;
+  req.set_var(var);
+  req.set_value(val.data(), val.size());
 
-void shutdown_plugin() { con->server->Shutdown(); }
+  bc::SetStringResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_SetString(&ctx, req, &resp);
+
+  if (!status.ok()) { return false; }
+  return true;
+}
+std::optional<std::string> Bareos_GetString(bc::BareosStringVariable var)
+{
+  bc::GetStringRequest req;
+  req.set_var(var);
+
+  bc::GetStringResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_GetString(&ctx, req, &resp);
+
+  if (!status.ok()) { return std::nullopt; }
+  return std::move(*resp.release_value());
+}
+
+bool Bareos_SetInt(bc::BareosIntVariable var, int val)
+{
+  bc::SetIntRequest req;
+  req.set_var(var);
+  req.set_value(val);
+
+  bc::SetIntResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_SetInt(&ctx, req, &resp);
+
+  if (!status.ok()) { return false; }
+  return true;
+}
+std::optional<int> Bareos_GetInt(bc::BareosIntVariable var)
+{
+  bc::GetIntRequest req;
+  req.set_var(var);
+
+  bc::GetIntResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_GetInt(&ctx, req, &resp);
+
+  if (!status.ok()) { return std::nullopt; }
+  return resp.value();
+}
+
+bool Bareos_SetFlag(bc::BareosFlagVariable var, bool val)
+{
+  bc::SetFlagRequest req;
+  req.set_var(var);
+  req.set_value(val);
+
+  bc::SetFlagResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_SetFlag(&ctx, req, &resp);
+
+  if (!status.ok()) { return false; }
+  return true;
+}
+std::optional<bool> Bareos_GetFlag(bc::BareosFlagVariable var)
+{
+  bc::GetFlagRequest req;
+  req.set_var(var);
+
+  bc::GetFlagResponse resp;
+  grpc::ClientContext ctx;
+  grpc::Status status = stub()->Bareos_GetFlag(&ctx, req, &resp);
+
+  if (!status.ok()) { return std::nullopt; }
+  return resp.value();
+}
+
+std::condition_variable server_status_changed;
+std::mutex server_mutex;
+bool server_should_be_running = true;
+
+void shutdown_plugin()
+{
+  // con->server->Shutdown();
+  std::unique_lock l{server_mutex};
+  server_should_be_running = false;
+  server_status_changed.notify_all();
+}
 
 void HandleConnection(int server_sock, int client_sock)
 {
+  std::unique_lock l{server_mutex};
+
   con = connection_builder{std::make_unique<PluginService>()}
             .connect_client(client_sock)
             .connect_server(server_sock)
@@ -267,7 +357,10 @@ void HandleConnection(int server_sock, int client_sock)
   if (!con) { exit(1); }
 
   DebugLog(100, FMT_STRING("waiting for server to finish ..."));
-  con->server->Wait();
+
+  server_status_changed.wait(l, []() { return !server_should_be_running; });
+
+  // con->server->Wait();
 
   DebugLog(100, FMT_STRING("grpc server finished: closing connections"));
   con.reset();

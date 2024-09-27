@@ -63,14 +63,16 @@ void UnregisterBareosEvent(PluginContext* ctx, filedaemon::bEventType event)
   if (fd.core) { fd.core->unregisterBareosEvents(ctx, 1, event); }
 }
 
-void SetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value)
+bool SetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value)
 {
-  if (fd.core) { fd.core->setBareosValue(ctx, var, value); }
+  if (fd.core) { return fd.core->setBareosValue(ctx, var, value) != bRC_Error; }
+  return false;
 }
 
-void GetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value)
+bool GetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value)
 {
-  if (fd.core) { fd.core->getBareosValue(ctx, var, value); }
+  if (fd.core) { return fd.core->getBareosValue(ctx, var, value) != bRC_Error; }
+  return false;
 }
 
 bool checkChanges(PluginContext* ctx,

@@ -141,7 +141,13 @@ struct plugin_ctx {
       }
     }
 
-    const char* path = bVar::Get<bVar::PluginPath>(nullptr);
+    std::optional opath = bVar::Get<bVar::PluginPath>(nullptr);
+    if (!opath) {
+      DebugLog(50, FMT_STRING("core could not return plugin path"));
+      return false;
+    }
+
+    const char* path = *opath;
 
     DebugLog(10, FMT_STRING("path = {}"), path);
 
@@ -155,7 +161,7 @@ struct plugin_ctx {
   }
 
 
-  bool needs_setup() { return child.has_value(); }
+  bool needs_setup() { return !child.has_value(); }
 
 
  public:
@@ -217,7 +223,6 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
     using namespace filedaemon;
     case bEventPluginCommand: {
       if (!plugin->setup(ctx, data)) { return bRC_Error; }
-      return bRC_OK;  // TODO: remove this
     } break;
     default: {
       if (plugin->needs_setup()) {
@@ -231,10 +236,8 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
     } break;
   }
 
-  plugin->child->con.handlePluginEvent(
+  return plugin->child->con.handlePluginEvent(
       (filedaemon::bEventType)(event->eventType), data);
-
-  return bRC_Error;
 }
 
 bRC startBackupFile(PluginContext* ctx, filedaemon::save_pkt* pkt)

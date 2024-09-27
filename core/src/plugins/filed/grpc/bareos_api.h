@@ -43,8 +43,8 @@ void JobMessage(PluginContext* ctx,
 void SetupBareosApi(const filedaemon::CoreFunctions* core);
 void RegisterBareosEvent(PluginContext* ctx, filedaemon::bEventType event);
 void UnregisterBareosEvent(PluginContext* ctx, filedaemon::bEventType event);
-void SetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value);
-void GetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value);
+bool SetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value);
+bool GetBareosValue(PluginContext* ctx, filedaemon::bVariable var, void* value);
 
 // bRC AddExclude(PluginContext* ctx, const char* file);
 // bRC AddInclude(PluginContext* ctx, const char* file);
@@ -142,7 +142,7 @@ struct Level {
   constexpr static auto value = filedaemon::bVarLevel;
 };
 struct Type {
-  using type = const char*;
+  using type = int;
   constexpr static auto value = filedaemon::bVarType;
 };
 struct Client {
@@ -214,18 +214,19 @@ struct PluginPath {
   constexpr static auto value = filedaemon::bVarPluginPath;
 };
 
-template <typename T> auto Get(PluginContext* ctx) -> typename T::type
+template <typename T>
+auto Get(PluginContext* ctx) -> std::optional<typename T::type>
 {
   typename T::type value;
 
-  GetBareosValue(ctx, T::value, (void*)&value);
+  if (!GetBareosValue(ctx, T::value, (void*)&value)) { return std::nullopt; }
 
   return value;
 }
 
-template <typename T> void Set(PluginContext* ctx, typename T::type value)
+template <typename T> bool Set(PluginContext* ctx, typename T::type value)
 {
-  SetBareosValue(ctx, T::value, (void*)&value);
+  return SetBareosValue(ctx, T::value, (void*)&value);
 }
 };  // namespace bVar
 

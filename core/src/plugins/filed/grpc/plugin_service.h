@@ -22,10 +22,36 @@
 #ifndef BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_H_
 #define BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_H_
 
+#include <optional>
 #include "plugin.grpc.pb.h"
 #include "plugin.pb.h"
 
 namespace bp = bareos::plugin;
+
+class raii_fd {
+ public:
+  raii_fd() = default;
+  explicit raii_fd(int fd_) : fd{fd_} {}
+
+  raii_fd(const raii_fd&) = delete;
+  raii_fd& operator=(const raii_fd&) = delete;
+  raii_fd(raii_fd&& other) { *this = std::move(other); }
+  raii_fd& operator=(raii_fd&& other)
+  {
+    std::swap(fd, other.fd);
+    return *this;
+  }
+
+  int get() { return fd; }
+
+  ~raii_fd()
+  {
+    if (fd >= 0) { close(fd); }
+  }
+
+ private:
+  int fd{-1};
+};
 
 class PluginService : public bp::Plugin::Service {
   using ServerContext = ::grpc::ServerContext;
@@ -86,6 +112,10 @@ class PluginService : public bp::Plugin::Service {
   Status setXattr(ServerContext*,
                   const bp::setXattrRequest* request,
                   bp::setXattrResponse* response) override;
+
+
+  std::vector<std::string> files_to_backup{};
+  std::optional<raii_fd> current_file{};
 };
 
 #endif  // BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_H_

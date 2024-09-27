@@ -31,6 +31,7 @@
 #include <fmt/format.h>
 
 namespace bc = bareos::core;
+namespace bco = bareos::common;
 
 bool Register(std::basic_string_view<bc::EventType> types);
 bool Unregister(std::basic_string_view<bc::EventType> types);
@@ -50,9 +51,8 @@ void NewPreInclude();
 
 std::optional<size_t> getInstanceCount();
 
-std::optional<bool> checkChanges(bc::FileType ft,
+std::optional<bool> checkChanges(bco::FileType ft,
                                  std::string_view name,
-                                 std::optional<std::string_view> link_name,
                                  time_t timestamp,
                                  const struct stat& statp);
 
@@ -120,6 +120,15 @@ void JobLog(Type type, fmt::format_string<Args...> fmt, Args&&... args)
 
   JobMessage(type.type, formatted, type.line, type.file, type.function);
 }
+
+bool Bareos_SetString(bc::BareosStringVariable var, std::string_view val);
+std::optional<std::string> Bareos_GetString(bc::BareosStringVariable var);
+
+bool Bareos_SetInt(bc::BareosIntVariable var, int val);
+std::optional<int> Bareos_GetInt(bc::BareosIntVariable var);
+
+bool Bareos_SetFlag(bc::BareosFlagVariable var, bool val);
+std::optional<bool> Bareos_GetFlag(bc::BareosFlagVariable var);
 
 void shutdown_plugin();
 

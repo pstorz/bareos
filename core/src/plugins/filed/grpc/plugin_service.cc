@@ -20,6 +20,10 @@
 */
 
 #include "plugin_service.h"
+#include <fcntl.h>
+#include "bareos.pb.h"
+#include "common.pb.h"
+#include "plugin.pb.h"
 #include "test_module.h"
 
 #pragma GCC diagnostic push
@@ -30,8 +34,10 @@ auto PluginService::Setup(ServerContext*,
                           const bp::SetupRequest*,
                           bp::SetupResponse*) -> Status
 {
-  auto events
-      = std::array{bc::EventType::Event_JobStart, bc::EventType::Event_JobEnd};
+  auto events = std::array{
+      bc::EventType::Event_JobStart, bc::EventType::Event_JobEnd,
+      bc::EventType::Event_BackupCommand, bc::EventType::Event_StartBackupJob,
+      bc::EventType::Event_EndBackupJob};
 
   if (!Register({events.data(), events.size()})) {
     DebugLog(50, FMT_STRING("could not register events!"));
@@ -72,10 +78,14 @@ auto PluginService::handlePluginEvent(
     auto& inner = event.option_plugin();
   } else if (event.has_backup_command()) {
     auto& inner = event.backup_command();
+    response->set_res(bp::ReturnCode::RC_OK);
   } else if (event.has_cancel_command()) {
     auto& inner = event.cancel_command();
   } else if (event.has_end_backup_job()) {
     auto& inner = event.end_backup_job();
+    DebugLog(100, FMT_STRING("got backup end event ({})."),
+             inner.DebugString());
+    response->set_res(bp::RC_OK);
   } else if (event.has_end_verify_job()) {
     auto& inner = event.end_verify_job();
   } else if (event.has_plugin_command()) {
@@ -92,6 +102,18 @@ auto PluginService::handlePluginEvent(
     auto& inner = event.estimate_command();
   } else if (event.has_start_backup_job()) {
     auto& inner = event.start_backup_job();
+    DebugLog(100, FMT_STRING("got backup end event ({})."),
+             inner.DebugString());
+
+    std::optional path = Bareos_GetString(bc::BV_ExePath);
+
+    if (path) { files_to_backup.emplace_back(std::move(*path)); }
+
+    if (files_to_backup.empty()) {
+      response->set_res(bp::RC_Stop);
+    } else {
+      response->set_res(bp::RC_OK);
+    }
   } else if (event.has_start_verify_job()) {
     auto& inner = event.start_verify_job();
   } else if (event.has_vss_init_restore()) {
@@ -124,20 +146,63 @@ auto PluginService::handlePluginEvent(
     return Status(grpc::StatusCode::INVALID_ARGUMENT, "unknown event type");
   }
 
-  return Status::CANCELLED;
+  if (response->res() == bp::RETURN_CODE_UNSPECIFIED) {
+    return Status(grpc::StatusCode::UNIMPLEMENTED,
+                  "i lied about handling this particular event");
+  }
+
+  return Status::OK;
 }
 auto PluginService::startBackupFile(ServerContext*,
                                     const bp::startBackupFileRequest* request,
                                     bp::startBackupFileResponse* response)
     -> Status
 {
-  return Status::CANCELLED;
+  if (files_to_backup.size() == 0) {
+    DebugLog(100, FMT_STRING("no more files left; we are done"));
+    response->set_result(bp::StartBackupFileResult::SBF_Stop);
+    return grpc::Status::OK;
+  }
+
+  auto& file = files_to_backup.back();
+  DebugLog(100, FMT_STRING("starting backup of file {}"),
+           std::string_view{file});
+
+  struct stat statp;
+  if (stat(file.c_str(), &statp) < 0) {
+    DebugLog(100, FMT_STRING("could not stat {}"), file);
+    response->set_result(bp::StartBackupFileResult::SBF_Skip);
+    return grpc::Status::OK;
+  }
+
+  auto* f = response->mutable_file();
+  f->set_file(std::move(file));
+  f->set_stats(&statp, sizeof(statp));
+  f->set_delta_seq(0);
+  if (S_ISDIR(statp.st_mode)) {
+    f->set_ft(bco::FT_DIREND);
+    f->set_no_read(true);
+  } else {
+    f->set_ft(bco::FT_REG);
+    f->set_no_read(false);
+  }
+  f->set_portable(true);  // default value
+
+  response->set_result(bp::SBF_OK);
+
+  return Status::OK;
 }
 auto PluginService::endBackupFile(ServerContext*,
                                   const bp::endBackupFileRequest* request,
                                   bp::endBackupFileResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  if (current_file) { current_file.reset(); }
+  return Status::OK;
+  // im not sure if this is really the case!
+  //  else {
+  //   return Status(grpc::StatusCode::FAILED_PRECONDITION,
+  //                 "No file is currently open!");
+  // }
 }
 auto PluginService::startRestoreFile(ServerContext*,
                                      const bp::startRestoreFileRequest* request,
@@ -155,21 +220,95 @@ auto PluginService::endRestoreFile(ServerContext*,
 }
 auto PluginService::FileOpen(ServerContext*,
                              const bp::fileOpenRequest* request,
-                             bp::fileOpenResponse* response) -> Status
+                             bp::fileOpenResponse*) -> Status
 {
-  return Status::CANCELLED;
+  if (current_file) {
+    DebugLog(100, FMT_STRING("trying to open {} while fd {} is still open"),
+             request->file(), current_file->get());
+    return Status(grpc::StatusCode::FAILED_PRECONDITION,
+                  "there is still a file open");
+  }
+
+  int fd = open(request->file().c_str(), request->flags(), request->mode());
+
+  DebugLog(100, FMT_STRING("open(file = {}, flags = {}, mode = {}) -> {}"),
+           request->file(), request->flags(), request->mode(), fd);
+
+  if (fd < 0) {
+    return Status(grpc::StatusCode::INVALID_ARGUMENT,
+                  "could not open specified file given flags/mode.");
+  }
+
+  current_file = raii_fd(fd);
+
+  return Status::OK;
 }
 auto PluginService::FileSeek(ServerContext*,
                              const bp::fileSeekRequest* request,
-                             bp::fileSeekResponse* response) -> Status
+                             bp::fileSeekResponse*) -> Status
 {
-  return Status::CANCELLED;
+  if (!current_file) {
+    DebugLog(100, FMT_STRING("trying to seek file while it is not open"));
+    return Status(grpc::StatusCode::FAILED_PRECONDITION,
+                  "there is no open file");
+  }
+
+  auto offset = request->offset();
+  int whence = 0;
+
+  switch (request->whence()) {
+    case bp::SS_StartOfFile: {
+      whence = SEEK_SET;
+    } break;
+    case bp::SS_CurrentPos: {
+      whence = SEEK_CUR;
+    } break;
+    case bp::SS_EndOfFile: {
+      whence = SEEK_END;
+    } break;
+    default:
+      return Status(grpc::StatusCode::INVALID_ARGUMENT,
+                    "invalid start position for seek");
+  }
+  auto res = lseek(current_file->get(), offset, whence);
+  DebugLog(100,
+           FMT_STRING("lseek(fd = {}, offset = {}, whence = {} ({})) -> {}"),
+           current_file->get(), offset, whence,
+           bp::SeekStart_Name(request->whence()), res);
+  if (res < 0) {
+    return Status(grpc::StatusCode::UNKNOWN,
+                  fmt::format(FMT_STRING("lseek returned error {}: Err={}"),
+                              res, strerror(errno)));
+  }
+
+  return Status::OK;
 }
 auto PluginService::FileRead(ServerContext*,
                              const bp::fileReadRequest* request,
                              bp::fileReadResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  if (!current_file) {
+    DebugLog(100, FMT_STRING("trying to read file while it is not open"));
+    return Status(grpc::StatusCode::FAILED_PRECONDITION,
+                  "there is no open file");
+  }
+
+  auto max_size = request->num_bytes();
+
+  std::string buffer;
+  buffer.resize(max_size);
+  auto res = read(current_file->get(), buffer.data(), buffer.size());
+  DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
+           current_file->get(), (void*)buffer.data(), buffer.size(), res);
+
+  if (res < 0) {
+    return Status(grpc::StatusCode::UNKNOWN,
+                  fmt::format(FMT_STRING("read returned error {}: Err={}"), res,
+                              strerror(errno)));
+  }
+
+  response->set_content(std::move(buffer));
+  return Status::OK;
 }
 auto PluginService::FileWrite(ServerContext*,
                               const bp::fileWriteRequest* request,
@@ -181,7 +320,14 @@ auto PluginService::FileClose(ServerContext*,
                               const bp::fileCloseRequest* request,
                               bp::fileCloseResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  if (!current_file) {
+    DebugLog(100, FMT_STRING("trying to close file while it is not open"));
+    return Status(grpc::StatusCode::FAILED_PRECONDITION,
+                  "there is no open file");
+  }
+
+  current_file.reset();
+  return Status::OK;
 }
 auto PluginService::createFile(ServerContext*,
                                const bp::createFileRequest* request,
