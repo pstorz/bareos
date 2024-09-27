@@ -56,7 +56,8 @@ std::optional<std::pair<Socket, Socket>> unix_socket_pair()
 
 std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
                                      Socket in,
-                                     Socket out)
+                                     Socket out,
+                                     Socket io)
 {
   DebugLog(100, FMT_STRING("trying to start {} with sockets {} & {}"),
            program_path, in.get(), out.get());
@@ -70,8 +71,10 @@ std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
 
     std::string in_str = std::to_string(in.get());
     std::string out_str = std::to_string(out.get());
+    std::string io_str = std::to_string(io.get());
 
-    char* argv[] = {copy.data(), in_str.data(), out_str.data(), nullptr};
+    char* argv[]
+        = {copy.data(), in_str.data(), out_str.data(), io_str.data(), nullptr};
     char* envp[] = {nullptr};
 
     execve(copy.c_str(), argv, envp);
@@ -1328,6 +1331,9 @@ struct grpc_connection_members {
   std::unique_ptr<grpc::Server> server;
   std::vector<std::unique_ptr<grpc::Service>> services;
 
+  bool reading = false;
+  bool writing = false;
+
   grpc_connection_members() = delete;
 };
 
@@ -1445,18 +1451,19 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
 
   auto to_program = unix_socket_pair();
   auto from_program = unix_socket_pair();
+  auto io_socket = unix_socket_pair();
 
-  if (!SetNonBlocking(to_program->first) || !SetNonBlocking(to_program->second)
-      || !SetNonBlocking(from_program->first)
-      || !SetNonBlocking(from_program->second)) {
-    return std::nullopt;
-  }
-
-  if (!to_program || !from_program) {
+  if (!to_program || !from_program || !io_socket) {
     DebugLog(50,
              FMT_STRING("abort creation of connection to {} as socket pairs "
                         "could not be created"),
              program_path);
+    return std::nullopt;
+  }
+
+  if (!SetNonBlocking(to_program->first) || !SetNonBlocking(to_program->second)
+      || !SetNonBlocking(from_program->first)
+      || !SetNonBlocking(from_program->second)) {
     return std::nullopt;
   }
 
@@ -1479,7 +1486,8 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
   }
 
   auto child = StartDuplexGrpc(program_path, std::move(to_program->second),
-                               std::move(from_program->second));
+                               std::move(from_program->second),
+                               std::move(io_socket->second));
 
   if (!child) {
     DebugLog(50,
@@ -1509,7 +1517,8 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
 
   DebugLog(100, FMT_STRING("... successfully."));
 
-  return grpc_child{std::move(p), std::move(con.value())};
+  return grpc_child{std::move(p), std::move(con.value()),
+                    std::move(io_socket->first)};
 }
 
 process::~process()
@@ -1566,7 +1575,7 @@ bRC grpc_connection::endRestoreFile()
   PluginClient* client = &members->client;
   return client->endRestoreFile();
 }
-bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt)
+bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
 {
   PluginClient* client = &members->client;
   switch (pkt->func) {
@@ -1574,10 +1583,50 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt)
       return client->FileOpen(pkt->fname, pkt->flags, pkt->mode);
     } break;
     case filedaemon::IO_READ: {
-      size_t count = 0;
-      auto res = client->FileRead(pkt->buf, pkt->count, &count);
+      if (members->writing) {
+        DebugLog(50, FMT_STRING("cannot read & write at the same time"));
+        return bRC_Error;
+      } else if (!members->reading) {
+        // start reading
+        size_t ignored;
+        auto res = client->FileRead(pkt->buf, pkt->count, &ignored);
+        if (res != bRC_OK) { return res; }
+        members->reading = true;
+      }
+
+      int64_t count = 0;
+
+      if (read(iosock, &count, sizeof(count)) < 0) {
+        // this should not be happening
+        DebugLog(50, FMT_STRING("could not read packet size. Err={}"),
+                 strerror(errno));
+        return bRC_Error;
+      }
+
+      if (count > pkt->count) {
+        DebugLog(50, FMT_STRING("buffer to small"));
+        return bRC_Error;
+      }
+
+      if (count > 0) {
+        int64_t read_bytes = 0;
+        while (read_bytes < count) {
+          auto res = read(iosock, pkt->buf + read_bytes, count - read_bytes);
+          if (res < 0) {
+            DebugLog(50,
+                     FMT_STRING("could not read data (pos = {}/{}). Err={}"),
+                     read_bytes, count, strerror(errno));
+            return bRC_Error;
+          }
+
+          read_bytes += res;
+        }
+      } else {
+        members->reading = false;
+      }
+
       pkt->status = count;
-      return res;
+      return bRC_OK;
     } break;
     case filedaemon::IO_WRITE: {
       size_t count = 0;
@@ -1586,6 +1635,8 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt)
       return res;
     } break;
     case filedaemon::IO_CLOSE: {
+      members->reading = false;
+      members->writing = false;
       return client->FileClose();
     } break;
     case filedaemon::IO_SEEK: {

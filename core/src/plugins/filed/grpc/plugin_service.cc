@@ -28,6 +28,7 @@
 #include "test_module.h"
 
 #include <filesystem>
+#include <thread>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -327,36 +328,72 @@ auto PluginService::FileSeek(ServerContext*,
 
   return Status::OK;
 }
+
+static void full_write(int fd, const char* data, size_t size)
+{
+  size_t bytes_written = 0;
+  while (bytes_written < size) {
+    auto res = write(fd, data + bytes_written, size - bytes_written);
+    DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
+             fd, (void*)(data + bytes_written), size - bytes_written, res);
+    if (res <= 0) { break; }
+
+    bytes_written += res;
+  }
+}
+
 auto PluginService::FileRead(ServerContext* ctx,
                              const bp::fileReadRequest* request,
                              bp::fileReadResponse* response) -> Status
 {
-  ctx->set_compression_algorithm(GRPC_COMPRESS_GZIP);
-  ctx->set_compression_level(GRPC_COMPRESS_LEVEL_LOW);
   // GRPC_COMPRESS_LEVEL_MED,
   // GRPC_COMPRESS_LEVEL_HIGH,
   if (!current_file) {
-    DebugLog(100, FMT_STRING("trying to read file while it is not open"));
+    DebugLog(50, FMT_STRING("trying to read file while it is not open"));
     return Status(grpc::StatusCode::FAILED_PRECONDITION,
                   "there is no open file");
   }
 
   auto max_size = request->num_bytes();
 
-  std::string buffer;
-  buffer.resize(max_size);
-  auto res = read(current_file->get(), buffer.data(), buffer.size());
-  DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
-           current_file->get(), (void*)buffer.data(), buffer.size(), res);
+  DebugLog(100, FMT_STRING("reading from file {} in {} chunks"),
+           current_file->get(), max_size);
+  std::thread{[](int infd, size_t bufsiz, int outfd) {
+                std::vector<char> buffer;
+                buffer.resize(bufsiz);
 
-  if (res < 0) {
-    return Status(grpc::StatusCode::UNKNOWN,
-                  fmt::format(FMT_STRING("read returned error {}: Err={}"), res,
-                              strerror(errno)));
-  }
+                for (;;) {
+                  auto res = read(infd, buffer.data(), buffer.size());
 
-  buffer.resize(res);
-  response->set_content(std::move(buffer));
+                  int64_t size = res;
+                  full_write(outfd, (char*)&size, sizeof(size));
+
+                  if (res <= 0) {
+                    break;
+                  } else {
+                    full_write(outfd, buffer.data(), res);
+                  }
+                }
+              },
+              current_file->get(), max_size, io}
+      .detach();
+
+
+  // std::string buffer;
+  // buffer.resize(max_size);
+  // auto res = read(current_file->get(), buffer.data(), buffer.size());
+  // DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
+  //          current_file->get(), (void*)buffer.data(), buffer.size(), res);
+
+  // if (res < 0) {
+  //   return Status(grpc::StatusCode::UNKNOWN,
+  //                 fmt::format(FMT_STRING("read returned error {}: Err={}"),
+  //                 res,
+  //                             strerror(errno)));
+  // }
+
+  // buffer.resize(res);
+  // response->set_content(std::move(buffer));
   return Status::OK;
 }
 auto PluginService::FileWrite(ServerContext*,

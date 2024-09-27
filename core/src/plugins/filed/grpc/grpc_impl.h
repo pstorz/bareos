@@ -76,7 +76,7 @@ class grpc_connection {
   bRC startRestoreFile(std::string_view cmd);
   bRC endRestoreFile();
 
-  bRC pluginIO(filedaemon::io_pkt* pkt);
+  bRC pluginIO(filedaemon::io_pkt* pkt, int io_socket);
 
   bRC createFile(filedaemon::restore_pkt* pkt);
   bRC setFileAttributes(filedaemon::restore_pkt* pkt);
@@ -130,6 +130,7 @@ struct process {
 struct grpc_child {
   process child_pid;  // we want this to be destructed last!
   grpc_connection con;
+  Socket io;
 };
 
 std::optional<grpc_child> make_connection(PluginContext* ctx,

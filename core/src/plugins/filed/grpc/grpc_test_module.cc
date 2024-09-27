@@ -345,11 +345,11 @@ void shutdown_plugin()
   server_status_changed.notify_all();
 }
 
-void HandleConnection(int server_sock, int client_sock)
+void HandleConnection(int server_sock, int client_sock, int io_sock)
 {
   std::unique_lock l{server_mutex};
 
-  con = connection_builder{std::make_unique<PluginService>()}
+  con = connection_builder{std::make_unique<PluginService>(io_sock)}
             .connect_client(client_sock)
             .connect_server(server_sock)
             .build();
@@ -369,19 +369,25 @@ void HandleConnection(int server_sock, int client_sock)
 
 int main(int argc, char* argv[])
 {
-  if (argc != 3) { return 5; }
-  int sock1 = atoi(argv[1]);
-  int sock2 = atoi(argv[2]);
+  if (argc != 4) { return 5; }
+  int server = atoi(argv[1]);
+  int client = atoi(argv[2]);
+  int io = atoi(argv[3]);
 
-  if (fcntl(sock1, F_GETFD) < 0) {
-    printf("bad file descriptor given: %d\n", sock1);
+  if (fcntl(server, F_GETFD) < 0) {
+    printf("bad file descriptor given: %d\n", server);
     return 3;
   }
 
-  if (fcntl(sock2, F_GETFD) < 0) {
-    printf("bad file descriptor given: %d\n", sock2);
+  if (fcntl(client, F_GETFD) < 0) {
+    printf("bad file descriptor given: %d\n", client);
     return 3;
   }
 
-  HandleConnection(sock1, sock2);
+  if (fcntl(io, F_GETFD) < 0) {
+    printf("bad file descriptor given: %d\n", io);
+    return 3;
+  }
+
+  HandleConnection(server, client, io);
 }

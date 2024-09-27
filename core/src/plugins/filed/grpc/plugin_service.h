@@ -54,6 +54,15 @@ class raii_fd {
 };
 
 class PluginService : public bp::Plugin::Service {
+ public:
+  PluginService(int io_sock) : io{io_sock} {}
+
+  ~PluginService()
+  {
+    if (io >= 0) { close(io); }
+  }
+
+ private:
   using ServerContext = ::grpc::ServerContext;
   using Status = ::grpc::Status;
 
@@ -116,6 +125,9 @@ class PluginService : public bp::Plugin::Service {
 
   std::vector<std::string> files_to_backup{};
   std::optional<raii_fd> current_file{};
+
+
+  int io;
 };
 
 #endif  // BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_H_
