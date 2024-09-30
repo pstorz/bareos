@@ -1575,6 +1575,114 @@ bRC grpc_connection::endRestoreFile()
   PluginClient* client = &members->client;
   return client->endRestoreFile();
 }
+
+std::optional<int> receive_fd(int unix_socket, int expected_name)
+{
+  char name_buf[sizeof(
+      expected_name)];  // the "name" is just the plugin fd number
+                        // this is used to make sure that we actually got the
+                        // correct file descriptor
+  int fd;
+  int name;
+  struct msghdr msg = {};
+  char buf[CMSG_SPACE(sizeof(fd))] = {};
+
+  iovec io = {.iov_base = name_buf, .iov_len = sizeof(name_buf)};
+
+  msg.msg_iov = &io;
+  msg.msg_iovlen = 1;
+
+  msg.msg_control = buf;
+  msg.msg_controllen = sizeof(buf);
+
+  auto res = recvmsg(unix_socket, &msg, MSG_WAITALL | MSG_NOSIGNAL);
+  if (res < 0) {
+    DebugLog(50, FMT_STRING("recvmsg failed ({}): Err={}"), res,
+             strerror(errno));
+    return std::nullopt;
+  }
+
+  if (res != sizeof(name_buf)) {
+    DebugLog(50, FMT_STRING("short message received (len = {})"), res);
+    name = -1;
+  } else {
+    static_assert(sizeof(name) == sizeof(name_buf));
+    memcpy(&name, name_buf, sizeof(name));
+    DebugLog(100, FMT_STRING("received name = {}"), name);
+  }
+
+  if (name != expected_name && expected_name == -1) {
+    DebugLog(50, FMT_STRING("names do not match got = {}, expected = {}"), name,
+             expected_name);
+    return std::nullopt;
+  } else {
+    DebugLog(100, FMT_STRING("name {} matches expected {}"), name,
+             expected_name);
+  }
+
+  auto* control = CMSG_FIRSTHDR(&msg);
+
+  if (!control) {
+    DebugLog(50, FMT_STRING("no control msg received (len = {})"), res);
+    return std::nullopt;
+  }
+
+  if (control->cmsg_len != CMSG_LEN(sizeof(fd))) {
+    DebugLog(50,
+             FMT_STRING("control msg is too small (len = {}, expected = {})"),
+             control->cmsg_len, sizeof(fd));
+    return std::nullopt;
+  }
+
+  DebugLog(100, FMT_STRING("control msg {type = {}, level = {}}"),
+           control->cmsg_type, control->cmsg_level);
+  const unsigned char* data = CMSG_DATA(control);
+
+  // size checked above
+  memcpy(&fd, data, sizeof(fd));
+
+  DebugLog(100, FMT_STRING("got fd = {}"), fd);
+
+  if (fcntl(fd, F_GETFD) < 0) {
+    DebugLog(50, FMT_STRING("got bad fd = {}"), fd);
+    return std::nullopt;
+  } else {
+    DebugLog(100, FMT_STRING("got fd = {}"), fd);
+    return std::make_optional(fd);
+  }
+}
+
+bool send_fd(int unix_socket, int fd)
+{
+  struct msghdr msg = {};
+  char buf[CMSG_SPACE(sizeof(fd))] = {};
+  char name_buf[sizeof(fd)];
+  memcpy(name_buf, &fd, sizeof(fd));
+  iovec io = {.iov_base = name_buf, .iov_len = sizeof(name_buf)};
+
+
+  msg.msg_iov = &io;
+  msg.msg_iovlen = 1;
+  msg.msg_control = buf;
+  msg.msg_controllen = sizeof(buf);
+
+  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+  cmsg->cmsg_level = SOL_SOCKET;
+  cmsg->cmsg_type = SCM_RIGHTS;
+  cmsg->cmsg_len = CMSG_LEN(sizeof(fd));
+
+  memcpy(CMSG_DATA(cmsg), &fd, sizeof(fd));
+
+  msg.msg_controllen = CMSG_SPACE(sizeof(fd));
+
+  if (auto res = sendmsg(unix_socket, &msg, MSG_NOSIGNAL); res < 0) {
+    DebugLog(50, FMT_STRING("could not send fd {}. Err={}"), fd,
+             strerror(errno));
+  }
+
+  return false;
+}
+
 bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
 {
   PluginClient* client = &members->client;
