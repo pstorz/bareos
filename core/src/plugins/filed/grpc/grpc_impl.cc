@@ -1351,6 +1351,8 @@ struct connection_builder {
 
   connection_builder& connect_client(Socket s)
   {
+    // TODO: test what happens if the child is already dead at this point
+    //       or if it does not create the server
     channel = grpc::CreateInsecureChannelFromFd("", s.get());
 
     if (channel) {
@@ -1691,6 +1693,9 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
       return client->FileOpen(pkt->fname, pkt->flags, pkt->mode);
     } break;
     case filedaemon::IO_READ: {
+      // change this: instead just ask the plugin to dump the next chunk
+      // into the stream and we will take care of it then.   Do not do this
+      // threaded alternative
       if (members->writing) {
         DebugLog(50, FMT_STRING("cannot read & write at the same time"));
         return bRC_Error;
