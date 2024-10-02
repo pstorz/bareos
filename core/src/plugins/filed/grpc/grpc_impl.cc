@@ -54,6 +54,73 @@ std::optional<std::pair<Socket, Socket>> unix_socket_pair()
   return std::make_pair(sockets[0], sockets[1]);
 }
 
+enum class predefined_fd : int
+{
+  // these are from the perspective of the plugin
+  In = 0,
+  Out = 1,
+  Err = 2,
+
+  GrpcIn = 3,
+  GrpcOut = 4,
+  GrpcIo = 5,
+};
+
+bool IsPredefinedFD(int fd)
+{
+  // 0 = stdin
+  // 1 = stdout
+  // 2 = stderr
+  // 3 = grpc in
+  // 4 = grpc out
+  // 5 = grpc io
+  return 0 <= fd && fd < 6;
+}
+
+bool FixupBadFD(int& fd, int& dummy)
+{
+  if (!IsPredefinedFD(fd)) { return true; }
+  // we first need to get it out of our range
+  // later we put it into the right place
+  int newfd = dup2(fd, dummy);  // this closes dummy if it refered to a file,
+  // but we chose dummy in such a way that this does not
+  // matter
+
+  if (newfd < 0) {
+    // TODO: what to do here ?
+    return false;
+  }
+
+  if (newfd == fd) {
+    // this should never happen
+    dummy *= 2;
+    return true;
+  }
+
+  close(fd);
+  fd = newfd;
+  dummy += 1;
+  return true;
+}
+
+template <typename... Args> int supremum(Args... ints)
+{
+  int sup = 0;
+
+  ((sup = std::max(sup, ints)), ...);
+
+  return sup;
+}
+
+bool move_fd(int fd, int newfd)
+{
+  if (dup2(fd, newfd) != newfd) { return false; }
+
+  close(fd);
+
+  return true;
+}
+
 std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
                                      Socket in,
                                      Socket out,
@@ -62,19 +129,44 @@ std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
   DebugLog(100, FMT_STRING("trying to start {} with sockets {} & {}"),
            program_path, in.get(), out.get());
 
+  // todo: we should start an io thread that reads from stdout,
+  //       and creates job wessages out of that
+  int std_in = 0;   // = /dev/zero or empty file
+  int std_out = 0;  // = a pipe
+  int std_err
+      = 0;  // = the same pipe as above!  maybe use only one variable here ?
+
   pid_t child = fork();
 
   if (child < 0) {
     return std::nullopt;
   } else if (child == 0) {
+    int dummy_fd
+        = supremum(in.get(), out.get(), io.get(), std_in, std_out, std_err)
+          + 1;  // we dont care
+                // about fds
+                // apart from these 3
+
+    if (!FixupBadFD(in.get(), dummy_fd) || !FixupBadFD(out.get(), dummy_fd)
+        || !FixupBadFD(io.get(), dummy_fd) || !FixupBadFD(std_in, dummy_fd)
+        || !FixupBadFD(std_out, dummy_fd) || !FixupBadFD(std_err, dummy_fd)) {
+      return std::nullopt;
+    }
+
+    if (!move_fd(std_in, (int)predefined_fd::In)
+        || !move_fd(std_out, (int)predefined_fd::Out)
+        || !move_fd(std_err, (int)predefined_fd::Err)
+        || !move_fd(in.release(), (int)predefined_fd::GrpcIn)
+        || !move_fd(out.release(), (int)predefined_fd::GrpcOut)
+        || !move_fd(in.release(), (int)predefined_fd::GrpcIn)) {
+      return std::nullopt;
+    }
+
+    // we have now setup the file descriptors
+
     std::string copy(program_path);
 
-    std::string in_str = std::to_string(in.get());
-    std::string out_str = std::to_string(out.get());
-    std::string io_str = std::to_string(io.get());
-
-    char* argv[]
-        = {copy.data(), in_str.data(), out_str.data(), io_str.data(), nullptr};
+    char* argv[] = {copy.data(), nullptr};
     char* envp[] = {nullptr};
 
     execve(copy.c_str(), argv, envp);

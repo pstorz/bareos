@@ -369,23 +369,30 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
 
 int main(int argc, char* argv[])
 {
-  if (argc != 4) { return 5; }
-  int server = atoi(argv[1]);
-  int client = atoi(argv[2]);
-  int io = atoi(argv[3]);
+  if (argc != 1) {
+    fprintf(
+        stderr,
+        "Usage: call this program with no arguments but the sockets set up\n");
+    return 5;
+  }
+
+  // todo: add these in a header somewhere ?
+  int server = 3;
+  int client = 4;
+  int io = 5;
 
   if (fcntl(server, F_GETFD) < 0) {
-    printf("bad file descriptor given: %d\n", server);
+    printf("bad server file descriptor given: %d\n", server);
     return 3;
   }
 
   if (fcntl(client, F_GETFD) < 0) {
-    printf("bad file descriptor given: %d\n", client);
+    printf("bad client file descriptor given: %d\n", client);
     return 3;
   }
 
   if (fcntl(io, F_GETFD) < 0) {
-    printf("bad file descriptor given: %d\n", io);
+    printf("bad io file descriptor given: %d\n", io);
     return 3;
   }
 
