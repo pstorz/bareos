@@ -369,6 +369,7 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
 
 int main(int argc, char* argv[])
 {
+  (void)argv;
   if (argc != 1) {
     fprintf(
         stderr,

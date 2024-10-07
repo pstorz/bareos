@@ -63,6 +63,42 @@ struct Socket {
   int os{-1};
 };
 
+struct OSFile {
+  OSFile() = default;
+  OSFile(int fd) : os{fd} {}
+
+  OSFile(const OSFile&) = delete;
+  OSFile& operator=(const OSFile&) = delete;
+
+  OSFile(OSFile&& other) { *this = std::move(other); }
+
+  OSFile& operator=(OSFile&& other)
+  {
+    std::swap(os, other.os);
+    return *this;
+  }
+
+  explicit operator bool() { return os >= 0; }
+
+  int& get() { return os; }
+  const int& get() const { return os; }
+
+  int release()
+  {
+    int fd = os;
+    os = -1;
+    return fd;
+  }
+
+  ~OSFile()
+  {
+    if (os >= 0) close(os);
+  }
+
+ private:
+  int os{-1};
+};
+
 struct grpc_connection_members;
 
 class grpc_connection {

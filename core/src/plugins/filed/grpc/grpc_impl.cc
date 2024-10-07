@@ -54,6 +54,77 @@ std::optional<std::pair<Socket, Socket>> unix_socket_pair()
   return std::make_pair(sockets[0], sockets[1]);
 }
 
+std::optional<std::pair<OSFile, OSFile>> unix_pipe()
+{
+  int fds[2];
+
+  if (pipe(fds) < 0) { return std::nullopt; }
+
+  return std::make_pair(fds[0], fds[1]);
+}
+
+struct grpc_connections {
+  OSFile std_out;
+  OSFile std_err;
+
+  Socket grpc_parent;  // parent = server
+  Socket grpc_child;   // child = server
+  Socket grpc_io;
+
+  void set_close_on_exec()
+  {
+    if (fcntl(std_out.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(
+          50,
+          FMT_STRING("could not set CLOEXEC on program output pipe {}. Err={}"),
+          std_out.get(), strerror(errno));
+    }
+    if (fcntl(std_err.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(
+          50,
+          FMT_STRING("could not set CLOEXEC on program error pipe {}. Err={}"),
+          std_err.get(), strerror(errno));
+    }
+    if (fcntl(grpc_parent.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(50,
+               FMT_STRING("could not set CLOEXEC on parent socket {}. Err={}"),
+               grpc_parent.get(), strerror(errno));
+    }
+    if (fcntl(grpc_child.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(50,
+               FMT_STRING("could not set CLOEXEC on child socket {}. Err={}"),
+               grpc_child.get(), strerror(errno));
+    }
+    if (fcntl(grpc_io.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(50, FMT_STRING("could not set CLOEXEC on io socket {}. Err={}"),
+               grpc_io.get(), strerror(errno));
+    }
+  }
+};
+
+std::optional<std::pair<grpc_connections, grpc_connections>>
+make_grpc_connections()
+{
+  auto std_out = unix_pipe();
+  auto std_err = unix_pipe();
+
+  auto grpc_parent = unix_socket_pair();
+  auto grpc_child = unix_socket_pair();
+  auto grpc_io = unix_socket_pair();
+
+  if (!std_out || !std_err || !grpc_parent || !grpc_child || !grpc_io) {
+    return std::nullopt;
+  }
+  return std::make_pair(
+      grpc_connections{std::move(std_out->first), std::move(std_err->first),
+                       std::move(grpc_parent->first),
+                       std::move(grpc_child->first), std::move(grpc_io->first)},
+      grpc_connections{std::move(std_out->second), std::move(std_err->second),
+                       std::move(grpc_parent->second),
+                       std::move(grpc_child->second),
+                       std::move(grpc_io->second)});
+}
+
 enum class predefined_fd : int
 {
   // these are from the perspective of the plugin
@@ -122,43 +193,47 @@ bool move_fd(int fd, int newfd)
 }
 
 std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
-                                     Socket in,
-                                     Socket out,
-                                     Socket io)
+                                     grpc_connections io)
 {
-  DebugLog(100, FMT_STRING("trying to start {} with sockets {} & {}"),
-           program_path, in.get(), out.get());
+  DebugLog(100,
+           FMT_STRING("trying to start {} with io {{Parent = {}, Child = {}, "
+                      "Io = {}, Out = {}, Err = {}}}"),
+           program_path, io.grpc_parent.get(), io.grpc_child.get(),
+           io.grpc_io.get(), io.std_out.get(), io.std_err.get());
 
   // todo: we should start an io thread that reads from stdout,
   //       and creates job wessages out of that
-  int std_in = 0;   // = /dev/zero or empty file
-  int std_out = 0;  // = a pipe
-  int std_err
-      = 0;  // = the same pipe as above!  maybe use only one variable here ?
+
 
   pid_t child = fork();
 
   if (child < 0) {
     return std::nullopt;
   } else if (child == 0) {
+    int std_in = open("/dev/null", O_RDONLY);
+
     int dummy_fd
-        = supremum(in.get(), out.get(), io.get(), std_in, std_out, std_err)
+        = supremum(io.grpc_parent.get(), io.grpc_child.get(), io.grpc_io.get(),
+                   std_in, io.std_out.get(), io.std_err.get())
           + 1;  // we dont care
                 // about fds
-                // apart from these 3
+                // apart from these 6
 
-    if (!FixupBadFD(in.get(), dummy_fd) || !FixupBadFD(out.get(), dummy_fd)
-        || !FixupBadFD(io.get(), dummy_fd) || !FixupBadFD(std_in, dummy_fd)
-        || !FixupBadFD(std_out, dummy_fd) || !FixupBadFD(std_err, dummy_fd)) {
+    if (!FixupBadFD(io.grpc_parent.get(), dummy_fd)
+        || !FixupBadFD(io.grpc_child.get(), dummy_fd)
+        || !FixupBadFD(io.grpc_io.get(), dummy_fd)
+        || !FixupBadFD(std_in, dummy_fd)
+        || !FixupBadFD(io.std_out.get(), dummy_fd)
+        || !FixupBadFD(io.std_err.get(), dummy_fd)) {
       return std::nullopt;
     }
 
     if (!move_fd(std_in, (int)predefined_fd::In)
-        || !move_fd(std_out, (int)predefined_fd::Out)
-        || !move_fd(std_err, (int)predefined_fd::Err)
-        || !move_fd(in.release(), (int)predefined_fd::GrpcIn)
-        || !move_fd(out.release(), (int)predefined_fd::GrpcOut)
-        || !move_fd(in.release(), (int)predefined_fd::GrpcIn)) {
+        || !move_fd(io.std_out.get(), (int)predefined_fd::Out)
+        || !move_fd(io.std_err.get(), (int)predefined_fd::Err)
+        || !move_fd(io.grpc_parent.release(), (int)predefined_fd::GrpcOut)
+        || !move_fd(io.grpc_child.release(), (int)predefined_fd::GrpcIn)
+        || !move_fd(io.grpc_io.release(), (int)predefined_fd::GrpcIo)) {
       return std::nullopt;
     }
 
@@ -1507,12 +1582,11 @@ struct connection_builder {
 //};  // namespace
 
 std::optional<grpc_connection> make_connection_from(PluginContext* ctx,
-                                                    Socket in,
-                                                    Socket out)
+                                                    grpc_connections& io)
 {
   return connection_builder{std::make_unique<BareosCore>(ctx)}
-      .connect_client(std::move(out))
-      .connect_server(std::move(in))
+      .connect_client(std::move(io.grpc_child))
+      .connect_server(std::move(io.grpc_parent))
       .build();
 }
 
@@ -1543,11 +1617,9 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
 
   DebugLog(100, FMT_STRING("creating connection to {} ..."), program_path);
 
-  auto to_program = unix_socket_pair();
-  auto from_program = unix_socket_pair();
-  auto io_socket = unix_socket_pair();
+  auto total_io = make_grpc_connections();
 
-  if (!to_program || !from_program || !io_socket) {
+  if (!total_io) {
     DebugLog(50,
              FMT_STRING("abort creation of connection to {} as socket pairs "
                         "could not be created"),
@@ -1555,33 +1627,29 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
     return std::nullopt;
   }
 
-  if (!SetNonBlocking(to_program->first) || !SetNonBlocking(to_program->second)
-      || !SetNonBlocking(from_program->first)
-      || !SetNonBlocking(from_program->second)) {
+  auto& parent_io = total_io->first;
+  auto& child_io = total_io->second;
+
+  if (!SetNonBlocking(parent_io.grpc_parent)
+      || !SetNonBlocking(parent_io.grpc_child)
+      || !SetNonBlocking(child_io.grpc_parent)
+      || !SetNonBlocking(child_io.grpc_child)) {
     return std::nullopt;
   }
 
-  DebugLog(100, FMT_STRING("Created socket pairs {} <> {} | {} <> {}"),
-           to_program->first.get(), to_program->second.get(),
-           from_program->first.get(), from_program->second.get());
+  DebugLog(100, FMT_STRING("Created pipes Out: {} <> {}, Err: {} <> {}"),
+           parent_io.std_out.get(), child_io.std_out.get(),
+           parent_io.std_err.get(), child_io.std_err.get());
+  DebugLog(100,
+           FMT_STRING("Created socket pairs Parent: {} <> {}, Child: {} <> {}, "
+                      "Io: {} <> {}"),
+           parent_io.grpc_parent.get(), child_io.grpc_parent.get(),
+           parent_io.grpc_child.get(), child_io.grpc_child.get(),
+           parent_io.grpc_io.get(), child_io.grpc_io.get());
 
-  if (fcntl(to_program->first.get(), F_SETFD, FD_CLOEXEC) < 0) {
-    DebugLog(
-        50,
-        FMT_STRING("could not set CLOEXEC on program input socket {}. Err={}"),
-        to_program->first.get(), strerror(errno));
-  }
+  parent_io.set_close_on_exec();
 
-  if (fcntl(from_program->first.get(), F_SETFD, FD_CLOEXEC) < 0) {
-    DebugLog(
-        50,
-        FMT_STRING("could not set CLOEXEC on program output socket {}. Err={}"),
-        from_program->first.get(), strerror(errno));
-  }
-
-  auto child = StartDuplexGrpc(program_path, std::move(to_program->second),
-                               std::move(from_program->second),
-                               std::move(io_socket->second));
+  auto child = StartDuplexGrpc(program_path, std::move(child_io));
 
   if (!child) {
     DebugLog(50,
@@ -1594,8 +1662,7 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
   process p{*child};
   child.reset();
 
-  auto con = make_connection_from(ctx, std::move(from_program->first),
-                                  std::move(to_program->first));
+  auto con = make_connection_from(ctx, parent_io);
 
   if (!con) {
     DebugLog(50, FMT_STRING("no connection for me :("));
@@ -1612,7 +1679,7 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
   DebugLog(100, FMT_STRING("... successfully."));
 
   return grpc_child{std::move(p), std::move(con.value()),
-                    std::move(io_socket->first)};
+                    std::move(parent_io.grpc_io)};
 }
 
 process::~process()
@@ -1728,7 +1795,7 @@ std::optional<int> receive_fd(int unix_socket, int expected_name)
     return std::nullopt;
   }
 
-  DebugLog(100, FMT_STRING("control msg {type = {}, level = {}}"),
+  DebugLog(100, FMT_STRING("control msg {{type = {}, level = {}}}"),
            control->cmsg_type, control->cmsg_level);
   const unsigned char* data = CMSG_DATA(control);
 

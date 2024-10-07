@@ -402,7 +402,7 @@ std::optional<int> receive_fd(int unix_socket, int expected_name)
     return std::nullopt;
   }
 
-  DebugLog(100, FMT_STRING("control msg {type = {}, level = {}}"),
+  DebugLog(100, FMT_STRING("control msg {{type = {}, level = {}}}"),
            control->cmsg_type, control->cmsg_level);
   const unsigned char* data = CMSG_DATA(control);
 
