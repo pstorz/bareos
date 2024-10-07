@@ -23,7 +23,10 @@
 #define BAREOS_PLUGINS_FILED_GRPC_GRPC_IMPL_H_
 
 #include <unistd.h>
+#include <atomic>
 #include <variant>
+#include <thread>
+
 #include "include/bareos.h"
 #include "filed/fd_plugins.h"
 
@@ -163,7 +166,34 @@ struct process {
   ~process();
 };
 
+struct joining_thread {
+  std::unique_ptr<std::atomic<bool>> quit;
+  std::thread inner;
+
+  template <typename Fun, typename... Args>
+  joining_thread(Fun&& f, Args&&... args)
+      : quit{std::make_unique<std::atomic<bool>>()}
+      , inner{f, quit.get(), std::forward<Args>(args)...}
+  {
+  }
+
+  joining_thread(const joining_thread&) = delete;
+  joining_thread& operator=(const joining_thread&) = delete;
+  joining_thread(joining_thread&&) = default;
+  joining_thread& operator=(joining_thread&&) = default;
+
+  ~joining_thread()
+  {
+    if (quit) {
+      *quit = true;
+      inner.join();
+    }
+  }
+};
+
 struct grpc_child {
+  joining_thread stdio_thread;  // this should get destructed last
+  PluginContext* ctx;
   process child_pid;  // we want this to be destructed last!
   grpc_connection con;
   Socket io;

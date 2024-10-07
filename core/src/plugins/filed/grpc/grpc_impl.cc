@@ -35,6 +35,7 @@
 #include <thread>
 #include <grpcpp/impl/codegen/channel_interface.h>
 #include <grpcpp/security/server_credentials.h>
+#include <sys/poll.h>
 #include <sys/wait.h>
 
 #include "bareos_api.h"
@@ -1590,6 +1591,25 @@ std::optional<grpc_connection> make_connection_from(PluginContext* ctx,
       .build();
 }
 
+bool SetNonBlocking(OSFile& f)
+{
+  int flags = fcntl(f.get(), F_GETFL);
+  if (flags == -1) {
+    DebugLog(50, FMT_STRING("could not get flags for socket {}: Err={}"),
+             f.get(), strerror(errno));
+    return false;
+  }
+
+  if (fcntl(f.get(), F_SETFL, flags | O_NONBLOCK) < 0) {
+    DebugLog(
+        50, FMT_STRING("could not add non blocking flags to socket {}: Err={}"),
+        f.get(), strerror(errno));
+    return false;
+  }
+
+  return true;
+}
+
 bool SetNonBlocking(Socket& s)
 {
   int flags = fcntl(s.get(), F_GETFL);
@@ -1607,6 +1627,142 @@ bool SetNonBlocking(Socket& s)
   }
 
   return true;
+}
+
+void do_std_io(std::atomic<bool>* quit,
+               PluginContext* ctx,
+               OSFile out,
+               OSFile err)
+{
+  // on windows we need overlapped (async) io here
+  // as pipes by themselves are not awaitable, so we need to use
+  // CreateEvent on the overlapped structure to get an awaitable event
+  // after issuing ReadFileEx
+
+  SetNonBlocking(out);
+  SetNonBlocking(err);
+
+  char outbuf[4096];
+  char errbuf[4096];
+
+  char* outs_start = &outbuf[0];
+  char* outs = outs_start;
+  size_t outs_size = sizeof(outbuf);
+
+  char* errs_start = &errbuf[0];
+  char* errs = errs_start;
+  size_t errs_size = sizeof(errbuf);
+
+  std::array fds = {pollfd{out.get(), POLLIN, 0}, pollfd{err.get(), POLLIN, 0}};
+
+  while (!quit->load()) {
+    auto num_fired = poll(fds.data(), fds.size(), 500);
+    if (num_fired < 0) { break; }
+
+    if (num_fired == 0) { continue; }
+
+    if ((fds[0].revents & POLLIN) == POLLIN) {
+      // OUT
+      ssize_t bytes_read = read(out.get(), outs, outs_size);
+
+      if (bytes_read < 0) {
+        // ?? how is this possible ??
+        DebugLog(ctx, 50, FMT_STRING("reading from {} returned {}: Err={}"),
+                 out.get(), bytes_read, strerror(errno));
+      } else {
+        // we search in [search_start, search_end) for newlines
+        auto* search_start = outs;
+        auto* search_end = outs + bytes_read;
+        // ... as this is the only place where they could be
+
+        // When we find one, we print starting at print_start
+        auto* print_start = outs_start;
+        for (;;) {
+          auto* x = std::find(search_start, search_end, '\n');
+          if (x == search_end) { break; }
+
+          // if we found a newline then we print it as debug message
+          DebugLog(ctx, 100, FMT_STRING("stdout: {}"),
+                   std::string_view{print_start,
+                                    static_cast<size_t>(x - print_start)});
+
+          // skip the newline itself
+          search_start = print_start = x + 1;
+        }
+
+        if (print_start != outs_start) {
+          // this is the size of the unprinted leftovers in the buffer
+          auto bufsize = search_end - print_start;
+
+          // we printed something, so move everything back to create space
+          memmove(outs_start, print_start, bufsize);
+
+          outs = outs_start + bufsize;
+          outs_size = sizeof(outbuf) - bufsize;
+        } else if (outs_size == 0) {
+          DebugLog(ctx, 100, FMT_STRING("stdout (full): {}"),
+                   std::string_view{outs_start, sizeof(outbuf)});
+
+          outs_size = sizeof(outbuf);
+          outs = outs_start;
+        } else {
+          outs += bytes_read;
+          outs_size -= bytes_read;
+        }
+      }
+    }
+
+    if ((fds[1].revents & POLLIN) == POLLIN) {
+      // ERR
+      ssize_t bytes_read = read(err.get(), errs, errs_size);
+
+      if (bytes_read < 0) {
+        // ?? how is this possible ??
+        DebugLog(ctx, 50, FMT_STRING("reading from {} returned {}: Err={}"),
+                 err.get(), bytes_read, strerror(errno));
+      } else {
+        // we search in [search_start, search_end) for newlines
+        auto* search_start = errs;
+        auto* search_end = errs + bytes_read;
+        // ... as this is the only place where they could be
+
+        // When we find one, we print starting at print_start
+        auto* print_start = errs_start;
+        for (;;) {
+          auto* x = std::find(search_start, search_end, '\n');
+          if (x == search_end) { break; }
+
+          // if we found a newline then we print it as debug message
+          JobLog(ctx, M_ERROR, FMT_STRING("stderr: {}"),
+                 std::string_view{print_start,
+                                  static_cast<size_t>(x - print_start)});
+
+          // skip the newline itself
+          search_start = print_start = x + 1;
+        }
+
+        if (print_start != errs_start) {
+          // this is the size of the unprinted leftovers in the buffer
+          auto bufsize = search_end - print_start;
+
+          // we printed something, so move everything back to create space
+          memmove(errs_start, print_start, bufsize);
+
+          errs = errs_start + bufsize;
+          errs_size = sizeof(errbuf) - bufsize;
+        } else if (errs_size == 0) {
+          JobLog(ctx, M_ERROR, FMT_STRING("stderr (full): {}"),
+                 std::string_view{errs_start, sizeof(errbuf)});
+
+          errs_size = sizeof(errbuf);
+          errs = errs_start;
+        } else {
+          errs += bytes_read;
+          errs_size -= bytes_read;
+        }
+      }
+    }
+  }
 }
 
 std::optional<grpc_child> make_connection(PluginContext* ctx,
@@ -1676,10 +1832,14 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
     return std::nullopt;
   }
 
+  joining_thread stdio_thread{do_std_io, ctx, std::move(parent_io.std_out),
+                              std::move(parent_io.std_err)};
+
+
   DebugLog(100, FMT_STRING("... successfully."));
 
-  return grpc_child{std::move(p), std::move(con.value()),
-                    std::move(parent_io.grpc_io)};
+  return grpc_child{std::move(stdio_thread), ctx, std::move(p),
+                    std::move(con.value()), std::move(parent_io.grpc_io)};
 }
 
 process::~process()
