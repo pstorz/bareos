@@ -172,7 +172,7 @@ message fileReadRequest {
   uint64 num_bytes = 1;
 };
 message fileWriteRequest {
-  bytes content = 1;
+  uint64 bytes_written = 1;
 };
 message fileCloseRequest {
 };
@@ -182,7 +182,7 @@ message fileOpenResponse {
 message fileSeekResponse {
 };
 message fileReadResponse {
-  bytes content = 1;
+  uint64 size = 1;
 };
 message fileWriteResponse {
   int64 bytes_written = 1;

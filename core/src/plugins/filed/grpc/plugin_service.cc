@@ -27,6 +27,8 @@
 #include "plugin.pb.h"
 #include "test_module.h"
 
+#include <sys/sendfile.h>
+
 #include <filesystem>
 #include <thread>
 
@@ -331,18 +333,17 @@ auto PluginService::FileSeek(ServerContext*,
   return Status::OK;
 }
 
-static void full_write(int fd, const char* data, size_t size)
-{
-  size_t bytes_written = 0;
-  while (bytes_written < size) {
-    auto res = write(fd, data + bytes_written, size - bytes_written);
-    DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
-             fd, (void*)(data + bytes_written), size - bytes_written, res);
-    if (res <= 0) { break; }
-
-    bytes_written += res;
-  }
-}
+// static void full_write(int fd, const char* data, size_t size)
+// {
+//   size_t bytes_written = 0;
+//   while (bytes_written < size) {
+//     auto res = write(fd, data + bytes_written, size - bytes_written);
+//     DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
+//              fd, (void*)(data + bytes_written), size - bytes_written, res);
+//     if (res <= 0) { break; }
+//     bytes_written += res;
+//   }
+// }
 
 std::optional<int> receive_fd(int unix_socket, int expected_name)
 {
@@ -461,42 +462,20 @@ auto PluginService::FileRead(ServerContext* ctx,
 
   DebugLog(100, FMT_STRING("reading from file {} in {} chunks"),
            current_file->get(), max_size);
-  std::thread{[](int infd, size_t bufsiz, int outfd) {
-                std::vector<char> buffer;
-                buffer.resize(bufsiz);
 
-                for (;;) {
-                  auto res = read(infd, buffer.data(), buffer.size());
+  auto res = sendfile(io, current_file->get(), nullptr, max_size);
 
-                  int64_t size = res;
-                  full_write(outfd, (char*)&size, sizeof(size));
+  if (res < 0) {
+    // we need to abort here since we do not know what data was written to the
+    // socket
+    JobLog(bareos::core::JMsgType::JMSG_FATAL,
+           FMT_STRING("Could not read from fd {}: Err={}"), current_file->get(),
+           strerror(errno));
+    return grpc::Status(grpc::StatusCode::INTERNAL, "Error while reading file");
+  }
 
-                  if (res <= 0) {
-                    break;
-                  } else {
-                    full_write(outfd, buffer.data(), res);
-                  }
-                }
-              },
-              current_file->get(), max_size, io}
-      .detach();
+  response->set_size(res);
 
-
-  // std::string buffer;
-  // buffer.resize(max_size);
-  // auto res = read(current_file->get(), buffer.data(), buffer.size());
-  // DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
-  //          current_file->get(), (void*)buffer.data(), buffer.size(), res);
-
-  // if (res < 0) {
-  //   return Status(grpc::StatusCode::UNKNOWN,
-  //                 fmt::format(FMT_STRING("read returned error {}: Err={}"),
-  //                 res,
-  //                             strerror(errno)));
-  // }
-
-  // buffer.resize(res);
-  // response->set_content(std::move(buffer));
   return Status::OK;
 }
 auto PluginService::FileWrite(ServerContext*,
@@ -541,7 +520,9 @@ auto PluginService::getAcl(ServerContext*,
                            const bp::getAclRequest* request,
                            bp::getAclResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  (void)request;
+  response->mutable_content()->set_data("");
+  return Status::OK;
 }
 auto PluginService::setAcl(ServerContext*,
                            const bp::setAclRequest* request,
@@ -553,7 +534,7 @@ auto PluginService::getXattr(ServerContext*,
                              const bp::getXattrRequest* request,
                              bp::getXattrResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  return Status::OK;
 }
 auto PluginService::setXattr(ServerContext*,
                              const bp::setXattrRequest* request,

@@ -1246,7 +1246,7 @@ class PluginClient {
     return bRC_OK;
   }
 
-  bRC FileRead(char* buffer, size_t size, size_t* num_bytes_read)
+  bRC FileRead(size_t size, size_t* num_bytes_read)
   {
     bp::fileReadRequest req;
     req.set_num_bytes(size);
@@ -1257,20 +1257,17 @@ class PluginClient {
 
     if (!status.ok()) { return bRC_Error; }
 
-    auto& cnt = resp.content();
-    *num_bytes_read = cnt.size();
+    *num_bytes_read = resp.size();
 
     // ASSERT(cnt.size() <= size);
-
-    memcpy(buffer, cnt.data(), cnt.size());
 
     return bRC_OK;
   }
 
-  bRC FileWrite(char* buffer, size_t size, size_t* num_bytes_written)
+  bRC FileWrite(size_t size, size_t* num_bytes_written)
   {
     bp::fileWriteRequest req;
-    req.set_content(buffer, size);
+    req.set_bytes_written(size);
 
     bp::fileWriteResponse resp;
     grpc::ClientContext ctx;
@@ -1498,9 +1495,6 @@ struct grpc_connection_members {
   std::shared_ptr<grpc::Channel> channel;
   std::unique_ptr<grpc::Server> server;
   std::vector<std::unique_ptr<grpc::Service>> services;
-
-  bool reading = false;
-  bool writing = false;
 
   grpc_connection_members() = delete;
 };
@@ -2012,63 +2006,49 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
       return client->FileOpen(pkt->fname, pkt->flags, pkt->mode);
     } break;
     case filedaemon::IO_READ: {
-      // change this: instead just ask the plugin to dump the next chunk
-      // into the stream and we will take care of it then.   Do not do this
-      // threaded alternative
-      if (members->writing) {
-        DebugLog(50, FMT_STRING("cannot read & write at the same time"));
+      size_t bytes_read = 0;
+      auto res = client->FileRead(pkt->count, &bytes_read);
+
+      if (res == bRC_Error) { return res; }
+
+      if ((ssize_t)bytes_read > pkt->count) {
+        JobLog(nullptr, M_FATAL,
+               FMT_STRING(
+                   "plugin wrote to many bytes (wanted = {}, received = {})"),
+               pkt->count, bytes_read);
         return bRC_Error;
-      } else if (!members->reading) {
-        // start reading
-        size_t ignored;
-        auto res = client->FileRead(pkt->buf, pkt->count, &ignored);
-        if (res != bRC_OK) { return res; }
-        members->reading = true;
       }
 
-      int64_t count = 0;
-
-      if (read(iosock, &count, sizeof(count)) < 0) {
+      if (auto num_data = read(iosock, pkt->buf, bytes_read);
+          num_data != (ssize_t)bytes_read) {
         // this should not be happening
-        DebugLog(50, FMT_STRING("could not read packet size. Err={}"),
-                 strerror(errno));
+        JobLog(nullptr, M_FATAL,
+               FMT_STRING(
+                   "could not read file data (read = {}, wanted = {}) Err={}"),
+               num_data, bytes_read, strerror(errno));
         return bRC_Error;
       }
 
-      if (count > pkt->count) {
-        DebugLog(50, FMT_STRING("buffer to small"));
-        return bRC_Error;
-      }
-
-      if (count > 0) {
-        int64_t read_bytes = 0;
-        while (read_bytes < count) {
-          auto res = read(iosock, pkt->buf + read_bytes, count - read_bytes);
-          if (res < 0) {
-            DebugLog(50,
-                     FMT_STRING("could not read data (pos = {}/{}). Err={}"),
-                     read_bytes, count, strerror(errno));
-            return bRC_Error;
-          }
-
-          read_bytes += res;
-        }
-      } else {
-        members->reading = false;
-      }
-
-      pkt->status = count;
+      pkt->status = bytes_read;
       return bRC_OK;
     } break;
     case filedaemon::IO_WRITE: {
-      size_t count = 0;
-      auto res = client->FileWrite(pkt->buf, pkt->count, &count);
-      pkt->status = count;
+      auto num_data = write(iosock, pkt->buf, pkt->count);
+      if (num_data != pkt->count) {
+        // this should not be happening
+        JobLog(
+            nullptr, M_FATAL,
+            FMT_STRING(
+                "could not write file data (written = {}, wanted = {}) Err={}"),
+            num_data, pkt->count, strerror(errno));
+        return bRC_Error;
+      }
+      size_t bytes_written = 0;
+      auto res = client->FileWrite(num_data, &bytes_written);
+      pkt->status = bytes_written;
       return res;
     } break;
     case filedaemon::IO_CLOSE: {
-      members->reading = false;
-      members->writing = false;
       return client->FileClose();
     } break;
     case filedaemon::IO_SEEK: {
