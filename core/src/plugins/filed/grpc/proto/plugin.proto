@@ -49,7 +49,7 @@ message RestorePacket {
   string olname = 10;
   string where = 11;
   string regex_where = 12;
-  int64 replace = 13;
+  bareos.common.ReplaceType replace = 13;
   int32 delta_seq = 14;
 };
 
@@ -96,33 +96,11 @@ message startBackupFileRequest {
   string cmd = 4;
 };
 
-message plugin_object {
-  string name = 1;
-  bytes data = 2;
-  int64 index = 3;
-};
-
-message plugin_file {
-  string file = 1;
-  bytes stats = 2;
-  bareos.common.FileType ft = 3;
-  optional int64 delta_seq = 4;
-
-
-  bool no_read = 5;
-  bool portable = 6; // no idea what this means!
-
-  // these flags change how the data is getting backed up
-  // but neither of them are supported for now
-  bool offset_backup = 7;
-  bool sparse_backup = 8;
-};
-
 message startBackupFileResponse {
   StartBackupFileResult result = 1;
   oneof payload {
-    plugin_object object = 2;
-    plugin_file file = 3;
+    bareos.common.plugin_object object = 2;
+    bareos.common.plugin_file file = 3;
   };
 };
 

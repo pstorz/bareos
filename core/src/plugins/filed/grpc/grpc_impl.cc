@@ -934,9 +934,17 @@ class PluginClient {
         (void)inner;
       } break;
       case filedaemon::bEventRestoreObject: {
+        auto* rop = reinterpret_cast<filedaemon::restore_object_pkt*>(data);
+
         auto* inner = event->mutable_restore_object();
-        // TODO
-        (void)inner;
+        auto* grop = inner->mutable_rop();
+        grop->set_jobid(rop->JobId);
+        // TODO: we need to remove grpc: from this!
+        grop->set_used_cmd_string(rop->plugin_name);
+        auto* sent = grop->mutable_sent();
+        sent->set_index(rop->object_index);
+        sent->set_data(rop->object, rop->object_len);
+        sent->set_name(rop->object_name);
       } break;
       case filedaemon::bEventEndFileSet: {
         auto* inner = event->mutable_end_fileset();
@@ -954,6 +962,8 @@ class PluginClient {
         auto* inner = event->mutable_handle_backup_file();
         // TODO
         (void)inner;
+        DebugLog(50, "handle backup file not supported yet");
+        return bRC_Error;
       } break;
       case filedaemon::bEventNewPluginOptions: {
         auto* inner = event->mutable_new_plugin_options();
@@ -1295,10 +1305,37 @@ class PluginClient {
     return bRC_OK;
   }
 
+  std::optional<bareos::common::ReplaceType> grpc_replace_type(int replace)
+  {
+    switch (replace) {
+      case REPLACE_IFOLDER: {
+        return bareos::common::ReplaceIfOlder;
+      }
+      case REPLACE_IFNEWER: {
+        return bareos::common::ReplaceIfNewer;
+      }
+      case REPLACE_ALWAYS: {
+        return bareos::common::ReplaceAlways;
+      }
+      case REPLACE_NEVER: {
+        return bareos::common::ReplaceNever;
+      }
+    }
+
+    return std::nullopt;
+  }
+
   bRC createFile(filedaemon::restore_pkt* pkt)
   {
     bp::createFileRequest req;
     auto* grpc_pkt = req.mutable_pkt();
+
+    auto replace_type = grpc_replace_type(pkt->replace);
+
+    if (!replace_type) {
+      DebugLog(50, FMT_STRING("got a bad replace value {}"), pkt->replace);
+      return bRC_Error;
+    }
 
     grpc_pkt->set_stream_id(pkt->stream);
     grpc_pkt->set_data_stream(pkt->data_stream);
@@ -1312,7 +1349,7 @@ class PluginClient {
     grpc_pkt->set_olname(pkt->olname);
     grpc_pkt->set_where(pkt->where);
     grpc_pkt->set_regex_where(pkt->RegexWhere);
-    grpc_pkt->set_replace(pkt->replace);
+    grpc_pkt->set_replace(*replace_type);
     grpc_pkt->set_delta_seq(pkt->delta_seq);
 
     bp::createFileResponse resp;

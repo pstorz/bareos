@@ -3,6 +3,7 @@ syntax = "proto3";
 package bareos.plugin.events;
 
 import "google/protobuf/timestamp.proto";
+import "common.proto";
 
 message JobStart {
   string data = 1;
@@ -52,8 +53,20 @@ message Since {
 message CancelCommand {
 };
 
+message RestoreObjectPacket {
+  bareos.common.plugin_object sent = 1; // this was created by the plugin
+
+  string used_cmd_string = 2;
+  int64 jobid = 3;
+};
+
 message RestoreObject {
   // ????
+  RestoreObjectPacket rop = 1;
+
+};
+
+message EndRestoreObject {
 };
 
 message EndFileSet {
@@ -68,6 +81,8 @@ message OptionPlugin {
 
 message HandleBackupFile {
   // ????
+  // this is only used for option plugins and we do not support them at
+  // the moment
 };
 
 message NewPluginOptions {
@@ -124,6 +139,7 @@ message Event {
     Since since = 11;
     CancelCommand cancel_command = 12;
     RestoreObject restore_object = 13;
+    EndRestoreObject end_restore_object = 32;
     EndFileSet end_fileset = 14;
     PluginCommand plugin_command = 15;
     OptionPlugin option_plugin = 16;

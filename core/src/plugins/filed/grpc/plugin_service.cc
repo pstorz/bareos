@@ -43,9 +43,11 @@ auto PluginService::Setup(ServerContext*,
                           bp::SetupResponse*) -> Status
 {
   auto events = std::array{
-      bc::EventType::Event_JobStart, bc::EventType::Event_JobEnd,
-      bc::EventType::Event_BackupCommand, bc::EventType::Event_StartBackupJob,
-      bc::EventType::Event_EndBackupJob};
+      bc::EventType::Event_JobStart,        bc::EventType::Event_JobEnd,
+      bc::EventType::Event_BackupCommand,   bc::EventType::Event_StartBackupJob,
+      bc::EventType::Event_EndBackupJob,    bc::EventType::Event_EndRestoreJob,
+      bc::EventType::Event_StartRestoreJob, bc::EventType::Event_RestoreCommand,
+  };
 
   if (!Register({events.data(), events.size()})) {
     DebugLog(50, FMT_STRING("could not register events!"));
@@ -115,6 +117,8 @@ auto PluginService::handlePluginEvent(
 
     if (std::optional path = Bareos_GetString(bc::BV_ExePath); path) {
       while (path->size() > 0 && path->back() == '/') { path->pop_back(); }
+      *path += "sbin/";
+      // BUG: somehow this does not return the right thing!
       DebugLog(100, FMT_STRING("adding exe path {}"), *path);
       files_to_backup.emplace_back(std::move(*path));
     } else {
@@ -177,19 +181,27 @@ auto PluginService::handlePluginEvent(
 
   return Status::OK;
 }
+
 auto PluginService::startBackupFile(ServerContext*,
                                     const bp::startBackupFileRequest* request,
                                     bp::startBackupFileResponse* response)
     -> Status
 {
-  if (files_to_backup.size() == 0) {
+  if (stack.size() + files_to_backup.size() == 0) {
     DebugLog(100, FMT_STRING("no more files left; we are done"));
     response->set_result(bp::StartBackupFileResult::SBF_Stop);
     return grpc::Status::OK;
   }
 
-  auto file = std::move(files_to_backup.back());
-  files_to_backup.pop_back();
+  if (stack.size() == 0) {
+    auto new_file = std::move(files_to_backup.back());
+    files_to_backup.pop_back();
+    stack.emplace_back(std::move(new_file));
+  }
+
+  auto file = std::move(stack.back());
+  stack.pop_back();
+
   DebugLog(100, FMT_STRING("starting backup of file {}"), file);
 
   struct stat statp;
@@ -211,14 +223,21 @@ auto PluginService::startBackupFile(ServerContext*,
     JobLog(bc::JMSG_INFO, FMT_STRING("directory {}"), file);
     DebugLog(100, FMT_STRING("searching {}"), file);
 
-    for (const auto& entry : fs::directory_iterator(file)) {
-      auto path = entry.path().string();
+    if (file.added_children) {
+    } else {
+      file.added_children = true;
+      auto copy = file.name;
+      stack.emplace_back(std::move(file));
+      for (const auto& entry : fs::directory_iterator(copy)) {
+        auto path = entry.path().string();
 
-      JobLog(bc::JMSG_INFO, FMT_STRING("adding {}"), path);
-      DebugLog(100, FMT_STRING("adding {}"), path);
+        JobLog(bc::JMSG_INFO, FMT_STRING("adding {}"), path);
+        DebugLog(100, FMT_STRING("adding {}"), path);
 
-      files_to_backup.push_back(path);
+        files_to_backup.push_back(path);
+      }
     }
+
   } else if (S_ISLNK(statp.st_mode)) {
     JobLog(bc::JMSG_INFO, FMT_STRING("link {}"), file);
     f->set_ft(bco::FT_LNK);
@@ -258,14 +277,23 @@ auto PluginService::startRestoreFile(ServerContext*,
                                      bp::startRestoreFileResponse* response)
     -> Status
 {
-  return Status::CANCELLED;
+  auto command = request->command();
+  // we currently dont have any reason to care for the command as we dont have
+  // any options that one could set
+
+  JobLog(bareos::core::JMsgType::JMSG_INFO,
+         FMT_STRING("got command for restoring file: {}"), command);
+  DebugLog(100, FMT_STRING("start restore file {}"), command);
+
+  return Status::OK;
 }
 auto PluginService::endRestoreFile(ServerContext*,
                                    const bp::endRestoreFileRequest* request,
                                    bp::endRestoreFileResponse* response)
     -> Status
 {
-  return Status::CANCELLED;
+  DebugLog(100, FMT_STRING("stop restore file"));
+  return Status::OK;
 }
 auto PluginService::FileOpen(ServerContext*,
                              const bp::fileOpenRequest* request,
@@ -338,11 +366,26 @@ auto PluginService::FileSeek(ServerContext*,
 //   size_t bytes_written = 0;
 //   while (bytes_written < size) {
 //     auto res = write(fd, data + bytes_written, size - bytes_written);
-//     DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
+//     DebugLog(100, FMT_STRING("write(fd = {}, buffer = {}, count = {}) ->
+//     {}"),
 //              fd, (void*)(data + bytes_written), size - bytes_written, res);
 //     if (res <= 0) { break; }
 //     bytes_written += res;
 //   }
+// }
+
+// static bool full_read(int fd, char* data, size_t size)
+// {
+//   size_t bytes_read = 0;
+//   while (bytes_read < size) {
+//     auto res = read(fd, data + bytes_read, size - bytes_read);
+//     DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
+//              fd, (void*)(data + bytes_read), size - bytes_read, res);
+//     if (res < 0) { return false; }
+//     if (res == 0) { break; }
+//     bytes_read += res;
+//   }
+//   return true;
 // }
 
 std::optional<int> receive_fd(int unix_socket, int expected_name)
@@ -450,8 +493,6 @@ auto PluginService::FileRead(ServerContext* ctx,
                              const bp::fileReadRequest* request,
                              bp::fileReadResponse* response) -> Status
 {
-  // GRPC_COMPRESS_LEVEL_MED,
-  // GRPC_COMPRESS_LEVEL_HIGH,
   if (!current_file) {
     DebugLog(50, FMT_STRING("trying to read file while it is not open"));
     return Status(grpc::StatusCode::FAILED_PRECONDITION,
@@ -469,8 +510,8 @@ auto PluginService::FileRead(ServerContext* ctx,
     // we need to abort here since we do not know what data was written to the
     // socket
     JobLog(bareos::core::JMsgType::JMSG_FATAL,
-           FMT_STRING("Could not read from fd {}: Err={}"), current_file->get(),
-           strerror(errno));
+           FMT_STRING("Could not send chunk from {} to {}: Err={}"),
+           current_file->get(), io, strerror(errno));
     return grpc::Status(grpc::StatusCode::INTERNAL, "Error while reading file");
   }
 
@@ -482,6 +523,37 @@ auto PluginService::FileWrite(ServerContext*,
                               const bp::fileWriteRequest* request,
                               bp::fileWriteResponse* response) -> Status
 {
+  if (!current_file) {
+    DebugLog(50, FMT_STRING("trying to read file while it is not open"));
+    return Status(grpc::StatusCode::FAILED_PRECONDITION,
+                  "there is no open file");
+  }
+
+  auto num_bytes = request->bytes_written();
+
+  auto togo = num_bytes;
+
+  while (togo > 0) {
+    auto res = sendfile(current_file->get(), io, nullptr, togo);
+    if (res < 0) {
+      JobLog(bareos::core::JMsgType::JMSG_FATAL,
+             FMT_STRING("Could not send chunk from {} to {}: Err={}"), io,
+             current_file->get(), strerror(errno));
+      return grpc::Status(grpc::StatusCode::INTERNAL,
+                          "Error while writing file");
+    }
+
+    if (res > (ssize_t)togo) {
+      JobLog(bareos::core::JMsgType::JMSG_FATAL,
+             FMT_STRING(
+                 "read {} bytes from {} to {}, but only at most {} expected"),
+             res, io, current_file->get(), togo);
+      return grpc::Status(grpc::StatusCode::INTERNAL,
+                          "Error while writing file");
+    }
+    togo -= res;
+  }
+
   return Status::CANCELLED;
 }
 auto PluginService::FileClose(ServerContext*,
@@ -501,7 +573,18 @@ auto PluginService::createFile(ServerContext*,
                                const bp::createFileRequest* request,
                                bp::createFileResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  auto& pkt = request->pkt();
+
+
+  JobLog(
+      bareos::core::JMsgType::JMSG_INFO,
+      FMT_STRING("{{ofname = {}, olname = {}, where = {}, regexwhere = {}}}"),
+      pkt.ofname(), pkt.olname(), pkt.where(), pkt.regex_where());
+
+
+  response->set_status(bareos::plugin::CF_Core);
+
+  return Status::OK;
 }
 auto PluginService::setFileAttributes(
     ServerContext*,

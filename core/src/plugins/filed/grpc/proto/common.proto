@@ -38,3 +38,33 @@ enum FileType {
   FT_PLUGIN_CONFIG_FILLED = 28; /**< Object for Plugin configuration filled by
                                      Director */
 };
+
+message plugin_object {
+  bytes name = 1;
+  bytes data = 2;
+  int64 index = 3;
+};
+
+message plugin_file {
+  string file = 1;
+  bytes stats = 2;
+  FileType ft = 3;
+  optional int64 delta_seq = 4;
+
+
+  bool no_read = 5;
+  bool portable = 6; // no idea what this means!
+
+  // these flags change how the data is getting backed up
+  // but neither of them are supported for now
+  bool offset_backup = 7;
+  bool sparse_backup = 8;
+};
+
+enum ReplaceType {
+  REPLACE_TYPE_UNSPECIFIED = 0;
+  ReplaceIfNewer = 1;
+  ReplaceIfOlder = 2;
+  ReplaceNever = 3;
+  ReplaceAlways = 4;
+};

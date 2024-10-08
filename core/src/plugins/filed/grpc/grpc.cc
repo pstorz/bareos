@@ -192,6 +192,15 @@ bRC newPlugin(PluginContext* ctx)
    * at the moment we have no idea which plugin to start! */
 
   RegisterBareosEvent(ctx, filedaemon::bEventPluginCommand);
+  RegisterBareosEvent(ctx, filedaemon::bEventLevel);
+  RegisterBareosEvent(ctx, filedaemon::bEventSince);
+  RegisterBareosEvent(ctx, filedaemon::bEventNewPluginOptions);
+  RegisterBareosEvent(ctx, filedaemon::bEventPluginCommand);
+  RegisterBareosEvent(ctx, filedaemon::bEventJobStart);
+  RegisterBareosEvent(ctx, filedaemon::bEventRestoreCommand);
+  RegisterBareosEvent(ctx, filedaemon::bEventEstimateCommand);
+  RegisterBareosEvent(ctx, filedaemon::bEventBackupCommand);
+  RegisterBareosEvent(ctx, filedaemon::bEventRestoreObject);
 
   return bRC_OK;
 }
@@ -229,6 +238,25 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
     case bEventPluginCommand: {
       if (!plugin->setup(ctx, data)) { return bRC_Error; }
 
+
+      DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
+               plugin->cmd);
+      // we do not want to give "grpc:" to the plugin
+      return plugin->child->con.handlePluginEvent(bEventPluginCommand,
+                                                  (void*)plugin->cmd.c_str());
+    } break;
+    case bEventRestoreCommand: {
+      if (!plugin->setup(ctx, data)) { return bRC_Error; }
+
+
+      DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
+               plugin->cmd);
+      // we do not want to give "grpc:" to the plugin
+      return plugin->child->con.handlePluginEvent(bEventPluginCommand,
+                                                  (void*)plugin->cmd.c_str());
+    } break;
+    case bEventNewPluginOptions: {
+      if (!plugin->setup(ctx, data)) { return bRC_Error; }
 
       DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
                plugin->cmd);

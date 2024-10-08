@@ -22,6 +22,7 @@
 #ifndef BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_H_
 #define BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_H_
 
+#include <sys/stat.h>
 #include <optional>
 #include "plugin.grpc.pb.h"
 #include "plugin.pb.h"
@@ -124,6 +125,17 @@ class PluginService : public bp::Plugin::Service {
 
 
   std::vector<std::string> files_to_backup{};
+
+ public:
+  struct prepared_file {
+    std::string name;
+    bool added_children{false};
+    prepared_file() = default;
+    prepared_file(std::string name_) : name{name_} { lstat(name.c_str(), &s); }
+  };
+
+ private:
+  std::vector<prepared_file> stack{};
   std::optional<raii_fd> current_file{};
 
 
