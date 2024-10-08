@@ -101,45 +101,50 @@ struct plugin_ctx {
 
     DebugLog(100, FMT_STRING("found name = {}"), name);
 
-    {
-      std::string kv;
+    // TODO: we probably want to allow some options for the grpc plugin itself
+    //       as well.  Maybe the separator could be :: ? I.e.
+    //       grpc:opt=val:opt=val::child:childopt=val:childopt=val:...
+    cmd = options_string;
+    // {
+    //   std::string kv;
 
-      while (kv.clear(), next_section(options_string, kv, ':')) {
-        auto eq = kv.find_first_of("=");
+    //   while (kv.clear(), next_section(options_string, kv, ':')) {
+    //     auto eq = kv.find_first_of("=");
 
-        if (eq == kv.npos) {
-          DebugLog(50, FMT_STRING("kv pair '{}' does not contain '='"), kv);
-          return false;
-        }
+    //     if (eq == kv.npos) {
+    //       DebugLog(50, FMT_STRING("kv pair '{}' does not contain '='"), kv);
+    //       return false;
+    //     }
 
-        std::string_view key = std::string_view{kv}.substr(0, eq);
-        std::string_view value = std::string_view{kv}.substr(eq + 1);
+    //     std::string_view key = std::string_view{kv}.substr(0, eq);
+    //     std::string_view value = std::string_view{kv}.substr(eq + 1);
 
-        if (key.size() == 0) {
-          DebugLog(50, FMT_STRING("kv pair '{}' does not contain a key"), kv);
-          return false;
-        }
+    //     if (key.size() == 0) {
+    //       DebugLog(50, FMT_STRING("kv pair '{}' does not contain a key"),
+    //       kv); return false;
+    //     }
 
-        if (value.size() == 0) {
-          DebugLog(
-              50,
-              FMT_STRING("kv pair '{}' does not contain a value (key = {})"),
-              kv, key);
-          return false;
-        }
+    //     if (value.size() == 0) {
+    //       DebugLog(
+    //           50,
+    //           FMT_STRING("kv pair '{}' does not contain a value (key = {})"),
+    //           kv, key);
+    //       return false;
+    //     }
 
-        DebugLog(100, FMT_STRING("{} => {}"), key, value);
+    //     DebugLog(100, FMT_STRING("{} => {}"), key, value);
 
-        options.emplace_back(key, value);
-      }
+    //     options.emplace_back(key, value);
+    //   }
 
-      if (options_string.size() > 0) {
-        // we stopped prematurely for some reason, so just refuse to continue!
-        DebugLog(50, FMT_STRING("premature exit detected"), options_string);
+    //   if (options_string.size() > 0) {
+    //     // we stopped prematurely for some reason, so just refuse to
+    //     continue! DebugLog(50, FMT_STRING("premature exit detected"),
+    //     options_string);
 
-        return false;
-      }
-    }
+    //     return false;
+    //   }
+    // }
 
     std::optional opath = bVar::Get<bVar::PluginPath>(nullptr);
     if (!opath) {
@@ -165,10 +170,10 @@ struct plugin_ctx {
 
 
  public:
-  using option = std::pair<std::string, std::string>;
+  // using option = std::pair<std::string, std::string>;
 
   std::string name;
-  std::vector<option> options;
+  std::string cmd;
 
   std::optional<grpc_child> child;
 };
@@ -223,6 +228,13 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
     using namespace filedaemon;
     case bEventPluginCommand: {
       if (!plugin->setup(ctx, data)) { return bRC_Error; }
+
+
+      DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
+               plugin->cmd);
+      // we do not want to give "grpc:" to the plugin
+      return plugin->child->con.handlePluginEvent(bEventPluginCommand,
+                                                  (void*)plugin->cmd.c_str());
     } break;
     default: {
       if (plugin->needs_setup()) {
