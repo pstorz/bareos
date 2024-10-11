@@ -1096,9 +1096,56 @@ class PluginClient {
             free(pkt->link);
             pkt->link = nullptr;
           }
-          pkt->fname = strdup(file.file().c_str());
-          // TODO: fix this
-          pkt->link = strdup(file.file().c_str());
+
+          switch (file.ft()) {
+            case bareos::common::FT_LNKSAVED:
+            case bareos::common::FT_REGE:
+            case bareos::common::FT_REG:
+            case bareos::common::FT_SPEC:
+            case bareos::common::FT_ISARCH:
+            case bareos::common::FT_RAW:
+            case bareos::common::FT_FIFO:
+            case bareos::common::FT_REPARSE:
+            case bareos::common::FT_DELETED:
+            case bareos::common::FT_BASE:
+            case bareos::common::FT_JUNCTION: {
+              pkt->fname = strdup(file.file().c_str());
+              pkt->link = nullptr;
+            } break;
+            case bareos::common::FT_LNK: {
+              pkt->fname = strdup(file.file().c_str());
+              // todo: fix this
+              pkt->link = strdup(file.file().c_str());
+            } break;
+            case bareos::common::FT_DIREND: {
+              pkt->fname = strdup(file.file().c_str());
+              // todo: fix this
+              auto path = file.file();
+              path += "/";
+              pkt->link = strdup(path.c_str());
+            } break;
+
+            case bareos::common::FT_NORECURSE:
+            case bareos::common::FT_PLUGIN:
+            case bareos::common::FT_RESTORE_FIRST:
+            case bareos::common::FT_PLUGIN_CONFIG:
+            case bareos::common::FT_PLUGIN_CONFIG_FILLED:
+            case bareos::common::FT_NOFSCHG:
+            case bareos::common::FT_NOOPEN:
+            case bareos::common::FT_NOACCESS:
+            case bareos::common::FT_NOFOLLOW:
+            case bareos::common::FT_NOSTAT:
+            case bareos::common::FT_NOCHG:
+            case bareos::common::FT_DIRNOCHG:
+            case bareos::common::FT_DIRBEGIN:
+            case bareos::common::FT_INVALIDFS:
+            case bareos::common::FT_INVALIDDT:
+            default: {
+              DebugLog(50, FMT_STRING("bad filetype {} ({})"),
+                       bco::FileType_Name(file.ft()), int(file.ft()));
+              return bRC_Error;
+            } break;
+          }
           memcpy(&pkt->statp, file.stats().data(), file.stats().size());
           pkt->type = *ft;
           pkt->no_read = file.no_read();
