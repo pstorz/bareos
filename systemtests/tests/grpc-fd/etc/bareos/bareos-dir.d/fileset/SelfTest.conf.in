@@ -19,6 +19,6 @@ FileSet {
       fstype = btrfs
       fstype = vfat
     }
-    Plugin = "grpc:grpc-test-module:opt1=1:opt2=2"
+    Plugin = "grpc:grpc-test-module:file=@tmpdir@/data"
   }
 }

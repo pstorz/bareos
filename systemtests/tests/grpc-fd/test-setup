@@ -34,6 +34,9 @@ set -u
 # Fill ${BackupDirectory} with data.
 setup_data
 
+rm "${tmp}/data/weird-files/fifo"
+rm "${tmp}/data/weird-files/fifo-file"
+
 bin/bareos start
 bin/bareos status
 
