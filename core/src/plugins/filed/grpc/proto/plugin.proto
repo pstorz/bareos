@@ -47,8 +47,8 @@ message RestorePacket {
   string extended_attributes = 8;
   string ofname = 9;
   string olname = 10;
-  string where = 11;
-  string regex_where = 12;
+  optional string where = 11;
+  optional string regex_where = 12;
   bareos.common.ReplaceType replace = 13;
   int32 delta_seq = 14;
 };

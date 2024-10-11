@@ -1394,8 +1394,8 @@ class PluginClient {
     grpc_pkt->set_extended_attributes(pkt->attrEx);
     grpc_pkt->set_ofname(pkt->ofname);
     grpc_pkt->set_olname(pkt->olname);
-    grpc_pkt->set_where(pkt->where);
-    grpc_pkt->set_regex_where(pkt->RegexWhere);
+    if (pkt->where) { grpc_pkt->set_where(pkt->where); }
+    if (pkt->RegexWhere) { grpc_pkt->set_regex_where(pkt->RegexWhere); }
     grpc_pkt->set_replace(*replace_type);
     grpc_pkt->set_delta_seq(pkt->delta_seq);
 
