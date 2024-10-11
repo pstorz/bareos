@@ -123,19 +123,25 @@ class PluginService : public bp::Plugin::Service {
                   const bp::setXattrRequest* request,
                   bp::setXattrResponse* response) override;
 
-
-  std::vector<std::string> files_to_backup{};
-
  public:
   struct prepared_file {
     std::string name;
     bool added_children{false};
+    struct stat s;
+    bool ok{false};
     prepared_file() = default;
-    prepared_file(std::string name_) : name{name_} { lstat(name.c_str(), &s); }
+    prepared_file(std::string name_) : name{name_}
+    {
+      ok = lstat(name.c_str(), &s) >= 0;
+    }
+
+    bool isdir() const { return ok && S_ISDIR(s.st_mode); }
+    bool islnk() const { return ok && S_ISLNK(s.st_mode); }
   };
 
+
  private:
-  std::vector<prepared_file> stack{};
+  std::vector<prepared_file> files_to_backup{};
   std::optional<raii_fd> current_file{};
 
 

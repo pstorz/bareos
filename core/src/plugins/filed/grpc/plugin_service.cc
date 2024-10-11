@@ -187,69 +187,66 @@ auto PluginService::startBackupFile(ServerContext*,
                                     bp::startBackupFileResponse* response)
     -> Status
 {
-  if (stack.size() + files_to_backup.size() == 0) {
+  if (files_to_backup.size() == 0) {
     DebugLog(100, FMT_STRING("no more files left; we are done"));
     response->set_result(bp::StartBackupFileResult::SBF_Stop);
     return grpc::Status::OK;
   }
 
-  if (stack.size() == 0) {
-    auto new_file = std::move(files_to_backup.back());
-    files_to_backup.pop_back();
-    stack.emplace_back(std::move(new_file));
+  for (;;) {
+    auto& candidate = files_to_backup.back();
+    if (!candidate.isdir() || candidate.added_children) {
+      // we can use this candidate
+      break;
+    }
+
+    // at this point we know that 'candidate' is a directory and
+    // we have yet to inspect its children
+
+    candidate.added_children = true;
+
+    DebugLog(100, FMT_STRING("searching {}"), candidate.name);
+
+    namespace fs = std::filesystem;
+    for (const auto& entry : fs::directory_iterator(candidate.name)) {
+      auto path = entry.path().string();
+
+      DebugLog(100, FMT_STRING("adding {}"), path);
+
+      files_to_backup.emplace_back(path);
+    }
   }
 
-  auto file = std::move(stack.back());
-  stack.pop_back();
+  auto file = std::move(files_to_backup.back());
+  files_to_backup.pop_back();
 
-  DebugLog(100, FMT_STRING("starting backup of file {}"), file);
+  JobLog(bc::JMSG_INFO, FMT_STRING("starting backup of file {}"), file.name);
 
-  struct stat statp;
-  if (lstat(file.c_str(), &statp) < 0) {
-    DebugLog(100, FMT_STRING("could not stat {}"), file);
+  if (!file.ok) {
+    JobLog(bc::JMSG_ERROR, FMT_STRING("could not stat {}"), file.name);
     response->set_result(bp::StartBackupFileResult::SBF_Skip);
     return grpc::Status::OK;
   }
 
   auto* f = response->mutable_file();
-  f->set_stats(&statp, sizeof(statp));
+  f->set_stats(&file.s, sizeof(file.s));
   f->set_delta_seq(0);
-  if (S_ISDIR(statp.st_mode)) {
+  if (file.isdir()) {
     f->set_ft(bco::FT_DIREND);
     f->set_no_read(true);
-
-    namespace fs = std::filesystem;
-
-    JobLog(bc::JMSG_INFO, FMT_STRING("directory {}"), file);
-    DebugLog(100, FMT_STRING("searching {}"), file);
-
-    if (file.added_children) {
-    } else {
-      file.added_children = true;
-      auto copy = file.name;
-      stack.emplace_back(std::move(file));
-      for (const auto& entry : fs::directory_iterator(copy)) {
-        auto path = entry.path().string();
-
-        JobLog(bc::JMSG_INFO, FMT_STRING("adding {}"), path);
-        DebugLog(100, FMT_STRING("adding {}"), path);
-
-        files_to_backup.push_back(path);
-      }
-    }
-
-  } else if (S_ISLNK(statp.st_mode)) {
-    JobLog(bc::JMSG_INFO, FMT_STRING("link {}"), file);
+    DebugLog(100, FMT_STRING("{} is a directory"), file.name);
+  } else if (file.islnk()) {
+    DebugLog(100, FMT_STRING("{} is a link"), file.name);
     f->set_ft(bco::FT_LNK);
     f->set_no_read(true);
   } else {
-    JobLog(bc::JMSG_INFO, FMT_STRING("file {} (mode = {}, {}, {})"), file,
-           statp.st_mode, statp.st_mode & S_IFMT, S_IFLNK);
+    DebugLog(100, FMT_STRING("{} is a file (mode = {}, {}, {})"), file.name,
+             file.s.st_mode, file.s.st_mode & S_IFMT, S_IFLNK);
     f->set_ft(bco::FT_REG);
     f->set_no_read(false);
   }
   f->set_portable(true);  // default value
-  f->set_file(std::move(file));
+  f->set_file(std::move(file.name));
 
   response->set_result(bp::SBF_OK);
 
