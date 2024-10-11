@@ -38,6 +38,8 @@
 #include <sys/poll.h>
 #include <sys/wait.h>
 
+#include <aio.h>
+
 #include "bareos_api.h"
 
 #include "include/filetypes.h"
@@ -2125,19 +2127,67 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
       return bRC_OK;
     } break;
     case filedaemon::IO_WRITE: {
-      auto num_data = write(iosock, pkt->buf, pkt->count);
-      if (num_data != pkt->count) {
-        // this should not be happening
+      DebugLog(100, FMT_STRING("writing {} bytes into socket"), pkt->count);
+
+
+      struct aiocb control = {};
+      control.aio_fildes = iosock;
+      control.aio_buf = pkt->buf;
+      control.aio_nbytes = pkt->count;
+
+      if (aio_write(&control) < 0) {
+        JobLog(nullptr, M_FATAL,
+               FMT_STRING("could not request async io: Err={}"),
+               strerror(errno));
+      }
+
+      size_t bytes_written = 0;
+      auto res = client->FileWrite(pkt->count, &bytes_written);
+      if (res == bRC_Error) {
+        aio_cancel(control.aio_fildes, &control);
+        return res;
+      }
+      pkt->status = bytes_written;
+      DebugLog(100, FMT_STRING("{} bytes were read from socket"), pkt->status);
+
+      struct aiocb* arr[] = {&control};
+
+      for (;;) {
+        auto aio_res = aio_error(&control);
+        if (aio_res == EINPROGRESS) {
+          if (aio_suspend(arr, 1, NULL) < 0) {
+            JobLog(nullptr, M_FATAL,
+                   FMT_STRING("could not wait for async io: Err={}"),
+                   strerror(errno));
+          }
+        } else {
+          if (aio_res < 0) {
+            JobLog(nullptr, M_FATAL, FMT_STRING("async io call error: {}"),
+                   -aio_res);
+            pkt->status = -1;
+            return bRC_Error;
+          } else if (aio_res > 0) {
+            JobLog(nullptr, M_FATAL, FMT_STRING("async io error: Err={}"),
+                   strerror(aio_res));
+
+            errno = aio_res;
+            pkt->status = -1;
+            return bRC_Error;
+          }
+          break;
+        }
+      }
+
+      int num_bytes = aio_return(&control);
+
+      if (num_bytes != (int)bytes_written) {
         JobLog(
             nullptr, M_FATAL,
             FMT_STRING(
                 "could not write file data (written = {}, wanted = {}) Err={}"),
-            num_data, pkt->count, strerror(errno));
-        return bRC_Error;
+            num_bytes, pkt->count, strerror(errno));
       }
-      size_t bytes_written = 0;
-      auto res = client->FileWrite(num_data, &bytes_written);
-      pkt->status = bytes_written;
+
       return res;
     } break;
     case filedaemon::IO_CLOSE: {
