@@ -1312,7 +1312,11 @@ class PluginClient {
     grpc::ClientContext ctx;
     grpc::Status status = stub_->FileRead(&ctx, req, &resp);
 
-    if (!status.ok()) { return bRC_Error; }
+    if (!status.ok()) {
+      DebugLog(50, FMT_STRING("file write error {}: {}"),
+               int(status.error_code()), status.error_message());
+      return bRC_Error;
+    }
 
     *num_bytes_read = resp.size();
 
@@ -1330,7 +1334,11 @@ class PluginClient {
     grpc::ClientContext ctx;
     grpc::Status status = stub_->FileWrite(&ctx, req, &resp);
 
-    if (!status.ok()) { return bRC_Error; }
+    if (!status.ok()) {
+      DebugLog(50, FMT_STRING("file write error {}: {}"),
+               int(status.error_code()), status.error_message());
+      return bRC_Error;
+    }
 
     *num_bytes_written = resp.bytes_written();
 

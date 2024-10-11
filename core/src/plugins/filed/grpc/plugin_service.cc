@@ -175,8 +175,10 @@ auto PluginService::handlePluginEvent(
   }
 
   if (response->res() == bp::RETURN_CODE_UNSPECIFIED) {
-    return Status(grpc::StatusCode::UNIMPLEMENTED,
-                  "i lied about handling this particular event");
+    std::string emsg = fmt::format(FMT_STRING("i lied about handling event {}"),
+                                   int(event.event_case()));
+
+    return Status(grpc::StatusCode::UNIMPLEMENTED, emsg);
   }
 
   return Status::OK;
