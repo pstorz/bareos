@@ -429,32 +429,32 @@ auto PluginService::FileSeek(ServerContext*,
   return Status::OK;
 }
 
-// static void full_write(int fd, const char* data, size_t size)
-// {
-//   size_t bytes_written = 0;
-//   while (bytes_written < size) {
-//     auto res = write(fd, data + bytes_written, size - bytes_written);
-//     DebugLog(100, FMT_STRING("write(fd = {}, buffer = {}, count = {}) ->
-//     {}"),
-//              fd, (void*)(data + bytes_written), size - bytes_written, res);
-//     if (res <= 0) { break; }
-//     bytes_written += res;
-//   }
-// }
+static bool full_write(int fd, const char* data, size_t size)
+{
+  size_t bytes_written = 0;
+  while (bytes_written < size) {
+    auto res = write(fd, data + bytes_written, size - bytes_written);
+    DebugLog(100, FMT_STRING("write(fd = {}, buffer = {}, count = {}) -> {}"),
+             fd, (void*)(data + bytes_written), size - bytes_written, res);
+    if (res < 0) { return false; }
+    bytes_written += res;
+  }
 
-// static bool full_read(int fd, char* data, size_t size)
-// {
-//   size_t bytes_read = 0;
-//   while (bytes_read < size) {
-//     auto res = read(fd, data + bytes_read, size - bytes_read);
-//     DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
-//              fd, (void*)(data + bytes_read), size - bytes_read, res);
-//     if (res < 0) { return false; }
-//     if (res == 0) { break; }
-//     bytes_read += res;
-//   }
-//   return true;
-// }
+  return true;
+}
+
+static bool full_read(int fd, char* data, size_t size)
+{
+  size_t bytes_read = 0;
+  while (bytes_read < size) {
+    auto res = read(fd, data + bytes_read, size - bytes_read);
+    DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
+             fd, (void*)(data + bytes_read), size - bytes_read, res);
+    if (res < 0) { return false; }
+    bytes_read += res;
+  }
+  return true;
+}
 
 std::optional<int> receive_fd(int unix_socket, int expected_name)
 {
@@ -601,28 +601,36 @@ auto PluginService::FileWrite(ServerContext*,
 
   auto togo = num_bytes;
 
+  std::vector<char> buffer;
+  buffer.resize(64 * 1024);
+
+
   while (togo > 0) {
-    auto res = sendfile(current_file->get(), io, nullptr, togo);
-    if (res < 0) {
+    // we cannot use sendfile here as the infd needs to be mmapable,
+    // which a socket is not
+    auto chunk_size = std::min(togo, buffer.size());
+
+    if (!full_read(io, buffer.data(), chunk_size)) {
       JobLog(bareos::core::JMsgType::JMSG_FATAL,
-             FMT_STRING("Could not send chunk from {} to {}: Err={}"), io,
+             FMT_STRING("Could not read {} bytes from {}: Err={}"), chunk_size,
+             io, strerror(errno));
+      return grpc::Status(grpc::StatusCode::INTERNAL,
+                          "Error while reading chunk");
+    }
+
+    if (!full_write(current_file->get(), buffer.data(), chunk_size)) {
+      JobLog(bareos::core::JMsgType::JMSG_FATAL,
+             FMT_STRING("Could not write {} bytes to {}: Err={}"), chunk_size,
              current_file->get(), strerror(errno));
       return grpc::Status(grpc::StatusCode::INTERNAL,
-                          "Error while writing file");
+                          "Error while writing chunk");
     }
 
-    if (res > (ssize_t)togo) {
-      JobLog(bareos::core::JMsgType::JMSG_FATAL,
-             FMT_STRING(
-                 "read {} bytes from {} to {}, but only at most {} expected"),
-             res, io, current_file->get(), togo);
-      return grpc::Status(grpc::StatusCode::INTERNAL,
-                          "Error while writing file");
-    }
-    togo -= res;
+    togo -= chunk_size;
   }
 
-  return Status::CANCELLED;
+  response->set_bytes_written(num_bytes - togo);
+  return Status::OK;
 }
 auto PluginService::FileClose(ServerContext*,
                               const bp::fileCloseRequest* request,
