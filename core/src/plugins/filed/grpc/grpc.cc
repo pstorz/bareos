@@ -70,6 +70,51 @@ bool next_section(std::string_view& input, std::string& output, char delimiter)
 
 
 struct plugin_ctx {
+  bool re_setup(PluginContext* bareos_ctx, const void* data)
+  {
+    if (needs_setup()) { return setup(bareos_ctx, data); }
+
+    if (!bareos_ctx || !data) { return false; }
+
+    std::string_view options_string{(const char*)data};
+
+    std::string new_plugin_name{};
+
+    if (!next_section(options_string, new_plugin_name, ':')) {
+      DebugLog(50, FMT_STRING("could not parse plugin name in {}"),
+               options_string);
+      return false;
+    }
+
+    if (new_plugin_name != std::string_view{"grpc"}) {
+      DebugLog(50, FMT_STRING("wrong plugin name ({}) supplied"),
+               new_plugin_name);
+      return false;
+    }
+
+
+    if (!next_section(options_string, name, ':')) {
+      DebugLog(50, FMT_STRING("could not parse name in {}"), options_string);
+      return false;
+    }
+
+    DebugLog(100, FMT_STRING("found name = {}"), name);
+
+    // TODO: we probably want to allow some options for the grpc plugin itself
+    //       as well.  Maybe the separator could be :: ? I.e.
+    //       grpc:opt=val:opt=val::child:childopt=val:childopt=val:...
+    cmd = options_string;
+
+    if (new_plugin_name != plugin_name) {
+      DebugLog(50, FMT_STRING("not same name ({} != {}) supplied"), plugin_name,
+               new_plugin_name);
+      return false;
+    }
+
+    return true;
+  }
+
+
   bool setup(PluginContext* bareos_ctx, const void* data)
   {
     if (!bareos_ctx || !data) { return false; }
@@ -79,8 +124,6 @@ struct plugin_ctx {
     // we expect options_string to be a ':'-delimited list of kv pairs;
     // the first "pair" is just the name of the plugin that we are supposed
     // to load.
-
-    std::string plugin_name{};
 
     if (!next_section(options_string, plugin_name, ':')) {
       DebugLog(50, FMT_STRING("could not parse plugin name in {}"),
@@ -174,6 +217,7 @@ struct plugin_ctx {
 
   std::string name;
   std::string cmd;
+  std::string plugin_name;
 
   std::optional<grpc_child> child;
 };
@@ -246,7 +290,7 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
                                                   (void*)plugin->cmd.c_str());
     } break;
     case bEventRestoreCommand: {
-      if (!plugin->setup(ctx, data)) { return bRC_Error; }
+      if (!plugin->re_setup(ctx, data)) { return bRC_Error; }
 
 
       DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
@@ -256,7 +300,7 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
                                                   (void*)plugin->cmd.c_str());
     } break;
     case bEventNewPluginOptions: {
-      if (!plugin->setup(ctx, data)) { return bRC_Error; }
+      if (!plugin->re_setup(ctx, data)) { return bRC_Error; }
 
       DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
                plugin->cmd);
