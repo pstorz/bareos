@@ -1151,7 +1151,7 @@ class PluginClient {
           pkt->no_read = file.no_read();
           pkt->portable = file.portable();
 
-          if (file.has_delta_seq()) {
+          if (file.has_delta_seq() && file.delta_seq() != 0) {
             SetBit(FO_DELTA, pkt->flags);
             pkt->delta_seq = file.delta_seq();
           } else {

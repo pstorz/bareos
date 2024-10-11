@@ -232,7 +232,7 @@ auto PluginService::startBackupFile(ServerContext*,
 
   auto* f = response->mutable_file();
   f->set_stats(&file.s, sizeof(file.s));
-  f->set_delta_seq(0);
+  // f->set_delta_seq(0);
   if (file.isdir()) {
     f->set_ft(bco::FT_DIREND);
     f->set_no_read(true);
