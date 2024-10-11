@@ -123,6 +123,8 @@ class PluginService : public bp::Plugin::Service {
                   const bp::setXattrRequest* request,
                   bp::setXattrResponse* response) override;
 
+  bool handle_arguments(std::string_view argstring);
+
  public:
   struct prepared_file {
     std::string name;

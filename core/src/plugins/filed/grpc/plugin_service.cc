@@ -43,10 +43,11 @@ auto PluginService::Setup(ServerContext*,
                           bp::SetupResponse*) -> Status
 {
   auto events = std::array{
-      bc::EventType::Event_JobStart,        bc::EventType::Event_JobEnd,
-      bc::EventType::Event_BackupCommand,   bc::EventType::Event_StartBackupJob,
-      bc::EventType::Event_EndBackupJob,    bc::EventType::Event_EndRestoreJob,
-      bc::EventType::Event_StartRestoreJob, bc::EventType::Event_RestoreCommand,
+      bc::EventType::Event_JobStart,       bc::EventType::Event_JobEnd,
+      bc::EventType::Event_PluginCommand,  bc::EventType::Event_BackupCommand,
+      bc::EventType::Event_StartBackupJob, bc::EventType::Event_EndBackupJob,
+      bc::EventType::Event_EndRestoreJob,  bc::EventType::Event_StartRestoreJob,
+      bc::EventType::Event_RestoreCommand,
   };
 
   if (!Register({events.data(), events.size()})) {
@@ -55,6 +56,83 @@ auto PluginService::Setup(ServerContext*,
     DebugLog(100, FMT_STRING("managed to register my events!"));
   }
   return Status::OK;
+}
+
+struct PluginArgParser {
+  PluginArgParser(std::string_view s) : base{s} {}
+
+  struct iter {
+    iter() = default;
+    iter(std::string_view base_) : base{base_} { find_next(); }
+
+    void find_next()
+    {
+      // move to end of current key-value pair
+      base = base.substr(next);
+
+      auto pos = base.find_first_of(":");
+
+      auto kv = base.substr(0, pos);
+
+      // mark end of current key-value pair
+      if (pos == base.npos) {
+        next = base.size();
+      } else {
+        next = pos + 1;
+      }
+
+      DebugLog(100, FMT_STRING("kv = {}, base = {}"), kv, base);
+
+      auto eq_pos = kv.find_first_of("=");
+
+      std::string_view key_view = kv.substr(0, eq_pos);
+      std::string_view val_view
+          = (eq_pos == kv.npos) ? std::string_view{} : kv.substr(eq_pos + 1);
+
+      key = std::string(key_view);
+      val = std::string(val_view);
+    }
+
+    iter& operator++()
+    {
+      find_next();
+      return *this;
+    }
+
+    std::pair<std::string, std::string> operator*() { return {key, val}; }
+
+    friend bool operator!=(const iter& left, const iter& right)
+    {
+      return left.base.data() != right.base.data()
+             || left.base.size() != right.base.size();
+    }
+
+    std::string key{};
+    std::string val{};
+    std::size_t next{};
+    std::string_view base{};
+  };
+
+  iter begin() { return iter{base}; }
+  iter end() { return iter{base.substr(base.size())}; }
+
+  std::string_view base;
+};
+
+
+bool PluginService::handle_arguments(std::string_view args)
+{
+  for (auto [k, v] : PluginArgParser(args)) {
+    if (k == "file") {
+      files_to_backup.emplace_back(std::move(v));
+    } else {
+      JobLog(bc::JMSG_ERROR, FMT_STRING("unknown option {} with value {}"), k,
+             v);
+    }
+  }
+
+
+  return true;
 }
 
 auto PluginService::handlePluginEvent(
@@ -100,10 +178,20 @@ auto PluginService::handlePluginEvent(
     auto& inner = event.end_verify_job();
   } else if (event.has_plugin_command()) {
     auto& inner = event.plugin_command();
+
+    auto& cmd = inner.data();
+    if (handle_arguments(cmd)) {
+      response->set_res(bp::RC_OK);
+    } else {
+      response->set_res(bp::RC_Error);
+    }
+
+
   } else if (event.has_restore_object()) {
     auto& inner = event.restore_object();
   } else if (event.has_end_restore_job()) {
     auto& inner = event.end_restore_job();
+    response->set_res(bp::RC_OK);
   } else if (event.has_restore_command()) {
     auto& inner = event.restore_command();
   } else if (event.has_vss_init_backup()) {
@@ -114,25 +202,6 @@ auto PluginService::handlePluginEvent(
     auto& inner = event.start_backup_job();
     DebugLog(100, FMT_STRING("got start backup job event ({})."),
              inner.DebugString());
-
-    if (std::optional path = Bareos_GetString(bc::BV_ExePath); path) {
-      while (path->size() > 0 && path->back() == '/') { path->pop_back(); }
-      *path += "sbin/";
-      // BUG: somehow this does not return the right thing!
-      DebugLog(100, FMT_STRING("adding exe path {}"), *path);
-      files_to_backup.emplace_back(std::move(*path));
-    } else {
-      DebugLog(100, FMT_STRING("added no exe path"));
-    }
-
-    if (std::optional path = Bareos_GetString(bc::BV_PluginPath); path) {
-      while (path->size() > 0 && path->back() == '/') { path->pop_back(); }
-      DebugLog(100, FMT_STRING("adding plugin path {}"), *path);
-      files_to_backup.emplace_back(std::move(*path));
-    } else {
-      DebugLog(100, FMT_STRING("added no plugin path"));
-    }
-
 
     if (files_to_backup.empty()) {
       DebugLog(100, FMT_STRING("no files added -> stop"));
