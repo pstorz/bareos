@@ -376,10 +376,6 @@ int main(int argc, char* argv[])
         "Usage: call this program with no arguments but the sockets set up\n");
     return 5;
   }
-  fprintf(stderr, "My job message\n");
-  fprintf(stdout, "My debug message\n");
-  fprintf(stderr, "One ");
-  fprintf(stderr, "Line\n");
 
   // todo: add these in a header somewhere ?
   int server = 3;
