@@ -197,6 +197,7 @@ message setFileAttributesRequest {
 };
 
 message setFileAttributesResponse {
+  bool set_attributes_in_core = 1;
 };
 
 

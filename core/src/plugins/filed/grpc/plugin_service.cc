@@ -667,7 +667,8 @@ auto PluginService::setFileAttributes(
     const bp::setFileAttributesRequest* request,
     bp::setFileAttributesResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  response->set_set_attributes_in_core(true);
+  return Status::OK;
 }
 auto PluginService::checkFile(ServerContext*,
                               const bp::checkFileRequest* request,
