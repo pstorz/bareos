@@ -44,11 +44,11 @@ message RestorePacket {
   int64 link_fi = 5;
   int64 user_id = 6;
   bytes stat = 7;
-  string extended_attributes = 8;
-  string ofname = 9;
-  string olname = 10;
-  optional string where = 11;
-  optional string regex_where = 12;
+  bytes extended_attributes = 8;
+  bytes ofname = 9;
+  bytes olname = 10;
+  optional bytes where = 11;
+  optional bytes regex_where = 12;
   bareos.common.ReplaceType replace = 13;
   int32 delta_seq = 14;
 };
@@ -93,7 +93,7 @@ message startBackupFileRequest {
 
 
   bytes flags = 3;
-  string cmd = 4;
+  bytes cmd = 4;
 };
 
 message startBackupFileResponse {
@@ -119,7 +119,7 @@ message endBackupFileResponse {
 // ---- Restore ----
 
 message startRestoreFileRequest {
-  string command = 1;
+  bytes command = 1;
 };
 message startRestoreFileResponse {};
 
@@ -129,7 +129,7 @@ message endRestoreFileResponse {};
 // ---- Plugin IO ----
 
 message fileOpenRequest {
-  string file = 1;
+  bytes file = 1;
   int32 flags = 2;
   int32 mode = 3;
 };
@@ -190,7 +190,7 @@ message createFileResponse {
 // ---- Set File Attributes ----
 
 message setFileAttributesRequest {
-  string file = 1;
+  bytes file = 1;
   bytes stats = 2;
   bytes extended_attributes = 3;
   int64 user_id = 4;
@@ -204,7 +204,7 @@ message setFileAttributesResponse {
 // ---- Check File ----
 
 message checkFileRequest {
-  string file = 1;
+  bytes file = 1;
 };
 
 message checkFileResponse {
@@ -219,7 +219,7 @@ message Acl {
 };
 
 message setAclRequest {
-  string file = 1;
+  bytes file = 1;
   Acl content = 2;
 };
 
@@ -227,7 +227,7 @@ message setAclResponse {
 };
 
 message getAclRequest {
-  string file = 1;
+  bytes file = 1;
 };
 
 message getAclResponse {
@@ -237,12 +237,12 @@ message getAclResponse {
 // ----  XATTR ----
 
 message Xattribute {
-  string key = 1;
-  string value = 2;
+  bytes key = 1;
+  bytes value = 2;
 };
 
 message setXattrRequest {
-  string file = 1;
+  bytes file = 1;
   Xattribute attribute = 2;
 };
 
@@ -250,7 +250,7 @@ message setXattrResponse {
 };
 
 message getXattrRequest {
-  string file = 1;
+  bytes file = 1;
 }
 
 message getXattrResponse {

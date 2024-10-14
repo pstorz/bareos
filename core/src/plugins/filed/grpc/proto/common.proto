@@ -46,7 +46,7 @@ message plugin_object {
 };
 
 message plugin_file {
-  string file = 1;
+  bytes file = 1;
   bytes stats = 2;
   FileType ft = 3;
   optional int64 delta_seq = 4;
