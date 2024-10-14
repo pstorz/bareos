@@ -1,7 +1,7 @@
 /*
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2020-2021 Bareos GmbH & Co. KG
+   Copyright (C) 2020-2024 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -23,20 +23,26 @@
 // Strip any backslashes in the string.
 static inline void StripBackSlashes(char* value)
 {
-  char* bp;
+  char* in = value;
 
-  bp = value;
-  while (*bp) {
-    switch (*bp) {
-      case '\\':
-        bstrinlinecpy(bp, bp + 1);
-        break;
-      default:
-        break;
-    }
-
-    bp++;
+  while (*in != '\0' && *in != '\\') {
+    in += 1;
   }
+
+  char* out = in;
+
+  do {
+    switch (*in) {
+      case '\\': {
+        in += 1;
+      } break;
+      default: {
+        *out = *in;
+        in += 1;
+        out += 1;
+      } break;
+    }
+  } while (*in);
 }
 
 /**
@@ -60,11 +66,11 @@ static inline int64_t parse_integer(const char* argument_value)
 }
 
 // Always set destination to value and clean any previous one.
-static inline void SetString(char** destination, char* value)
+static inline void SetString(char** destination, std::string_view value)
 {
   if (*destination) { free(*destination); }
 
-  *destination = strdup(value);
+  *destination = strndup(value.data(), value.size());
   StripBackSlashes(*destination);
 }
 
