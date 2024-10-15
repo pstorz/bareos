@@ -31,9 +31,20 @@
 #include <grpcpp/server_posix.h>
 #include <dlfcn.h>
 
+#undef ASSERT
+#define ASSERT(x)                                 \
+  do {                                            \
+    if (!(x)) {                                   \
+      fprintf(stderr, "Failed ASSERT: %s\n", #x); \
+      abort();                                    \
+    }                                             \
+  } while (0)
+#include <lib/channel.h>
+
 #include <fmt/format.h>
 #include <condition_variable>
 #include <cstdarg>
+#include <future>
 
 #include "plugin_service_python.h"
 #include "test_module_python.h"
@@ -349,7 +360,6 @@ void shutdown_plugin()
 }
 
 static Plugin plugin_data;
-static PluginContext ctx;
 static std::string plugin_path;
 
 static filedaemon::PluginApiDefinition core_api;
@@ -953,39 +963,107 @@ bool setup()
   return true;
 }
 
-std::optional<std::string_view> inferior_setup(std::string_view cmd);
+struct plugin_thread {
+  plugin_thread() : plugin_thread(channel::CreateBufferedChannel<callback>(10))
+  {
+  }
+
+  using callback = std::packaged_task<bRC(PluginContext*)>;
+
+  template <typename F> bRC submit(F f)
+  {
+    callback task(f);
+
+    auto fut = task.get_future();
+
+    if (!enqueue_task(std::move(task))) { return bRC_Error; }
+
+    return fut.get();
+  }
+
+  void join()
+  {
+    in.close();
+    t.join();
+  }
+
+ private:
+  plugin_thread(channel::channel_pair<callback> p)
+      : in{std::move(p.first)}, out{std::move(p.second)}
+  {
+    t = std::thread{+[](plugin_thread* pt) { pt->run(); }, this};
+  }
+
+  bool enqueue_task(callback&& c) { return in.emplace(std::move(c)); }
+
+  void run()
+  {
+    if (!WaitForReady()) { fprintf(stderr, "WaitForReady failed.\n"); }
+    DebugLog(100, FMT_STRING("plugin thread starting (ctx={})..."),
+             (void*)&pctx);
+    for (;;) {
+      std::optional cb = out.get();
+      if (!cb) { break; }
+      (*cb)(&pctx);
+    }
+    DebugLog(100, FMT_STRING("plugin thread stopping (ctx={})..."),
+             (void*)&pctx);
+  }
+
+  PluginContext pctx{};
+  channel::input<callback> in;
+  channel::output<callback> out;
+  std::thread t;
+};
+
+plugin_thread plugin;
+
+std::optional<std::string_view> inferior_setup(PluginContext* ctx,
+                                               std::string_view cmd);
 namespace filedaemon {
 bRC Wrapper_newPlugin(PluginContext*)
 {
-  // we do not do anything here
-  auto events = std::array{
-      bc::EventType::Event_JobStart,       bc::EventType::Event_JobEnd,
-      bc::EventType::Event_PluginCommand,  bc::EventType::Event_BackupCommand,
-      bc::EventType::Event_StartBackupJob, bc::EventType::Event_EndBackupJob,
-      bc::EventType::Event_EndRestoreJob,  bc::EventType::Event_StartRestoreJob,
-      bc::EventType::Event_RestoreCommand,
-  };
+  return plugin.submit([](PluginContext*) {
+    // we do not do anything here
+    auto events = std::array{
+        bc::EventType::Event_JobStart,
+        bc::EventType::Event_JobEnd,
+        bc::EventType::Event_PluginCommand,
+        bc::EventType::Event_BackupCommand,
+        bc::EventType::Event_StartBackupJob,
+        bc::EventType::Event_EndBackupJob,
+        bc::EventType::Event_EndRestoreJob,
+        bc::EventType::Event_StartRestoreJob,
+        bc::EventType::Event_RestoreCommand,
+    };
 
-  if (!Register({events.data(), events.size()})) {
-    JobLog(bc::JMSG_ERROR, "could not register my events");
-    return bRC_Term;
-  }
-  return bRC_OK;
+    if (!Register({events.data(), events.size()})) {
+      JobLog(bc::JMSG_ERROR, "could not register my events");
+      return bRC_Term;
+    }
+    return bRC_OK;
+  });
 }
-bRC Wrapper_freePlugin(PluginContext* ctx)
+bRC Wrapper_freePlugin(PluginContext*)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->freePlugin(ctx);
+  return plugin.submit([](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->freePlugin(ctx);
+  });
 }
-bRC Wrapper_getPluginValue(PluginContext* ctx, pVariable var, void* value)
+bRC Wrapper_getPluginValue(PluginContext*, pVariable var, void* value)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->getPluginValue(ctx, var, value);
+  return plugin.submit([var, value](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->getPluginValue(ctx, var, value);
+  });
 }
-bRC Wrapper_setPluginValue(PluginContext* ctx, pVariable var, void* value)
+bRC Wrapper_setPluginValue(PluginContext*, pVariable var, void* value)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->setPluginValue(ctx, var, value);
+  return plugin.submit([var, value](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->setPluginValue(ctx, var, value);
+  });
 }
 static const char* event_type_to_str(int type)
 {
@@ -1058,112 +1136,124 @@ static const char* event_type_to_str(int type)
   }
 }
 
-bRC Wrapper_handlePluginEvent(PluginContext* ctx, bEvent* event, void* value)
+bRC Wrapper_handlePluginEvent(PluginContext*, bEvent* event, void* value)
 {
-  DebugLog(100, FMT_STRING("handling event of type \"{}\" ({})"),
-           event_type_to_str(event->eventType), event->eventType);
+  return plugin.submit([event, value](PluginContext* ctx) {
+    DebugLog(100, FMT_STRING("handling event of type \"{}\" ({})"),
+             event_type_to_str(event->eventType), event->eventType);
 
 
-  switch (event->eventType) {
-    case bEventPluginCommand: {
-      std::string_view cmd{(char*)value};
-      DebugLog(100, FMT_STRING("got cmd string \"{}\""), cmd);
-      std::optional pstring = inferior_setup(cmd);
-      if (!pstring) { return bRC_Error; }
+    switch (event->eventType) {
+      case bEventPluginCommand:
+        [[fallthrough]];
+      case bEventBackupCommand:
+        [[fallthrough]];
+      case bEventRestoreCommand:
+        [[fallthrough]];
+      case bEventNewPluginOptions: {
+        std::string_view cmd{(char*)value};
+        DebugLog(100, FMT_STRING("got cmd string \"{}\""), cmd);
+        std::optional pstring = inferior_setup(ctx, cmd);
+        if (!pstring) { return bRC_Error; }
 
-      DebugLog(100, FMT_STRING("using cmd string \"{}\" for the plugin"),
-               pstring.value());
+        DebugLog(100, FMT_STRING("using cmd string \"{}\" for the plugin"),
+                 pstring.value());
 
-      return plugin_funs->handlePluginEvent(ctx, event, (void*)pstring->data());
-    } break;
-      // case bEventRestoreCommand: {
-      //   if (!plugin->re_setup(ctx, data)) { return bRC_Error; }
+        return plugin_funs->handlePluginEvent(ctx, event,
+                                              (void*)pstring->data());
+      } break;
+    }
 
+    if (!plugin_funs) { return bRC_Error; }
 
-      //   DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the
-      //   plugin"),
-      //            plugin->cmd);
-      //   // we do not want to give "grpc:" to the plugin
-      //   return plugin->child->con.handlePluginEvent(bEventPluginCommand,
-      //                                               (void*)plugin->cmd.c_str());
-      // } break;
-      // case bEventNewPluginOptions: {
-      //   if (!plugin->re_setup(ctx, data)) { return bRC_Error; }
-
-      //   DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the
-      //   plugin"),
-      //            plugin->cmd);
-      //   // we do not want to give "grpc:" to the plugin
-      //   return plugin->child->con.handlePluginEvent(bEventPluginCommand,
-      //                                               (void*)plugin->cmd.c_str());
-      // } break;
-  }
-
-  if (!plugin_funs) { return bRC_Error; }
-
-  return plugin_funs->handlePluginEvent(ctx, event, value);
+    return plugin_funs->handlePluginEvent(ctx, event, value);
+  });
 }
-bRC Wrapper_startBackupFile(PluginContext* ctx, save_pkt* sp)
+bRC Wrapper_startBackupFile(PluginContext*, save_pkt* sp)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->startBackupFile(ctx, sp);
+  return plugin.submit([sp](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->startBackupFile(ctx, sp);
+  });
 }
-bRC Wrapper_endBackupFile(PluginContext* ctx)
+bRC Wrapper_endBackupFile(PluginContext*)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->endBackupFile(ctx);
-  return bRC_Error;
+  return plugin.submit([](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->endBackupFile(ctx);
+    return bRC_Error;
+  });
 }
-bRC Wrapper_startRestoreFile(PluginContext* ctx, const char* cmd)
+bRC Wrapper_startRestoreFile(PluginContext*, const char* cmd)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->startRestoreFile(ctx, cmd);
+  return plugin.submit([cmd](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->startRestoreFile(ctx, cmd);
+  });
 }
-bRC Wrapper_endRestoreFile(PluginContext* ctx)
+bRC Wrapper_endRestoreFile(PluginContext*)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->endRestoreFile(ctx);
+  return plugin.submit([](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->endRestoreFile(ctx);
+  });
 }
-bRC Wrapper_pluginIO(PluginContext* ctx, io_pkt* io)
+bRC Wrapper_pluginIO(PluginContext*, io_pkt* io)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->pluginIO(ctx, io);
+  return plugin.submit([io](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->pluginIO(ctx, io);
+  });
 }
-bRC Wrapper_createFile(PluginContext* ctx, restore_pkt* rp)
+bRC Wrapper_createFile(PluginContext*, restore_pkt* rp)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->createFile(ctx, rp);
+  return plugin.submit([rp](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->createFile(ctx, rp);
+  });
 }
-bRC Wrapper_setFileAttributes(PluginContext* ctx, restore_pkt* rp)
+bRC Wrapper_setFileAttributes(PluginContext*, restore_pkt* rp)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->setFileAttributes(ctx, rp);
+  return plugin.submit([rp](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->setFileAttributes(ctx, rp);
+  });
 }
-bRC Wrapper_checkFile(PluginContext* ctx, char* fname)
+bRC Wrapper_checkFile(PluginContext*, char* fname)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->checkFile(ctx, fname);
+  return plugin.submit([fname](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->checkFile(ctx, fname);
+  });
 }
-bRC Wrapper_getAcl(PluginContext* ctx, acl_pkt* ap)
+bRC Wrapper_getAcl(PluginContext*, acl_pkt* ap)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->getAcl(ctx, ap);
+  return plugin.submit([ap](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->getAcl(ctx, ap);
+  });
 }
-bRC Wrapper_setAcl(PluginContext* ctx, acl_pkt* ap)
+bRC Wrapper_setAcl(PluginContext*, acl_pkt* ap)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->setAcl(ctx, ap);
+  return plugin.submit([ap](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->setAcl(ctx, ap);
+  });
 }
-bRC Wrapper_getXattr(PluginContext* ctx, xattr_pkt* xp)
+bRC Wrapper_getXattr(PluginContext*, xattr_pkt* xp)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->getXattr(ctx, xp);
-  return bRC_Error;
+  return plugin.submit([xp](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->getXattr(ctx, xp);
+    return bRC_Error;
+  });
 }
-bRC Wrapper_setXattr(PluginContext* ctx, xattr_pkt* xp)
+bRC Wrapper_setXattr(PluginContext*, xattr_pkt* xp)
 {
-  if (!plugin_funs) { return bRC_Error; }
-  return plugin_funs->setXattr(ctx, xp);
+  return plugin.submit([xp](PluginContext* ctx) {
+    if (!plugin_funs) { return bRC_Error; }
+    return plugin_funs->setXattr(ctx, xp);
+  });
 }
 }  // namespace filedaemon
 
@@ -1187,82 +1277,85 @@ static const PluginFunctions funcs = {
     .setXattr = filedaemon::Wrapper_setXattr,
 };
 
-std::optional<std::string_view> inferior_setup(std::string_view cmd)
+std::optional<std::string_view> inferior_setup(PluginContext* ctx,
+                                               std::string_view cmd)
 {
-  ctx.plugin = &plugin_data;
-  auto ires = cmd.find_first_of(":");
-  if (ires == cmd.npos) {
-    JobLog(bc::JMSG_ERROR,
-           FMT_STRING("bad command string (no inferior name): {}"), cmd);
-    return std::nullopt;
+  if (!ctx->plugin) {
+    auto ires = cmd.find_first_of(":");
+    if (ires == cmd.npos) {
+      JobLog(bc::JMSG_ERROR,
+             FMT_STRING("bad command string (no inferior name): {}"), cmd);
+      return std::nullopt;
+    }
+    auto plugin_name = cmd.substr(0, ires);
+
+    JobLog(bc::JMSG_INFO, FMT_STRING("selected inferior: {}"), plugin_name);
+
+    ctx->plugin = &plugin_data;
+    auto inferior_path = plugin_path;
+    inferior_path += plugin_name;
+    inferior_path += "-fd.so";
+
+    DebugLog(100, FMT_STRING("loading inferior from path '{}'"), inferior_path);
+
+    void* inferior_lib = dlopen(inferior_path.c_str(), RTLD_NOW | RTLD_GLOBAL);
+
+    if (!inferior_lib) {
+      JobLog(bc::JMSG_ERROR, FMT_STRING("could not load inferior: {}"),
+             inferior_path);
+      return std::nullopt;
+    }
+
+    DebugLog(100, FMT_STRING("loaded {} at {}"), inferior_path, inferior_lib);
+
+    void* load_plugin = dlsym(inferior_lib, "loadPlugin");
+
+    if (!load_plugin) {
+      JobLog(bc::JMSG_ERROR, FMT_STRING("could not find loadPlugin: Err={}"),
+             strerror(errno));
+      return std::nullopt;
+    }
+
+    DebugLog(100, FMT_STRING("found loadPlugin at {}"), load_plugin);
+
+    using load_plugin_type
+        = bRC(filedaemon::PluginApiDefinition*,
+              filedaemon::CoreFunctions * bareos_core_functions,
+              PluginInformation * *plugin_information,
+              filedaemon::PluginFunctions * *plugin_functions);
+
+    load_plugin_type* func = reinterpret_cast<load_plugin_type*>(load_plugin);
+
+    PluginInformation* plugin_info{};
+
+    auto load_res = (*func)(&core_api, &core_funs, &plugin_info, &plugin_funs);
+
+    if (load_res != bRC_OK) {
+      JobLog(bc::JMSG_ERROR, FMT_STRING("bad response to loadPlugin"));
+      return std::nullopt;
+    }
+
+    JobLog(bc::JMSG_INFO,
+           FMT_STRING("loaded inferior: {}\n"
+                      "Version: {} ({})\n"
+                      "Author: {}\n"
+                      "License: {}\n"),
+           plugin_info->plugin_description, plugin_info->plugin_version,
+           plugin_info->plugin_date, plugin_info->plugin_author,
+           plugin_info->plugin_license);
+
+    plugin_data.plugin_information = plugin_info;
+    plugin_data.plugin_handle = inferior_lib;
+    plugin_data.plugin_functions = plugin_funs;
+
+    auto new_res = plugin_funs->newPlugin(ctx);
+    if (new_res != bRC_OK) {
+      JobLog(bc::JMSG_ERROR, FMT_STRING("bad response to newPlugin"));
+      return std::nullopt;
+    }
+
+    JobLog(bc::JMSG_INFO, FMT_STRING("loaded inferior successfully"));
   }
-  auto plugin_name = cmd.substr(0, ires);
-
-  JobLog(bc::JMSG_INFO, FMT_STRING("selected inferior: {}"), plugin_name);
-
-  auto inferior_path = plugin_path;
-  inferior_path += plugin_name;
-  inferior_path += "-fd.so";
-
-  DebugLog(100, FMT_STRING("loading inferior from path '{}'"), inferior_path);
-
-  void* inferior_lib = dlopen(inferior_path.c_str(), RTLD_NOW | RTLD_GLOBAL);
-
-  if (!inferior_lib) {
-    JobLog(bc::JMSG_ERROR, FMT_STRING("could not load inferior: {}"),
-           inferior_path);
-    return std::nullopt;
-  }
-
-  DebugLog(100, FMT_STRING("loaded {} at {}"), inferior_path, inferior_lib);
-
-  void* load_plugin = dlsym(inferior_lib, "loadPlugin");
-
-  if (!load_plugin) {
-    JobLog(bc::JMSG_ERROR, FMT_STRING("could not find loadPlugin: Err={}"),
-           strerror(errno));
-    return std::nullopt;
-  }
-
-  DebugLog(100, FMT_STRING("found loadPlugin at {}"), load_plugin);
-
-  using load_plugin_type
-      = bRC(filedaemon::PluginApiDefinition*,
-            filedaemon::CoreFunctions * bareos_core_functions,
-            PluginInformation * *plugin_information,
-            filedaemon::PluginFunctions * *plugin_functions);
-
-  load_plugin_type* func = reinterpret_cast<load_plugin_type*>(load_plugin);
-
-  PluginInformation* plugin_info{};
-
-  auto load_res = (*func)(&core_api, &core_funs, &plugin_info, &plugin_funs);
-
-  if (load_res != bRC_OK) {
-    JobLog(bc::JMSG_ERROR, FMT_STRING("bad response to loadPlugin"));
-    return std::nullopt;
-  }
-
-  JobLog(bc::JMSG_INFO,
-         FMT_STRING("loaded inferior: {}\n"
-                    "Version: {} ({})\n"
-                    "Author: {}\n"
-                    "License: {}\n"),
-         plugin_info->plugin_description, plugin_info->plugin_version,
-         plugin_info->plugin_date, plugin_info->plugin_author,
-         plugin_info->plugin_license);
-
-  plugin_data.plugin_information = plugin_info;
-  plugin_data.plugin_handle = inferior_lib;
-  plugin_data.plugin_functions = plugin_funs;
-
-  auto new_res = plugin_funs->newPlugin(&ctx);
-  if (new_res != bRC_OK) {
-    JobLog(bc::JMSG_ERROR, FMT_STRING("bad response to newPlugin"));
-    return std::nullopt;
-  }
-
-  JobLog(bc::JMSG_INFO, FMT_STRING("loaded inferior successfully"));
 
   return cmd;
 }
@@ -1291,7 +1384,7 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
 {
   std::unique_lock l{server_mutex};
 
-  con = connection_builder{std::make_unique<PluginService>(&ctx, io_sock,
+  con = connection_builder{std::make_unique<PluginService>(nullptr, io_sock,
                                                            funcs)}
             .connect_client(client_sock)
             .connect_server(server_sock)
@@ -1312,6 +1405,7 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
 
     DebugLog(100, FMT_STRING("grpc server finished: closing connections"));
   }
+  plugin.join();
   con.reset();
   if (plugin_data.plugin_handle) { dlclose(plugin_data.plugin_handle); }
 }

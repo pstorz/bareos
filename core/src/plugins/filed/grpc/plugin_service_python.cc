@@ -702,14 +702,97 @@ auto PluginService::createFile(ServerContext*,
                                const bp::createFileRequest* request,
                                bp::createFileResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  filedaemon::restore_pkt rp = {};
+  auto& packet = request->pkt();
+  rp.stream = packet.stream_id();
+  rp.data_stream = packet.data_stream();
+  rp.type = packet.type();
+  rp.file_index = packet.file_index();
+  rp.LinkFI = packet.link_fi();
+  rp.uid = packet.user_id();
+  if (packet.stat().size() != sizeof(rp.statp)) {
+    JobLog(bc::JMSG_ERROR,
+           FMT_STRING("bad stats value (size = {}, should be {})"),
+           packet.stat().size(), sizeof(rp.statp));
+    return Status(grpc::StatusCode::INVALID_ARGUMENT, "bad stats value");
+  }
+  memcpy(&rp.statp, packet.stat().c_str(), sizeof(rp.statp));
+  rp.attrEx = packet.extended_attributes().c_str();
+  rp.ofname = packet.ofname().c_str();
+  rp.olname = packet.olname().c_str();
+  rp.where = packet.where().c_str();
+  rp.RegexWhere = packet.regex_where().c_str();
+  switch (packet.replace()) {
+    case bareos::common::ReplaceIfNewer: {
+      rp.replace = REPLACE_IFNEWER;
+    } break;
+    case bareos::common::ReplaceIfOlder: {
+      rp.replace = REPLACE_IFOLDER;
+    } break;
+    case bareos::common::ReplaceNever: {
+      rp.replace = REPLACE_NEVER;
+    } break;
+    case bareos::common::ReplaceAlways: {
+      rp.replace = REPLACE_ALWAYS;
+    } break;
+    default: {
+      JobLog(bc::JMSG_ERROR, FMT_STRING("bad replace value {}"),
+             int(packet.replace()));
+      return Status(grpc::StatusCode::INVALID_ARGUMENT, "bad replace value");
+    } break;
+  }
+  rp.delta_seq = packet.delta_seq();
+
+  auto res = funcs.createFile(ctx, &rp);
+  if (res != bRC_OK) {
+    return Status(grpc::StatusCode::INTERNAL, "bad response");
+  }
+
+  switch (rp.create_status) {
+    case CF_SKIP: {
+      response->set_status(bp::CreateFileStatus::CF_Skip);
+    } break;
+    case CF_ERROR: {
+      response->set_status(bp::CreateFileStatus::CF_Error);
+    } break;
+    case CF_EXTRACT: {
+      response->set_status(bp::CreateFileStatus::CF_Extract);
+    } break;
+    case CF_CREATED: {
+      response->set_status(bp::CreateFileStatus::CF_Created);
+    } break;
+    case CF_CORE: {
+      response->set_status(bp::CreateFileStatus::CF_Core);
+    } break;
+  }
+
+
+  return Status::OK;
 }
 auto PluginService::setFileAttributes(
     ServerContext*,
     const bp::setFileAttributesRequest* request,
     bp::setFileAttributesResponse* response) -> Status
 {
-  return Status::CANCELLED;
+  filedaemon::restore_pkt rp = {};
+  rp.uid = request->user_id();
+  if (sizeof(rp.statp) != request->stats().size()) {
+    return Status(grpc::StatusCode::INVALID_ARGUMENT, "bad stats");
+  }
+  memcpy(&rp.statp, request->stats().c_str(), sizeof(rp.statp));
+  rp.attrEx = request->extended_attributes().c_str();
+  rp.ofname = request->file().c_str();
+  rp.olname = request->file().c_str();
+  rp.create_status = CF_ERROR;
+  rp.filedes = kInvalidFiledescriptor;
+  auto res = funcs.setFileAttributes(ctx, &rp);
+  if (res != bRC_OK) {
+    return Status(grpc::StatusCode::INTERNAL, "bad response");
+  }
+
+  response->set_set_attributes_in_core(rp.create_status == CF_CORE);
+
+  return Status::OK;
 }
 auto PluginService::checkFile(ServerContext*,
                               const bp::checkFileRequest* request,

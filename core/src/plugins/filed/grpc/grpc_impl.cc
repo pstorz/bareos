@@ -1030,8 +1030,8 @@ class PluginClient {
 
     auto res = resp.res();
 
-    DebugLog(100, FMT_STRING("plugin handled with res = {} ({})"),
-             bp::ReturnCode_Name(res), int(res));
+    DebugLog(100, FMT_STRING("plugin handled event {} with res = {} ({})"),
+             int(type), bp::ReturnCode_Name(res), int(res));
 
     switch (res) {
       case bareos::plugin::RC_OK:

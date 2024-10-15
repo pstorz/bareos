@@ -37,6 +37,8 @@ setup_data
 rm "${tmp:?}/data/weird-files/fifo"
 rm "${tmp:?}/data/weird-files/fifo-file"
 
+grep py3 <<< "$TestName" && rm tmp/data/weird-files/filename-with-non-utf8-bytestring*
+
 bin/bareos start
 bin/bareos status
 

@@ -190,6 +190,7 @@ message createFileResponse {
 // ---- Set File Attributes ----
 
 message setFileAttributesRequest {
+  // TODO: optional link name??
   bytes file = 1;
   bytes stats = 2;
   bytes extended_attributes = 3;
