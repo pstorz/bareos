@@ -19,14 +19,3 @@
 
 get_filename_component(BASENAME ${CMAKE_CURRENT_BINARY_DIR} NAME)
 create_systemtest(${SYSTEMTEST_PREFIX} ${BASENAME})
-
-set_tests_properties(
-  system:grpc-fd:create-backup
-  PROPERTIES FIXTURES_SETUP "system:grpc-fd:backup-job-fixture"
-             FIXTURES_REQUIRED "system:grpc-fd-fixture"
-)
-set_tests_properties(
-  system:grpc-fd:full-restore
-  PROPERTIES FIXTURES_REQUIRED
-             "system:grpc-fd:backup-job-fixture;system:grpc-fd-fixture"
-)
