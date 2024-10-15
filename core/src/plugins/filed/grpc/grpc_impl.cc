@@ -244,15 +244,12 @@ std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
 
     std::string copy(program_path);
 
-    char* argv[] = {copy.data(), nullptr};
-    char* envp[] = {nullptr};
+    int res = execl(copy.c_str(), copy.data(), nullptr);
 
-    int res = execve(copy.c_str(), argv, envp);
+    fprintf(stderr, "execl(%s, %s, nullptr) returned %d: Err=%s\n\n\n",
+            copy.c_str(), copy.c_str(), res, strerror(errno));
 
-    fprintf(stderr, "execve(%s) returned %d: Err=%s\n\n\n", copy.c_str(), res,
-            strerror(errno));
-
-    // execve only returns if the new process could not be started!
+    // exec* only returns if the new process could not be started!
     exit(99);
   } else {
     DebugLog(100, FMT_STRING("Child pid = {}"), child);
