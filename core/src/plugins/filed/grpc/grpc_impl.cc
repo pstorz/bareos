@@ -247,7 +247,10 @@ std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
     char* argv[] = {copy.data(), nullptr};
     char* envp[] = {nullptr};
 
-    execve(copy.c_str(), argv, envp);
+    int res = execve(copy.c_str(), argv, envp);
+
+    fprintf(stderr, "execve(%s) returned %d: Err=%s\n\n\n", copy.c_str(), res,
+            strerror(errno));
 
     // execve only returns if the new process could not be started!
     exit(99);
@@ -1896,6 +1899,10 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
 
   parent_io.set_close_on_exec();
 
+
+  joining_thread stdio_thread{do_std_io, ctx, std::move(parent_io.std_out),
+                              std::move(parent_io.std_err)};
+
   auto child = StartDuplexGrpc(program_path, std::move(child_io));
 
   if (!child) {
@@ -1922,9 +1929,6 @@ std::optional<grpc_child> make_connection(PluginContext* ctx,
     DebugLog(100, FMT_STRING("... unsuccessfully."));
     return std::nullopt;
   }
-
-  joining_thread stdio_thread{do_std_io, ctx, std::move(parent_io.std_out),
-                              std::move(parent_io.std_err)};
 
 
   DebugLog(100, FMT_STRING("... successfully."));
