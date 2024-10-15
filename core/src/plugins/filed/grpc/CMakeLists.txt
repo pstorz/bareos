@@ -99,12 +99,24 @@ install(
 target_link_libraries(grpc-fd bareos fmt grpc-proto)
 
 add_executable(grpc-test-module grpc_test_module.cc plugin_service.cc)
-set_target_properties(grpc-fd PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ..)
+target_link_libraries(grpc-test-module fmt grpc-proto)
 install(
   TARGETS grpc-test-module
   DESTINATION ${plugindir}
   COMPONENT filedaemon
 )
-target_link_libraries(grpc-test-module fmt grpc-proto)
+
+add_executable(
+  grpc-python-module grpc_python_module.cc plugin_service_python.cc
+)
+target_link_libraries(grpc-python-module fmt grpc-proto ${Python3_LIBRARIES})
+target_include_directories(grpc-python-module PUBLIC ${Python3_INCLUDE_DIRS})
+install(
+  TARGETS grpc-python-module
+  DESTINATION ${plugindir}
+  COMPONENT filedaemon
+)
+
+set_target_properties(grpc-fd PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ..)
 
 include(DebugEdit)
