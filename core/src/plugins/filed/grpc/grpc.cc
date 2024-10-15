@@ -289,6 +289,10 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
       return plugin->child->con.handlePluginEvent(bEventPluginCommand,
                                                   (void*)plugin->cmd.c_str());
     } break;
+    case bEventNewPluginOptions:
+      [[fallthrough]];
+    case bEventBackupCommand:
+      [[fallthrough]];
     case bEventRestoreCommand: {
       if (!plugin->re_setup(ctx, data)) { return bRC_Error; }
 
@@ -296,16 +300,7 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
       DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
                plugin->cmd);
       // we do not want to give "grpc:" to the plugin
-      return plugin->child->con.handlePluginEvent(bEventPluginCommand,
-                                                  (void*)plugin->cmd.c_str());
-    } break;
-    case bEventNewPluginOptions: {
-      if (!plugin->re_setup(ctx, data)) { return bRC_Error; }
-
-      DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
-               plugin->cmd);
-      // we do not want to give "grpc:" to the plugin
-      return plugin->child->con.handlePluginEvent(bEventPluginCommand,
+      return plugin->child->con.handlePluginEvent(bEventType(event->eventType),
                                                   (void*)plugin->cmd.c_str());
     } break;
     default: {
