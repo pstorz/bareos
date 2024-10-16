@@ -100,7 +100,7 @@ class PluginService : public bp::Plugin::Service {
                   bp::fileSeekResponse* response) override;
   Status FileRead(ServerContext*,
                   const bp::fileReadRequest* request,
-                  bp::fileReadResponse* response) override;
+                  grpc::ServerWriter<bp::fileReadResponse>* writer) override;
   Status FileWrite(ServerContext*,
                    const bp::fileWriteRequest* request,
                    bp::fileWriteResponse* response) override;

@@ -1314,27 +1314,38 @@ class PluginClient {
     return bRC_OK;
   }
 
-  bRC FileRead(size_t size, size_t* num_bytes_read)
-  {
+  struct read_iter {
     bp::fileReadRequest req;
-    req.set_num_bytes(size);
-
-    bp::fileReadResponse resp;
     grpc::ClientContext ctx;
-    grpc::Status status = stub_->FileRead(&ctx, req, &resp);
+    std::unique_ptr<grpc::ClientReader<bp::fileReadResponse>> reader;
 
-    if (!status.ok()) {
-      DebugLog(50, FMT_STRING("file write error {}: {}"),
-               int(status.error_code()), status.error_message());
-      return bRC_Error;
+    read_iter(bp::Plugin::Stub* stub, size_t size)
+    {
+      req.set_num_bytes(size);
+      reader = stub->FileRead(&ctx, req);
     }
 
-    *num_bytes_read = resp.size();
+    bool next(size_t* size)
+    {
+      bp::fileReadResponse resp;
+      if (!reader->Read(&resp)) { return false; }
+      *size = resp.size();
+      return true;
+    }
 
-    // ASSERT(cnt.size() <= size);
+    bRC result()
+    {
+      auto status = reader->Finish();
+      if (!status.ok()) {
+        DebugLog(50, FMT_STRING("file read error {}: {}"),
+                 int(status.error_code()), status.error_message());
+        return bRC_Error;
+      }
+      return bRC_OK;
+    }
+  };
 
-    return bRC_OK;
-  }
+  read_iter FileRead(size_t size) { return read_iter{stub_.get(), size}; }
 
   bRC FileWrite(size_t size, size_t* num_bytes_written)
   {
@@ -2105,6 +2116,19 @@ bool send_fd(int unix_socket, int fd)
   return false;
 }
 
+static bool full_read(int fd, char* data, size_t size)
+{
+  size_t bytes_read = 0;
+  while (bytes_read < size) {
+    auto res = read(fd, data + bytes_read, size - bytes_read);
+    DebugLog(100, FMT_STRING("read(fd = {}, buffer = {}, count = {}) -> {}"),
+             fd, (void*)(data + bytes_read), size - bytes_read, res);
+    if (res < 0) { return false; }
+    bytes_read += res;
+  }
+  return true;
+}
+
 bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
 {
   PluginClient* client = &members->client;
@@ -2141,8 +2165,27 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
       return res;
     } break;
     case filedaemon::IO_READ: {
+      auto iter = client->FileRead(pkt->count);
+
+      DebugLog(100, FMT_STRING("trying to read {} bytes"), pkt->count);
+
       size_t bytes_read = 0;
-      auto res = client->FileRead(pkt->count, &bytes_read);
+      size_t current = 0;
+      while (iter.next(&current)) {
+        DebugLog(100, FMT_STRING("received {} bytes"), current);
+        if (!full_read(iosock, pkt->buf + bytes_read, current)) {
+          JobLog(nullptr, M_FATAL,
+                 FMT_STRING("could not read additional {} bytes from socket "
+                            "({} were already read): Err={}"),
+                 current, bytes_read, strerror(errno));
+          pkt->io_errno = errno;
+          return bRC_Error;
+        }
+        DebugLog(100, FMT_STRING("read {} bytes successfully"), current);
+        bytes_read += current;
+      }
+
+      auto res = iter.result();
 
       if (res == bRC_Error) { return res; }
 
@@ -2151,16 +2194,6 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
                FMT_STRING(
                    "plugin wrote to many bytes (wanted = {}, received = {})"),
                pkt->count, bytes_read);
-        return bRC_Error;
-      }
-
-      if (auto num_data = read(iosock, pkt->buf, bytes_read);
-          num_data != (ssize_t)bytes_read) {
-        // this should not be happening
-        JobLog(nullptr, M_FATAL,
-               FMT_STRING(
-                   "could not read file data (read = {}, wanted = {}) Err={}"),
-               num_data, bytes_read, strerror(errno));
         return bRC_Error;
       }
 

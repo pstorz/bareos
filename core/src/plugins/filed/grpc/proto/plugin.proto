@@ -20,7 +20,7 @@ service Plugin {
   // the following File* operations always operate on the currently
   // open file
   rpc FileSeek (fileSeekRequest) returns (fileSeekResponse);
-  rpc FileRead (fileReadRequest) returns (fileReadResponse);
+  rpc FileRead (fileReadRequest) returns (stream fileReadResponse);
   rpc FileWrite (fileWriteRequest) returns (fileWriteResponse);
   rpc FileClose (fileCloseRequest) returns (fileCloseResponse);
 
@@ -162,6 +162,8 @@ message fileOpenResponse {
 message fileSeekResponse {
 };
 message fileReadResponse {
+  // the read request may be split into multiple chunks.
+  // the total size shall not exceed the requested size
   uint64 size = 1;
 };
 message fileWriteResponse {

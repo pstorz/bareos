@@ -381,7 +381,7 @@ auto PluginService::FileOpen(ServerContext*,
 
   if (fd < 0) {
     return Status(grpc::StatusCode::INVALID_ARGUMENT,
-                  "could not open specified file given flags/mode.");
+                  "could not open specified file given flags/mode");
   }
 
   current_file = raii_fd(fd);
@@ -526,40 +526,10 @@ std::optional<int> receive_fd(int unix_socket, int expected_name)
   return std::make_optional(fd);
 }
 
-bool send_fd(int unix_socket, int fd)
-{
-  struct msghdr msg = {};
-  char buf[CMSG_SPACE(sizeof(fd))] = {};
-  char name_buf[sizeof(fd)];
-  memcpy(name_buf, &fd, sizeof(fd));
-  iovec io = {.iov_base = name_buf, .iov_len = sizeof(name_buf)};
-
-
-  msg.msg_iov = &io;
-  msg.msg_iovlen = 1;
-  msg.msg_control = buf;
-  msg.msg_controllen = sizeof(buf);
-
-  struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-  cmsg->cmsg_level = SOL_SOCKET;
-  cmsg->cmsg_type = SCM_RIGHTS;
-  cmsg->cmsg_len = CMSG_LEN(sizeof(fd));
-
-  memcpy(CMSG_DATA(cmsg), &fd, sizeof(fd));
-
-  msg.msg_controllen = CMSG_SPACE(sizeof(fd));
-
-  if (auto res = sendmsg(unix_socket, &msg, 0); res < 0) {
-    DebugLog(50, FMT_STRING("could not send fd {}. Err={}"), fd,
-             strerror(errno));
-  }
-
-  return false;
-}
-
 auto PluginService::FileRead(ServerContext* ctx,
                              const bp::fileReadRequest* request,
-                             bp::fileReadResponse* response) -> Status
+                             grpc::ServerWriter<bp::fileReadResponse>* writer)
+    -> Status
 {
   if (!current_file) {
     DebugLog(50, FMT_STRING("trying to read file while it is not open"));
@@ -582,8 +552,9 @@ auto PluginService::FileRead(ServerContext* ctx,
            current_file->get(), io, strerror(errno));
     return grpc::Status(grpc::StatusCode::INTERNAL, "Error while reading file");
   }
-
-  response->set_size(res);
+  bp::fileReadResponse resp;
+  resp.set_size(res);
+  writer->Write(resp);
 
   return Status::OK;
 }

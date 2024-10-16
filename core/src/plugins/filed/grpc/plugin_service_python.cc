@@ -21,6 +21,7 @@
 
 #include "plugin_service_python.h"
 #include <fcntl.h>
+#include <poll.h>
 #include <grpc/compression.h>
 #include "bareos.pb.h"
 #include "common.pb.h"
@@ -726,19 +727,6 @@ auto PluginService::FileSeek(ServerContext*,
 
   return Status::OK;
 }
-static bool full_write(int fd, const char* data, size_t size)
-{
-  size_t bytes_written = 0;
-  while (bytes_written < size) {
-    auto res = write(fd, data + bytes_written, size - bytes_written);
-    DebugLog(100, FMT_STRING("write(fd = {}, buffer = {}, count = {}) -> {}"),
-             fd, (void*)(data + bytes_written), size - bytes_written, res);
-    if (res < 0) { return false; }
-    bytes_written += res;
-  }
-
-  return true;
-}
 
 static bool full_read(int fd, char* data, size_t size)
 {
@@ -753,9 +741,33 @@ static bool full_read(int fd, char* data, size_t size)
   return true;
 }
 
+struct non_blocking {
+  int filedes;
+  int flags;
+  std::optional<int> error_num;
+
+  non_blocking(int fd) : filedes{fd}
+  {
+    flags = fcntl(fd, F_GETFL);
+    if (flags == -1) { error_num = errno; }
+
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { error_num = errno; }
+  }
+
+  std::optional<int> error() { return error_num; }
+
+  void reset()
+  {
+    if (fcntl(filedes, F_SETFL, flags) < 0) { error_num = errno; }
+  }
+
+  ~non_blocking() { reset(); }
+};
+
 auto PluginService::FileRead(ServerContext*,
                              const bp::fileReadRequest* request,
-                             bp::fileReadResponse* response) -> Status
+                             grpc::ServerWriter<bp::fileReadResponse>* writer)
+    -> Status
 {
   filedaemon::io_pkt pkt;
   pkt.func = filedaemon::IO_READ;
@@ -768,12 +780,60 @@ auto PluginService::FileRead(ServerContext*,
     return Status(grpc::StatusCode::INTERNAL, "bad response");
   }
 
-  if (!full_write(io, pkt.buf, pkt.status)) {
-    return Status(grpc::StatusCode::INTERNAL, "io socket write not successful");
+  auto _ = non_blocking{io};
+
+  if (_.error()) {
+    JobLog(bc::JMSG_ERROR,
+           FMT_STRING("could not set fd {} as nonblocking: Err={}"), io,
+           strerror(_.error().value()));
+    return Status(grpc::StatusCode::INTERNAL,
+                  "could not set socket to be not blocking");
   }
 
-  response->set_size(pkt.status);
+  bp::fileReadResponse resp;
+  resp.set_size(pkt.status);
+  writer->Write(resp);
+  int32_t bytes_sent = 0;
+  while (bytes_sent < pkt.status) {
+    auto written = write(io, pkt.buf + bytes_sent, pkt.status - bytes_sent);
+    if (written < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        struct pollfd pfd = {};
+        pfd.fd = io;
+        pfd.events = POLLOUT;
+        int timeout = 5 * 1000;  // we wait at most 5 seconds
+        int poll_res = poll(&pfd, 1, 5 * 1000);
+        if (poll_res < 0) {
+          JobLog(bc::JMSG_ERROR,
+                 FMT_STRING("could not write missing {} bytes to io socket {} "
+                            "as poll failed: Err={}"),
+                 pkt.status - bytes_sent, io, strerror(errno));
+          return Status(grpc::StatusCode::INTERNAL, "io socket full");
+        } else if (poll_res == 0) {
+          JobLog(bc::JMSG_ERROR,
+                 FMT_STRING("could not write missing {} bytes to io socket {} "
+                            "after waiting {}ms for data to become available"),
+                 pkt.status - bytes_sent, io, timeout);
+          return Status(grpc::StatusCode::INTERNAL, "io socket full");
+        }
+      } else {
+        JobLog(bc::JMSG_ERROR,
+               FMT_STRING("could not write {} bytes to io socket {}: Err={}"),
+               pkt.status - bytes_sent, io, strerror(errno));
+        return Status(grpc::StatusCode::INTERNAL,
+                      "io socket write not successful");
+      }
+    } else {
+      bytes_sent += written;
+    }
+  }
 
+  _.reset();
+  if (_.error()) {
+    JobLog(bc::JMSG_ERROR, FMT_STRING("could not reset fd {} flags: Err={}"),
+           io, strerror(_.error().value()));
+    return Status(grpc::StatusCode::INTERNAL, "could not reset socket flags");
+  }
   return Status::OK;
 }
 auto PluginService::FileWrite(ServerContext*,
