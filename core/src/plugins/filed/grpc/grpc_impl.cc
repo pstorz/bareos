@@ -25,6 +25,7 @@
 #include "plugin.pb.h"
 #include "bareos.grpc.pb.h"
 #include "bareos.pb.h"
+#include "include/baconfig.h"
 #include "filed/fd_plugins.h"
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/server_posix.h>
@@ -1258,7 +1259,10 @@ class PluginClient {
   }
 
 
-  bRC FileOpen(std::string_view name, int32_t flags, int32_t mode)
+  bRC FileOpen(std::string_view name,
+               int32_t flags,
+               int32_t mode,
+               bool* io_in_core)
   {
     bp::fileOpenRequest req;
     req.set_mode(mode);
@@ -1270,6 +1274,11 @@ class PluginClient {
     grpc::Status status = stub_->FileOpen(&ctx, req, &resp);
 
     if (!status.ok()) { return bRC_Error; }
+
+    DebugLog(100, FMT_STRING("FileOpen {{io_in_core = {}}}"),
+             resp.io_in_core());
+
+    *io_in_core = resp.io_in_core();
 
     return bRC_OK;
   }
@@ -2024,7 +2033,7 @@ std::optional<int> receive_fd(int unix_socket, int expected_name)
     DebugLog(100, FMT_STRING("received name = {}"), name);
   }
 
-  if (name != expected_name && expected_name == -1) {
+  if (name != expected_name && expected_name != -1) {
     DebugLog(50, FMT_STRING("names do not match got = {}, expected = {}"), name,
              expected_name);
     return std::nullopt;
@@ -2101,7 +2110,35 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
   PluginClient* client = &members->client;
   switch (pkt->func) {
     case filedaemon::IO_OPEN: {
-      return client->FileOpen(pkt->fname, pkt->flags, pkt->mode);
+      bool io_in_core;
+      auto res
+          = client->FileOpen(pkt->fname, pkt->flags, pkt->mode, &io_in_core);
+      if (res != bRC_OK) {
+        pkt->io_errno = EIO;
+        return res;
+      }
+      if (io_in_core) {
+        DebugLog(100, FMT_STRING("using io_in_core"));
+        std::optional fd = receive_fd(iosock, -1);
+
+        if (!fd) {
+          JobLog(nullptr, M_FATAL,
+                 FMT_STRING("plugin wanted to do io_in_core, but did not send "
+                            "an fd: Err={}"),
+                 strerror(errno));
+
+          pkt->io_errno = EIO;
+
+          return bRC_Error;
+        }
+        pkt->filedes = *fd;
+        pkt->status = IoStatus::do_io_in_core;
+      } else {
+        DebugLog(100, FMT_STRING("not using io_in_core"));
+        pkt->filedes = kInvalidFiledescriptor;
+        pkt->status = !IoStatus::do_io_in_core;
+      }
+      return res;
     } break;
     case filedaemon::IO_READ: {
       size_t bytes_read = 0;

@@ -155,7 +155,9 @@ message fileWriteRequest {
 message fileCloseRequest {
 };
 message fileOpenResponse {
-  // here we should somehow allow `do_io_in_core` stuff
+  // if this is set to true, then we expect the plugin to send a file descriptor
+  // to the io socket
+  bool io_in_core = 1;
 };
 message fileSeekResponse {
 };
