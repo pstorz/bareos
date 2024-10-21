@@ -443,10 +443,23 @@ auto PluginService::handlePluginEvent(
                                        const_cast<char*>(inner.data().c_str()));
     response->set_res(to_grpc(res));
   } else if (event.has_restore_object()) {
-    assert(!"TODO: rop");
     auto& inner = event.restore_object();
     filedaemon::bEvent e{filedaemon::bEventRestoreObject};
-    auto res = funcs.handlePluginEvent(ctx, &e, nullptr);
+
+    auto& grop = inner.rop();
+    filedaemon::restore_object_pkt rop = {};
+
+    rop.plugin_name = const_cast<char*>(grop.used_cmd_string().c_str());
+    rop.JobId = grop.jobid();
+    rop.object_len = grop.sent().data().size();
+    rop.object_name = const_cast<char*>(grop.sent().data().data());
+    // TODO: maybe this should be set by us ?
+    // rop.object_type        = ;
+    rop.object_index = grop.sent().index();
+    // rop.object_full_len    =;
+    // rop.object_compression =;
+
+    auto res = funcs.handlePluginEvent(ctx, &e, &rop);
     response->set_res(to_grpc(res));
   } else if (event.has_end_restore_job()) {
     auto& inner = event.end_restore_job();
