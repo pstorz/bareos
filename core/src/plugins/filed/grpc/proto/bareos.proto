@@ -122,7 +122,7 @@ message getInstanceCountResponse {
 
 message checkChangesRequest {
   bareos.common.FileType type = 1;
-  string file = 2;
+  bytes file = 2;
   optional google.protobuf.Timestamp since_time = 3;
   bytes stats = 4;
 };
@@ -131,7 +131,7 @@ message checkChangesResponse {
   optional int64 delta_seq = 2;
 };
 message AcceptFileRequest {
-  string file = 1;
+  bytes file = 1;
   bytes stats = 2;
 };
 message AcceptFileResponse {
@@ -139,13 +139,13 @@ message AcceptFileResponse {
 };
 message SetSeenRequest {
   // if no file given, then all files are marked as seen
-  optional string file = 1;
+  optional bytes file = 1;
 };
 message SetSeenResponse {
 };
 message ClearSeenRequest {
   // if no file given, then all files are marked as unseen
-  optional string file = 1;
+  optional bytes file = 1;
 };
 message ClearSeenResponse {
 };
