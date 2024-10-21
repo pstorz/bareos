@@ -45,228 +45,168 @@
 
 #include "include/filetypes.h"
 
-std::optional<std::pair<Socket, Socket>> unix_socket_pair()
-{
-  int sockets[2];
-
-  if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) < 0) {
-    DebugLog(50, FMT_STRING("could not create socket pair: {}"),
-             strerror(errno));
-    return std::nullopt;
-  }
-
-  return std::make_pair(sockets[0], sockets[1]);
-}
-
-std::optional<std::pair<OSFile, OSFile>> unix_pipe()
-{
-  int fds[2];
-
-  if (pipe(fds) < 0) {
-    DebugLog(50, FMT_STRING("could not create pipe: {}"), strerror(errno));
-    return std::nullopt;
-  }
-
-  return std::make_pair(fds[0], fds[1]);
-}
-
-struct grpc_connections {
-  OSFile std_out;
-  OSFile std_err;
-
-  Socket grpc_parent;  // parent = server
-  Socket grpc_child;   // child = server
-  Socket grpc_io;
-
-  void set_close_on_exec()
-  {
-    if (fcntl(std_out.get(), F_SETFD, FD_CLOEXEC) < 0) {
-      DebugLog(
-          50,
-          FMT_STRING("could not set CLOEXEC on program output pipe {}. Err={}"),
-          std_out.get(), strerror(errno));
-    }
-    if (fcntl(std_err.get(), F_SETFD, FD_CLOEXEC) < 0) {
-      DebugLog(
-          50,
-          FMT_STRING("could not set CLOEXEC on program error pipe {}. Err={}"),
-          std_err.get(), strerror(errno));
-    }
-    if (fcntl(grpc_parent.get(), F_SETFD, FD_CLOEXEC) < 0) {
-      DebugLog(50,
-               FMT_STRING("could not set CLOEXEC on parent socket {}. Err={}"),
-               grpc_parent.get(), strerror(errno));
-    }
-    if (fcntl(grpc_child.get(), F_SETFD, FD_CLOEXEC) < 0) {
-      DebugLog(50,
-               FMT_STRING("could not set CLOEXEC on child socket {}. Err={}"),
-               grpc_child.get(), strerror(errno));
-    }
-    if (fcntl(grpc_io.get(), F_SETFD, FD_CLOEXEC) < 0) {
-      DebugLog(50, FMT_STRING("could not set CLOEXEC on io socket {}. Err={}"),
-               grpc_io.get(), strerror(errno));
-    }
-  }
-};
-
-std::optional<std::pair<grpc_connections, grpc_connections>>
-make_grpc_connections()
-{
-  auto std_out = unix_pipe();
-  auto std_err = unix_pipe();
-
-  auto grpc_parent = unix_socket_pair();
-  auto grpc_child = unix_socket_pair();
-  auto grpc_io = unix_socket_pair();
-
-  if (!std_out || !std_err || !grpc_parent || !grpc_child || !grpc_io) {
-    return std::nullopt;
-  }
-  return std::make_pair(
-      grpc_connections{std::move(std_out->first), std::move(std_err->first),
-                       std::move(grpc_parent->first),
-                       std::move(grpc_child->first), std::move(grpc_io->first)},
-      grpc_connections{std::move(std_out->second), std::move(std_err->second),
-                       std::move(grpc_parent->second),
-                       std::move(grpc_child->second),
-                       std::move(grpc_io->second)});
-}
-
-enum class predefined_fd : int
-{
-  // these are from the perspective of the plugin
-  In = 0,
-  Out = 1,
-  Err = 2,
-
-  GrpcIn = 3,
-  GrpcOut = 4,
-  GrpcIo = 5,
-};
-
-bool IsPredefinedFD(int fd)
-{
-  // 0 = stdin
-  // 1 = stdout
-  // 2 = stderr
-  // 3 = grpc in
-  // 4 = grpc out
-  // 5 = grpc io
-  return 0 <= fd && fd < 6;
-}
-
-bool FixupBadFD(int& fd, int& dummy)
-{
-  if (!IsPredefinedFD(fd)) { return true; }
-  // we first need to get it out of our range
-  // later we put it into the right place
-  int newfd = dup2(fd, dummy);  // this closes dummy if it refered to a file,
-  // but we chose dummy in such a way that this does not
-  // matter
-
-  if (newfd < 0) {
-    // TODO: what to do here ?
-    return false;
-  }
-
-  if (newfd == fd) {
-    // this should never happen
-    dummy *= 2;
-    return true;
-  }
-
-  close(fd);
-  fd = newfd;
-  dummy += 1;
-  return true;
-}
-
-template <typename... Args> int supremum(Args... ints)
-{
-  int sup = 0;
-
-  ((sup = std::max(sup, ints)), ...);
-
-  return sup;
-}
-
-bool move_fd(int fd, int newfd)
-{
-  if (dup2(fd, newfd) != newfd) { return false; }
-
-  close(fd);
-
-  return true;
-}
-
-std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
-                                     grpc_connections io)
-{
-  DebugLog(100,
-           FMT_STRING("trying to start {} with io {{Parent = {}, Child = {}, "
-                      "Io = {}, Out = {}, Err = {}}}"),
-           program_path, io.grpc_parent.get(), io.grpc_child.get(),
-           io.grpc_io.get(), io.std_out.get(), io.std_err.get());
-
-  // todo: we should start an io thread that reads from stdout,
-  //       and creates job wessages out of that
-
-
-  pid_t child = fork();
-
-  if (child < 0) {
-    return std::nullopt;
-  } else if (child == 0) {
-    int std_in = open("/dev/null", O_RDONLY);
-
-    int dummy_fd
-        = supremum(io.grpc_parent.get(), io.grpc_child.get(), io.grpc_io.get(),
-                   std_in, io.std_out.get(), io.std_err.get())
-          + 1;  // we dont care
-                // about fds
-                // apart from these 6
-
-    if (!FixupBadFD(io.grpc_parent.get(), dummy_fd)
-        || !FixupBadFD(io.grpc_child.get(), dummy_fd)
-        || !FixupBadFD(io.grpc_io.get(), dummy_fd)
-        || !FixupBadFD(std_in, dummy_fd)
-        || !FixupBadFD(io.std_out.get(), dummy_fd)
-        || !FixupBadFD(io.std_err.get(), dummy_fd)) {
-      return std::nullopt;
-    }
-
-    if (!move_fd(std_in, (int)predefined_fd::In)
-        || !move_fd(io.std_out.get(), (int)predefined_fd::Out)
-        || !move_fd(io.std_err.get(), (int)predefined_fd::Err)
-        || !move_fd(io.grpc_parent.release(), (int)predefined_fd::GrpcOut)
-        || !move_fd(io.grpc_child.release(), (int)predefined_fd::GrpcIn)
-        || !move_fd(io.grpc_io.release(), (int)predefined_fd::GrpcIo)) {
-      return std::nullopt;
-    }
-
-    // we have now setup the file descriptors
-
-    std::string copy(program_path);
-
-    int res = execl(copy.c_str(), copy.data(), nullptr);
-
-    fprintf(stderr, "execl(%s, %s, nullptr) returned %d: Err=%s\n\n\n",
-            copy.c_str(), copy.c_str(), res, strerror(errno));
-
-    // exec* only returns if the new process could not be started!
-    exit(99);
-  } else {
-    DebugLog(100, FMT_STRING("Child pid = {}"), child);
-
-    return child;
-  }
-}
-
 namespace {
 namespace bp = bareos::plugin;
 
 namespace bc = bareos::core;
 namespace bco = bareos::common;
+
+bool SetNonBlocking(PluginContext* ctx, OSFile& f)
+{
+  int flags = fcntl(f.get(), F_GETFL);
+  if (flags == -1) {
+    DebugLog(ctx, 50, FMT_STRING("could not get flags for socket {}: Err={}"),
+             f.get(), strerror(errno));
+    return false;
+  }
+
+  if (fcntl(f.get(), F_SETFL, flags | O_NONBLOCK) < 0) {
+    DebugLog(
+        ctx, 50,
+        FMT_STRING("could not add non blocking flags to socket {}: Err={}"),
+        f.get(), strerror(errno));
+    return false;
+  }
+
+  return true;
+}
+
+void do_std_io(std::atomic<bool>* quit,
+               PluginContext* ctx,
+               OSFile out,
+               OSFile err)
+{
+  // on windows we need overlapped (async) io here
+  // as pipes by themselves are not awaitable, so we need to use
+  // CreateEvent on the overlapped structure to get an awaitable event
+  // after issuing ReadFileEx
+
+  SetNonBlocking(ctx, out);
+  SetNonBlocking(ctx, err);
+
+  char outbuf[4096];
+  char errbuf[4096];
+
+  char* outs_start = &outbuf[0];
+  char* outs = outs_start;
+  size_t outs_size = sizeof(outbuf);
+
+  char* errs_start = &errbuf[0];
+  char* errs = errs_start;
+  size_t errs_size = sizeof(errbuf);
+
+  std::array fds = {pollfd{out.get(), POLLIN, 0}, pollfd{err.get(), POLLIN, 0}};
+
+  while (!quit->load()) {
+    auto num_fired = poll(fds.data(), fds.size(), 500);
+    if (num_fired < 0) { break; }
+
+    if (num_fired == 0) { continue; }
+
+    if ((fds[0].revents & POLLIN) == POLLIN) {
+      // OUT
+      ssize_t bytes_read = read(out.get(), outs, outs_size);
+
+      if (bytes_read < 0) {
+        // ?? how is this possible ??
+        DebugLog(ctx, 50, FMT_STRING("reading from {} returned {}: Err={}"),
+                 out.get(), bytes_read, strerror(errno));
+      } else {
+        // we search in [search_start, search_end) for newlines
+        auto* search_start = outs;
+        auto* search_end = outs + bytes_read;
+        // ... as this is the only place where they could be
+
+        // When we find one, we print starting at print_start
+        auto* print_start = outs_start;
+        for (;;) {
+          auto* x = std::find(search_start, search_end, '\n');
+          if (x == search_end) { break; }
+
+          // if we found a newline then we print it as debug message
+          DebugLog(ctx, 100, FMT_STRING("stdout: {}"),
+                   std::string_view{print_start,
+                                    static_cast<size_t>(x - print_start)});
+
+          // skip the newline itself
+          search_start = print_start = x + 1;
+        }
+
+        if (print_start != outs_start) {
+          // this is the size of the unprinted leftovers in the buffer
+          auto bufsize = search_end - print_start;
+
+          // we printed something, so move everything back to create space
+          memmove(outs_start, print_start, bufsize);
+
+          outs = outs_start + bufsize;
+          outs_size = sizeof(outbuf) - bufsize;
+        } else if (outs_size == 0) {
+          DebugLog(ctx, 100, FMT_STRING("stdout (full): {}"),
+                   std::string_view{outs_start, sizeof(outbuf)});
+
+          outs_size = sizeof(outbuf);
+          outs = outs_start;
+        } else {
+          outs += bytes_read;
+          outs_size -= bytes_read;
+        }
+      }
+    }
+
+    if ((fds[1].revents & POLLIN) == POLLIN) {
+      // ERR
+      ssize_t bytes_read = read(err.get(), errs, errs_size);
+
+      if (bytes_read < 0) {
+        // ?? how is this possible ??
+        DebugLog(ctx, 50, FMT_STRING("reading from {} returned {}: Err={}"),
+                 err.get(), bytes_read, strerror(errno));
+      } else {
+        // we search in [search_start, search_end) for newlines
+        auto* search_start = errs;
+        auto* search_end = errs + bytes_read;
+        // ... as this is the only place where they could be
+
+        // When we find one, we print starting at print_start
+        auto* print_start = errs_start;
+        for (;;) {
+          auto* x = std::find(search_start, search_end, '\n');
+          if (x == search_end) { break; }
+
+          // if we found a newline then we print it as debug message
+          JobLog(ctx, M_ERROR, FMT_STRING("stderr: {}"),
+                 std::string_view{print_start,
+                                  static_cast<size_t>(x - print_start)});
+
+          // skip the newline itself
+          search_start = print_start = x + 1;
+        }
+
+        if (print_start != errs_start) {
+          // this is the size of the unprinted leftovers in the buffer
+          auto bufsize = search_end - print_start;
+
+          // we printed something, so move everything back to create space
+          memmove(errs_start, print_start, bufsize);
+
+          errs = errs_start + bufsize;
+          errs_size = sizeof(errbuf) - bufsize;
+        } else if (errs_size == 0) {
+          JobLog(ctx, M_ERROR, FMT_STRING("stderr (full): {}"),
+                 std::string_view{errs_start, sizeof(errbuf)});
+
+          errs_size = sizeof(errbuf);
+          errs = errs_start;
+        } else {
+          errs += bytes_read;
+          errs_size -= bytes_read;
+        }
+      }
+    }
+  }
+}
+
 
 class BareosCore : public bc::Core::Service {
  public:
@@ -822,8 +762,9 @@ class BareosCore : public bc::Core::Service {
 
 class PluginClient {
  public:
-  PluginClient(std::shared_ptr<grpc::ChannelInterface> channel)
-      : stub_(bp::Plugin::NewStub(channel))
+  PluginClient(std::shared_ptr<grpc::ChannelInterface> channel,
+               PluginContext* ctx)
+      : stub_(bp::Plugin::NewStub(channel)), core{ctx}
   {
   }
 
@@ -1312,9 +1253,11 @@ class PluginClient {
   struct read_iter {
     bp::fileReadRequest req;
     grpc::ClientContext ctx;
+    PluginContext* pctx;
     std::unique_ptr<grpc::ClientReader<bp::fileReadResponse>> reader;
 
-    read_iter(bp::Plugin::Stub* stub, size_t size)
+    read_iter(bp::Plugin::Stub* stub, size_t size, PluginContext* plugin_ctx)
+        : pctx{plugin_ctx}
     {
       req.set_num_bytes(size);
       reader = stub->FileRead(&ctx, req);
@@ -1332,15 +1275,15 @@ class PluginClient {
     {
       auto status = reader->Finish();
       if (!status.ok()) {
-        DebugLog(50, FMT_STRING("file read error {}: {}"),
-                 int(status.error_code()), status.error_message());
+        ::DebugLog(pctx, 50, FMT_STRING("file read error {}: {}"),
+                   int(status.error_code()), status.error_message());
         return bRC_Error;
       }
       return bRC_OK;
     }
   };
 
-  read_iter FileRead(size_t size) { return read_iter{stub_.get(), size}; }
+  read_iter FileRead(size_t size) { return read_iter{stub_.get(), size, core}; }
 
   bRC FileWrite(size_t size, size_t* num_bytes_written)
   {
@@ -1594,14 +1537,22 @@ class PluginClient {
 
  private:
   std::unique_ptr<bp::Plugin::Stub> stub_{};
+  PluginContext* core{nullptr};
 
   size_t current_xattr_index{std::numeric_limits<size_t>::max()};
   std::vector<bp::Xattribute> xattribute_cache{};
+
+  template <typename... Args>
+  void DebugLog(Severity severity,
+                fmt::format_string<Args...> fmt,
+                Args&&... args)
+  {
+    ::DebugLog(core, severity, std::move(fmt), std::forward<Args>(args)...);
+  }
 };
 
 }  // namespace
 
-// namespace {
 struct grpc_connection_members {
   PluginClient client;
   std::shared_ptr<grpc::Channel> channel;
@@ -1611,14 +1562,15 @@ struct grpc_connection_members {
   grpc_connection_members() = delete;
 };
 
-
 struct connection_builder {
+  PluginContext* ctx;
   std::shared_ptr<grpc::Channel> channel{};
   std::optional<PluginClient> opt_client{};
   std::unique_ptr<grpc::Server> opt_server{};
   std::vector<std::unique_ptr<grpc::Service>> services{};
 
-  template <typename... Args> connection_builder(Args&&... args)
+  template <typename... Args>
+  connection_builder(PluginContext* pctx, Args&&... args) : ctx{pctx}
   {
     (services.emplace_back(std::forward<Args>(args)), ...);
   }
@@ -1630,15 +1582,16 @@ struct connection_builder {
     channel = grpc::CreateInsecureChannelFromFd("", s.get());
 
     if (channel) {
-      DebugLog(100, FMT_STRING("could connect to client over socket {}"),
-               s.get());
+      ::DebugLog(ctx, 100, FMT_STRING("could connect to client over socket {}"),
+                 s.get());
 
       s.release();
-      opt_client.emplace(channel);
+      opt_client.emplace(channel, ctx);
 
     } else {
-      DebugLog(50, FMT_STRING("could not connect to client over socket {}"),
-               s.get());
+      ::DebugLog(ctx, 50,
+                 FMT_STRING("could not connect to client over socket {}"),
+                 s.get());
     }
 
     return *this;
@@ -1654,15 +1607,17 @@ struct connection_builder {
       opt_server = builder.BuildAndStart();
 
       if (!opt_server) {
-        DebugLog(50, FMT_STRING("grpc server could not get started"), s.get());
+        ::DebugLog(ctx, 50, FMT_STRING("grpc server could not get started"),
+                   s.get());
         return *this;
       }
 
       grpc::AddInsecureChannelFromFd(opt_server.get(), s.release());
 
     } catch (const std::exception& e) {
-      DebugLog(50, FMT_STRING("could not attach socket {} to server: Err={}"),
-               s.get(), e.what());
+      ::DebugLog(ctx, 50,
+                 FMT_STRING("could not attach socket {} to server: Err={}"),
+                 s.get(), e.what());
       opt_server.reset();
     } catch (...) {
       opt_server.reset();
@@ -1686,267 +1641,363 @@ struct connection_builder {
     return con;
   }
 };
-//};  // namespace
 
-std::optional<grpc_connection> make_connection_from(PluginContext* ctx,
-                                                    grpc_connections& io)
-{
-  return connection_builder{std::make_unique<BareosCore>(ctx)}
-      .connect_client(std::move(io.grpc_child))
-      .connect_server(std::move(io.grpc_parent))
-      .build();
-}
+struct grpc_connection_builder {
+  PluginContext* ctx;
 
-bool SetNonBlocking(OSFile& f)
-{
-  int flags = fcntl(f.get(), F_GETFL);
-  if (flags == -1) {
-    DebugLog(50, FMT_STRING("could not get flags for socket {}: Err={}"),
-             f.get(), strerror(errno));
-    return false;
+  template <typename... Args>
+  void DebugLog(Severity severity,
+                fmt::format_string<Args...> fmt,
+                Args&&... args)
+  {
+    ::DebugLog(ctx, severity, std::move(fmt), std::forward<Args>(args)...);
   }
 
-  if (fcntl(f.get(), F_SETFL, flags | O_NONBLOCK) < 0) {
-    DebugLog(
-        50, FMT_STRING("could not add non blocking flags to socket {}: Err={}"),
-        f.get(), strerror(errno));
-    return false;
+  template <typename... Args>
+  void JobLog(Type type, fmt::format_string<Args...> fmt, Args&&... args)
+  {
+    auto formatted = fmt::format(fmt, args...);
+
+    ::JobLog(ctx, type, std::move(fmt), std::forward<Args>(args)...);
   }
 
-  return true;
-}
+  std::optional<std::pair<Socket, Socket>> unix_socket_pair()
+  {
+    int sockets[2];
 
-bool SetNonBlocking(Socket& s)
-{
-  int flags = fcntl(s.get(), F_GETFL);
-  if (flags == -1) {
-    DebugLog(50, FMT_STRING("could not get flags for socket {}: Err={}"),
-             s.get(), strerror(errno));
-    return false;
-  }
-
-  if (fcntl(s.get(), F_SETFL, flags | O_NONBLOCK) < 0) {
-    DebugLog(
-        50, FMT_STRING("could not add non blocking flags to socket {}: Err={}"),
-        s.get(), strerror(errno));
-    return false;
-  }
-
-  return true;
-}
-
-void do_std_io(std::atomic<bool>* quit,
-               PluginContext* ctx,
-               OSFile out,
-               OSFile err)
-{
-  // on windows we need overlapped (async) io here
-  // as pipes by themselves are not awaitable, so we need to use
-  // CreateEvent on the overlapped structure to get an awaitable event
-  // after issuing ReadFileEx
-
-  SetNonBlocking(out);
-  SetNonBlocking(err);
-
-  char outbuf[4096];
-  char errbuf[4096];
-
-  char* outs_start = &outbuf[0];
-  char* outs = outs_start;
-  size_t outs_size = sizeof(outbuf);
-
-  char* errs_start = &errbuf[0];
-  char* errs = errs_start;
-  size_t errs_size = sizeof(errbuf);
-
-  std::array fds = {pollfd{out.get(), POLLIN, 0}, pollfd{err.get(), POLLIN, 0}};
-
-  while (!quit->load()) {
-    auto num_fired = poll(fds.data(), fds.size(), 500);
-    if (num_fired < 0) { break; }
-
-    if (num_fired == 0) { continue; }
-
-    if ((fds[0].revents & POLLIN) == POLLIN) {
-      // OUT
-      ssize_t bytes_read = read(out.get(), outs, outs_size);
-
-      if (bytes_read < 0) {
-        // ?? how is this possible ??
-        DebugLog(ctx, 50, FMT_STRING("reading from {} returned {}: Err={}"),
-                 out.get(), bytes_read, strerror(errno));
-      } else {
-        // we search in [search_start, search_end) for newlines
-        auto* search_start = outs;
-        auto* search_end = outs + bytes_read;
-        // ... as this is the only place where they could be
-
-        // When we find one, we print starting at print_start
-        auto* print_start = outs_start;
-        for (;;) {
-          auto* x = std::find(search_start, search_end, '\n');
-          if (x == search_end) { break; }
-
-          // if we found a newline then we print it as debug message
-          DebugLog(ctx, 100, FMT_STRING("stdout: {}"),
-                   std::string_view{print_start,
-                                    static_cast<size_t>(x - print_start)});
-
-          // skip the newline itself
-          search_start = print_start = x + 1;
-        }
-
-        if (print_start != outs_start) {
-          // this is the size of the unprinted leftovers in the buffer
-          auto bufsize = search_end - print_start;
-
-          // we printed something, so move everything back to create space
-          memmove(outs_start, print_start, bufsize);
-
-          outs = outs_start + bufsize;
-          outs_size = sizeof(outbuf) - bufsize;
-        } else if (outs_size == 0) {
-          DebugLog(ctx, 100, FMT_STRING("stdout (full): {}"),
-                   std::string_view{outs_start, sizeof(outbuf)});
-
-          outs_size = sizeof(outbuf);
-          outs = outs_start;
-        } else {
-          outs += bytes_read;
-          outs_size -= bytes_read;
-        }
-      }
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) < 0) {
+      DebugLog(50, FMT_STRING("could not create socket pair: {}"),
+               strerror(errno));
+      return std::nullopt;
     }
 
-    if ((fds[1].revents & POLLIN) == POLLIN) {
-      // ERR
-      ssize_t bytes_read = read(err.get(), errs, errs_size);
+    return std::make_pair(sockets[0], sockets[1]);
+  }
 
-      if (bytes_read < 0) {
-        // ?? how is this possible ??
-        DebugLog(ctx, 50, FMT_STRING("reading from {} returned {}: Err={}"),
-                 err.get(), bytes_read, strerror(errno));
-      } else {
-        // we search in [search_start, search_end) for newlines
-        auto* search_start = errs;
-        auto* search_end = errs + bytes_read;
-        // ... as this is the only place where they could be
+  std::optional<std::pair<OSFile, OSFile>> unix_pipe()
+  {
+    int fds[2];
 
-        // When we find one, we print starting at print_start
-        auto* print_start = errs_start;
-        for (;;) {
-          auto* x = std::find(search_start, search_end, '\n');
-          if (x == search_end) { break; }
+    if (pipe(fds) < 0) {
+      DebugLog(50, FMT_STRING("could not create pipe: {}"), strerror(errno));
+      return std::nullopt;
+    }
 
-          // if we found a newline then we print it as debug message
-          JobLog(ctx, M_ERROR, FMT_STRING("stderr: {}"),
-                 std::string_view{print_start,
-                                  static_cast<size_t>(x - print_start)});
+    return std::make_pair(fds[0], fds[1]);
+  }
 
-          // skip the newline itself
-          search_start = print_start = x + 1;
-        }
+  struct grpc_connections {
+    OSFile std_out;
+    OSFile std_err;
 
-        if (print_start != errs_start) {
-          // this is the size of the unprinted leftovers in the buffer
-          auto bufsize = search_end - print_start;
+    Socket grpc_parent;  // parent = server
+    Socket grpc_child;   // child = server
+    Socket grpc_io;
+  };
 
-          // we printed something, so move everything back to create space
-          memmove(errs_start, print_start, bufsize);
-
-          errs = errs_start + bufsize;
-          errs_size = sizeof(errbuf) - bufsize;
-        } else if (errs_size == 0) {
-          JobLog(ctx, M_ERROR, FMT_STRING("stderr (full): {}"),
-                 std::string_view{errs_start, sizeof(errbuf)});
-
-          errs_size = sizeof(errbuf);
-          errs = errs_start;
-        } else {
-          errs += bytes_read;
-          errs_size -= bytes_read;
-        }
-      }
+  void set_close_on_exec(grpc_connections& io)
+  {
+    if (fcntl(io.std_out.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(
+          50,
+          FMT_STRING("could not set CLOEXEC on program output pipe {}. Err={}"),
+          io.std_out.get(), strerror(errno));
+    }
+    if (fcntl(io.std_err.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(
+          50,
+          FMT_STRING("could not set CLOEXEC on program error pipe {}. Err={}"),
+          io.std_err.get(), strerror(errno));
+    }
+    if (fcntl(io.grpc_parent.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(50,
+               FMT_STRING("could not set CLOEXEC on parent socket {}. Err={}"),
+               io.grpc_parent.get(), strerror(errno));
+    }
+    if (fcntl(io.grpc_child.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(50,
+               FMT_STRING("could not set CLOEXEC on child socket {}. Err={}"),
+               io.grpc_child.get(), strerror(errno));
+    }
+    if (fcntl(io.grpc_io.get(), F_SETFD, FD_CLOEXEC) < 0) {
+      DebugLog(50, FMT_STRING("could not set CLOEXEC on io socket {}. Err={}"),
+               io.grpc_io.get(), strerror(errno));
     }
   }
-}
+
+  std::optional<std::pair<grpc_connections, grpc_connections>>
+  make_grpc_connections()
+  {
+    auto std_out = unix_pipe();
+    auto std_err = unix_pipe();
+
+    auto grpc_parent = unix_socket_pair();
+    auto grpc_child = unix_socket_pair();
+    auto grpc_io = unix_socket_pair();
+
+    if (!std_out || !std_err || !grpc_parent || !grpc_child || !grpc_io) {
+      return std::nullopt;
+    }
+    return std::make_pair(
+        grpc_connections{std::move(std_out->first), std::move(std_err->first),
+                         std::move(grpc_parent->first),
+                         std::move(grpc_child->first),
+                         std::move(grpc_io->first)},
+        grpc_connections{std::move(std_out->second), std::move(std_err->second),
+                         std::move(grpc_parent->second),
+                         std::move(grpc_child->second),
+                         std::move(grpc_io->second)});
+  }
+
+  enum class predefined_fd : int
+  {
+    // these are from the perspective of the plugin
+    In = 0,
+    Out = 1,
+    Err = 2,
+
+    GrpcIn = 3,
+    GrpcOut = 4,
+    GrpcIo = 5,
+  };
+
+  bool IsPredefinedFD(int fd)
+  {
+    // 0 = stdin
+    // 1 = stdout
+    // 2 = stderr
+    // 3 = grpc in
+    // 4 = grpc out
+    // 5 = grpc io
+    return 0 <= fd && fd < 6;
+  }
+
+  bool FixupBadFD(int& fd, int& dummy)
+  {
+    if (!IsPredefinedFD(fd)) { return true; }
+    // we first need to get it out of our range
+    // later we put it into the right place
+    int newfd = dup2(fd, dummy);  // this closes dummy if it refered to a file,
+    // but we chose dummy in such a way that this does not
+    // matter
+
+    if (newfd < 0) {
+      // TODO: what to do here ?
+      return false;
+    }
+
+    if (newfd == fd) {
+      // this should never happen
+      dummy *= 2;
+      return true;
+    }
+
+    close(fd);
+    fd = newfd;
+    dummy += 1;
+    return true;
+  }
+
+  template <typename... Args> int supremum(Args... ints)
+  {
+    int sup = 0;
+
+    ((sup = std::max(sup, ints)), ...);
+
+    return sup;
+  }
+
+  bool move_fd(int fd, int newfd)
+  {
+    if (dup2(fd, newfd) != newfd) { return false; }
+
+    close(fd);
+
+    return true;
+  }
+
+  std::optional<pid_t> StartDuplexGrpc(std::string_view program_path,
+                                       grpc_connections io)
+  {
+    DebugLog(100,
+             FMT_STRING("trying to start {} with io {{Parent = {}, Child = {}, "
+                        "Io = {}, Out = {}, Err = {}}}"),
+             program_path, io.grpc_parent.get(), io.grpc_child.get(),
+             io.grpc_io.get(), io.std_out.get(), io.std_err.get());
+
+    pid_t child = fork();
+
+    if (child < 0) {
+      return std::nullopt;
+    } else if (child == 0) {
+      int std_in = open("/dev/null", O_RDONLY);
+
+      int dummy_fd = supremum(io.grpc_parent.get(), io.grpc_child.get(),
+                              io.grpc_io.get(), std_in, io.std_out.get(),
+                              io.std_err.get())
+                     + 1;  // we dont care
+                           // about fds
+                           // apart from these 6
+
+      if (!FixupBadFD(io.grpc_parent.get(), dummy_fd)
+          || !FixupBadFD(io.grpc_child.get(), dummy_fd)
+          || !FixupBadFD(io.grpc_io.get(), dummy_fd)
+          || !FixupBadFD(std_in, dummy_fd)
+          || !FixupBadFD(io.std_out.get(), dummy_fd)
+          || !FixupBadFD(io.std_err.get(), dummy_fd)) {
+        return std::nullopt;
+      }
+
+      if (!move_fd(std_in, (int)predefined_fd::In)
+          || !move_fd(io.std_out.get(), (int)predefined_fd::Out)
+          || !move_fd(io.std_err.get(), (int)predefined_fd::Err)
+          || !move_fd(io.grpc_parent.release(), (int)predefined_fd::GrpcOut)
+          || !move_fd(io.grpc_child.release(), (int)predefined_fd::GrpcIn)
+          || !move_fd(io.grpc_io.release(), (int)predefined_fd::GrpcIo)) {
+        return std::nullopt;
+      }
+
+#if defined(HAVE_FCNTL_F_CLOSEM)
+      // fcntl(fd, F_CLOSEM) needs the lowest filedescriptor to close.
+      fcntl(7, F_CLOSEM);
+#elif defined(HAVE_CLOSEFROM)
+      // closefrom needs the lowest filedescriptor to close.
+      closefrom(7);
+#else
+      for (i = 7; i <= 32; i++) { /* close any open file descriptors */
+        close(i);
+      }
+#endif
+
+      // we have now setup the file descriptors
+
+      std::string copy(program_path);
+
+      int res = execl(copy.c_str(), copy.data(), nullptr);
+
+      fprintf(stderr, "execl(%s, %s, nullptr) returned %d: Err=%s\n\n\n",
+              copy.c_str(), copy.c_str(), res, strerror(errno));
+
+      // exec* only returns if the new process could not be started!
+      exit(99);
+    } else {
+      DebugLog(100, FMT_STRING("Child pid = {}"), child);
+
+      return child;
+    }
+  }
+
+  std::optional<grpc_connection> make_connection_from(grpc_connections& io)
+  {
+    return connection_builder{ctx, std::make_unique<BareosCore>(ctx)}
+        .connect_client(std::move(io.grpc_child))
+        .connect_server(std::move(io.grpc_parent))
+        .build();
+  }
+
+  bool SetNonBlocking(Socket& s)
+  {
+    int flags = fcntl(s.get(), F_GETFL);
+    if (flags == -1) {
+      DebugLog(50, FMT_STRING("could not get flags for socket {}: Err={}"),
+               s.get(), strerror(errno));
+      return false;
+    }
+
+    if (fcntl(s.get(), F_SETFL, flags | O_NONBLOCK) < 0) {
+      DebugLog(
+          50,
+          FMT_STRING("could not add non blocking flags to socket {}: Err={}"),
+          s.get(), strerror(errno));
+      return false;
+    }
+
+    return true;
+  }
+
+  std::optional<grpc_child> build(std::string_view program_path)
+  {
+    // We want to create a two way grpc connection, where both ends act as both
+    // a server and a client.  We do this by using two socket pairs.
+
+    DebugLog(100, FMT_STRING("creating connection to {} ..."), program_path);
+
+    auto total_io = make_grpc_connections();
+
+    if (!total_io) {
+      DebugLog(50,
+               FMT_STRING("abort creation of connection to {} as socket pairs "
+                          "could not be created"),
+               program_path);
+      return std::nullopt;
+    }
+
+    auto& parent_io = total_io->first;
+    auto& child_io = total_io->second;
+
+    if (!SetNonBlocking(parent_io.grpc_parent)
+        || !SetNonBlocking(parent_io.grpc_child)
+        || !SetNonBlocking(child_io.grpc_parent)
+        || !SetNonBlocking(child_io.grpc_child)) {
+      return std::nullopt;
+    }
+
+    DebugLog(100, FMT_STRING("Created pipes Out: {} <> {}, Err: {} <> {}"),
+             parent_io.std_out.get(), child_io.std_out.get(),
+             parent_io.std_err.get(), child_io.std_err.get());
+    DebugLog(
+        100,
+        FMT_STRING("Created socket pairs Parent: {} <> {}, Child: {} <> {}, "
+                   "Io: {} <> {}"),
+        parent_io.grpc_parent.get(), child_io.grpc_parent.get(),
+        parent_io.grpc_child.get(), child_io.grpc_child.get(),
+        parent_io.grpc_io.get(), child_io.grpc_io.get());
+
+    set_close_on_exec(parent_io);
+
+
+    joining_thread stdio_thread{do_std_io, ctx, std::move(parent_io.std_out),
+                                std::move(parent_io.std_err)};
+
+    auto child = StartDuplexGrpc(program_path, std::move(child_io));
+
+    if (!child) {
+      DebugLog(50,
+               FMT_STRING("abort creation of connection to {} as program could "
+                          "not get started"),
+               program_path);
+      return std::nullopt;
+    }
+
+    process p{*child};
+    child.reset();
+
+    auto con = make_connection_from(parent_io);
+
+    if (!con) {
+      DebugLog(50, FMT_STRING("no connection for me :("));
+      return std::nullopt;
+    }
+
+    DebugLog(100, FMT_STRING("a connection for me.  Finishing setup..."));
+
+    if (con->Setup() == bRC_Error) {
+      DebugLog(100, FMT_STRING("... unsuccessfully."));
+      return std::nullopt;
+    }
+
+
+    DebugLog(100, FMT_STRING("... successfully."));
+
+    return grpc_child{std::move(stdio_thread), ctx, std::move(p),
+                      std::move(con.value()), std::move(parent_io.grpc_io)};
+  }
+};
 
 std::optional<grpc_child> make_connection(PluginContext* ctx,
                                           std::string_view program_path)
 {
-  // We want to create a two way grpc connection, where both ends act as both
-  // a server and a client.  We do this by using two socket pairs.
-
-  DebugLog(100, FMT_STRING("creating connection to {} ..."), program_path);
-
-  auto total_io = make_grpc_connections();
-
-  if (!total_io) {
-    DebugLog(50,
-             FMT_STRING("abort creation of connection to {} as socket pairs "
-                        "could not be created"),
-             program_path);
-    return std::nullopt;
-  }
-
-  auto& parent_io = total_io->first;
-  auto& child_io = total_io->second;
-
-  if (!SetNonBlocking(parent_io.grpc_parent)
-      || !SetNonBlocking(parent_io.grpc_child)
-      || !SetNonBlocking(child_io.grpc_parent)
-      || !SetNonBlocking(child_io.grpc_child)) {
-    return std::nullopt;
-  }
-
-  DebugLog(100, FMT_STRING("Created pipes Out: {} <> {}, Err: {} <> {}"),
-           parent_io.std_out.get(), child_io.std_out.get(),
-           parent_io.std_err.get(), child_io.std_err.get());
-  DebugLog(100,
-           FMT_STRING("Created socket pairs Parent: {} <> {}, Child: {} <> {}, "
-                      "Io: {} <> {}"),
-           parent_io.grpc_parent.get(), child_io.grpc_parent.get(),
-           parent_io.grpc_child.get(), child_io.grpc_child.get(),
-           parent_io.grpc_io.get(), child_io.grpc_io.get());
-
-  parent_io.set_close_on_exec();
-
-
-  joining_thread stdio_thread{do_std_io, ctx, std::move(parent_io.std_out),
-                              std::move(parent_io.std_err)};
-
-  auto child = StartDuplexGrpc(program_path, std::move(child_io));
-
-  if (!child) {
-    DebugLog(50,
-             FMT_STRING("abort creation of connection to {} as program could "
-                        "not get started"),
-             program_path);
-    return std::nullopt;
-  }
-
-  process p{*child};
-  child.reset();
-
-  auto con = make_connection_from(ctx, parent_io);
-
-  if (!con) {
-    DebugLog(50, FMT_STRING("no connection for me :("));
-    return std::nullopt;
-  }
-
-  DebugLog(100, FMT_STRING("a connection for me.  Finishing setup..."));
-
-  if (con->Setup() == bRC_Error) {
-    DebugLog(100, FMT_STRING("... unsuccessfully."));
-    return std::nullopt;
-  }
-
-
-  DebugLog(100, FMT_STRING("... successfully."));
-
-  return grpc_child{std::move(stdio_thread), ctx, std::move(p),
-                    std::move(con.value()), std::move(parent_io.grpc_io)};
+  return grpc_connection_builder{ctx}.build(program_path);
 }
 
 process::~process()
