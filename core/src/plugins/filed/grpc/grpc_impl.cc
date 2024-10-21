@@ -62,7 +62,10 @@ std::optional<std::pair<OSFile, OSFile>> unix_pipe()
 {
   int fds[2];
 
-  if (pipe(fds) < 0) { return std::nullopt; }
+  if (pipe(fds) < 0) {
+    DebugLog(50, FMT_STRING("could not create pipe: {}"), strerror(errno));
+    return std::nullopt;
+  }
 
   return std::make_pair(fds[0], fds[1]);
 }
@@ -342,62 +345,26 @@ class BareosCore : public bc::Core::Service {
   static std::optional<int> from_grpc(bco::FileType type)
   {
     switch (type) {
-      case bco::FT_LNKSAVED:
-        return FT_LNKSAVED;
-      case bco::FT_REGE:
-        return FT_REGE;
-      case bco::FT_REG:
+      case bco::RegularFile:
         return FT_REG;
-      case bco::FT_LNK:
-        return FT_LNK;
-      case bco::FT_DIREND:
+      case bco::Directory:
         return FT_DIREND;
-      case bco::FT_SPEC:
+      case bco::SoftLink:
+        return FT_LNK;
+      case bco::SpecialFile:
         return FT_SPEC;
-      case bco::FT_NOACCESS:
-        return FT_NOACCESS;
-      case bco::FT_NOFOLLOW:
-        return FT_NOFOLLOW;
-      case bco::FT_NOSTAT:
-        return FT_NOSTAT;
-      case bco::FT_NOCHG:
-        return FT_NOCHG;
-      case bco::FT_DIRNOCHG:
-        return FT_DIRNOCHG;
-      case bco::FT_ISARCH:
-        return FT_ISARCH;
-      case bco::FT_NORECURSE:
-        return FT_NORECURSE;
-      case bco::FT_NOFSCHG:
-        return FT_NOFSCHG;
-      case bco::FT_NOOPEN:
-        return FT_NOOPEN;
-      case bco::FT_RAW:
+      case bco::BlockDevice:
         return FT_RAW;
-      case bco::FT_FIFO:
+      case bco::Fifo:
         return FT_FIFO;
-      case bco::FT_DIRBEGIN:
-        return FT_DIRBEGIN;
-      case bco::FT_INVALIDFS:
-        return FT_INVALIDFS;
-      case bco::FT_INVALIDDT:
-        return FT_INVALIDDT;
-      case bco::FT_REPARSE:
+      case bco::ReparsePoint:
         return FT_REPARSE;
-      case bco::FT_PLUGIN:
-        return FT_PLUGIN;
-      case bco::FT_DELETED:
-        return FT_DELETED;
-      case bco::FT_BASE:
-        return FT_BASE;
-      case bco::FT_RESTORE_FIRST:
-        return FT_RESTORE_FIRST;
-      case bco::FT_JUNCTION:
+      case bco::Junction:
         return FT_JUNCTION;
-      case bco::FT_PLUGIN_CONFIG:
-        return FT_PLUGIN_CONFIG;
-      case bco::FT_PLUGIN_CONFIG_FILLED:
-        return FT_PLUGIN_CONFIG_FILLED;
+      case bco::Deleted:
+        return FT_DELETED;
+      case bco::HardlinkCopy:
+        return FT_LNKSAVED;
       default:
         return std::nullopt;
     }
@@ -1106,48 +1073,35 @@ class PluginClient {
           }
 
           switch (file.ft()) {
-            case bareos::common::FT_LNKSAVED:
-            case bareos::common::FT_REGE:
-            case bareos::common::FT_REG:
-            case bareos::common::FT_SPEC:
-            case bareos::common::FT_ISARCH:
-            case bareos::common::FT_RAW:
-            case bareos::common::FT_FIFO:
-            case bareos::common::FT_REPARSE:
-            case bareos::common::FT_DELETED:
-            case bareos::common::FT_BASE:
-            case bareos::common::FT_JUNCTION: {
+            case bco::SpecialFile:
+              [[fallthrough]];
+            case bco::BlockDevice:
+              [[fallthrough]];
+            case bco::Fifo:
+              [[fallthrough]];
+            case bco::ReparsePoint:
+              [[fallthrough]];
+            case bco::Junction:
+              [[fallthrough]];
+            case bco::Deleted:
+              [[fallthrough]];
+            case bco::HardlinkCopy:
+              [[fallthrough]];
+            case bco::RegularFile: {
               pkt->fname = strdup(file.file().c_str());
               pkt->link = nullptr;
             } break;
-            case bareos::common::FT_LNK: {
-              pkt->fname = strdup(file.file().c_str());
-              // todo: fix this
-              pkt->link = strdup(file.file().c_str());
-            } break;
-            case bareos::common::FT_DIREND: {
+            case bco::Directory: {
               pkt->fname = strdup(file.file().c_str());
               // todo: fix this
               auto path = file.file();
               path += "/";
               pkt->link = strdup(path.c_str());
             } break;
-
-            case bareos::common::FT_NORECURSE:
-            case bareos::common::FT_PLUGIN:
-            case bareos::common::FT_RESTORE_FIRST:
-            case bareos::common::FT_PLUGIN_CONFIG:
-            case bareos::common::FT_PLUGIN_CONFIG_FILLED:
-            case bareos::common::FT_NOFSCHG:
-            case bareos::common::FT_NOOPEN:
-            case bareos::common::FT_NOACCESS:
-            case bareos::common::FT_NOFOLLOW:
-            case bareos::common::FT_NOSTAT:
-            case bareos::common::FT_NOCHG:
-            case bareos::common::FT_DIRNOCHG:
-            case bareos::common::FT_DIRBEGIN:
-            case bareos::common::FT_INVALIDFS:
-            case bareos::common::FT_INVALIDDT:
+            case bco::SoftLink: {
+              pkt->fname = strdup(file.file().c_str());
+              pkt->link = strdup(file.link().c_str());
+            } break;
             default: {
               DebugLog(50, FMT_STRING("bad filetype {} ({})"),
                        bco::FileType_Name(file.ft()), int(file.ft()));
@@ -1200,6 +1154,42 @@ class PluginClient {
           // TODO: this as well
           pkt->object_name = strdup(object.name().c_str());
           pkt->index = object.index();
+        } else if (resp.has_error()) {
+          auto& err = resp.error();
+
+          switch (err.error()) {
+            case bco::InvalidFileSystem: {
+              pkt->type = FT_INVALIDFS;
+            } break;
+            case bco::InvalidDriveType: {
+              pkt->type = FT_INVALIDDT;
+            } break;
+            case bco::CouldNotOpenDirectory: {
+              pkt->type = FT_NOOPEN;
+            } break;
+            case bco::CouldNotChangeFilesystem: {
+              pkt->type = FT_NOFSCHG;
+            } break;
+            case bco::RecursionDisabled: {
+              pkt->type = FT_NORECURSE;
+            } break;
+            case bco::CouldNotStat: {
+              pkt->type = FT_NOSTAT;
+            } break;
+            case bco::CouldNotFollowLink: {
+              pkt->type = FT_NOFOLLOW;
+            } break;
+            case bco::CouldNotAccessFile: {
+              pkt->type = FT_NOACCESS;
+            } break;
+            default: {
+              DebugLog(50, FMT_STRING("bad type {} ({})"),
+                       bco::FileErrorType_Name(err.error()), int(err.error()));
+              return bRC_Error;
+            }
+          }
+
+          pkt->fname = strdup(err.file().c_str());
         } else {
           DebugLog(100, FMT_STRING("received nothing"));
           return bRC_Error;

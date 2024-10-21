@@ -34,6 +34,7 @@
 
 #include <filesystem>
 #include <thread>
+#include <variant>
 
 #include <sys/socket.h>
 
@@ -175,95 +176,108 @@ auto PluginService::Setup(ServerContext*,
   return Status::OK;
 }
 
-bco::FileType to_grpc(int32_t type)
+enum class UnhandledType
+{
+  Unknown,
+  Plugin,
+  Base,
+  UnchangedFile,
+  UnchangedDirectory,
+  DirectoryStart,
+};
+
+std::variant<UnhandledType, bco::FileType, bco::FileErrorType, bco::ObjectType>
+to_grpc(int32_t type)
 {
   switch (type) {
     case FT_LNKSAVED: {
-      return bco::FT_LNKSAVED;
+      return bco::HardlinkCopy;
     } break;
     case FT_REGE: {
-      return bco::FT_REGE;
+      return bco::RegularFile;
     } break;
     case FT_REG: {
-      return bco::FT_REG;
+      return bco::RegularFile;
     } break;
     case FT_LNK: {
-      return bco::FT_LNK;
+      return bco::SoftLink;
     } break;
     case FT_DIREND: {
-      return bco::FT_DIREND;
+      return bco::Directory;
     } break;
     case FT_SPEC: {
-      return bco::FT_SPEC;
-    } break;
-    case FT_NOACCESS: {
-      return bco::FT_NOACCESS;
-    } break;
-    case FT_NOFOLLOW: {
-      return bco::FT_NOFOLLOW;
-    } break;
-    case FT_NOSTAT: {
-      return bco::FT_NOSTAT;
-    } break;
-    case FT_NOCHG: {
-      return bco::FT_NOCHG;
-    } break;
-    case FT_DIRNOCHG: {
-      return bco::FT_DIRNOCHG;
-    } break;
-    case FT_ISARCH: {
-      return bco::FT_ISARCH;
-    } break;
-    case FT_NORECURSE: {
-      return bco::FT_NORECURSE;
-    } break;
-    case FT_NOFSCHG: {
-      return bco::FT_NOFSCHG;
-    } break;
-    case FT_NOOPEN: {
-      return bco::FT_NOOPEN;
+      return bco::SpecialFile;
     } break;
     case FT_RAW: {
-      return bco::FT_RAW;
-    } break;
-    case FT_FIFO: {
-      return bco::FT_FIFO;
-    } break;
-    case FT_DIRBEGIN: {
-      return bco::FT_DIRBEGIN;
-    } break;
-    case FT_INVALIDFS: {
-      return bco::FT_INVALIDFS;
-    } break;
-    case FT_INVALIDDT: {
-      return bco::FT_INVALIDDT;
+      return bco::BlockDevice;
     } break;
     case FT_REPARSE: {
-      return bco::FT_REPARSE;
-    } break;
-    case FT_PLUGIN: {
-      return bco::FT_PLUGIN;
-    } break;
-    case FT_DELETED: {
-      return bco::FT_DELETED;
-    } break;
-    case FT_BASE: {
-      return bco::FT_BASE;
-    } break;
-    case FT_RESTORE_FIRST: {
-      return bco::FT_RESTORE_FIRST;
+      return bco::ReparsePoint;
     } break;
     case FT_JUNCTION: {
-      return bco::FT_JUNCTION;
+      return bco::Junction;
+    } break;
+    case FT_FIFO: {
+      return bco::Fifo;
+    } break;
+    case FT_DELETED: {
+      return bco::Deleted;
+    } break;
+    case FT_ISARCH: {
+      return bco::RegularFile;
+    } break;
+
+    case FT_NOACCESS: {
+      return bco::CouldNotAccessFile;
+    } break;
+    case FT_NOFOLLOW: {
+      return bco::CouldNotFollowLink;
+    } break;
+    case FT_NOSTAT: {
+      return bco::CouldNotStat;
+    } break;
+    case FT_NORECURSE: {
+      return bco::RecursionDisabled;
+    } break;
+    case FT_NOFSCHG: {
+      return bco::CouldNotChangeFilesystem;
+    } break;
+    case FT_NOOPEN: {
+      return bco::CouldNotOpenDirectory;
+    } break;
+    case FT_INVALIDFS: {
+      return bco::InvalidFileSystem;
+    } break;
+    case FT_INVALIDDT: {
+      return bco::InvalidDriveType;
+    } break;
+    case FT_RESTORE_FIRST: {
+      return bco::Blob;
     } break;
     case FT_PLUGIN_CONFIG: {
-      return bco::FT_PLUGIN_CONFIG;
+      return bco::Config;
     } break;
     case FT_PLUGIN_CONFIG_FILLED: {
-      return bco::FT_PLUGIN_CONFIG_FILLED;
+      return bco::FilledConfig;
+    } break;
+
+    case FT_PLUGIN: {
+      return UnhandledType::Plugin;
+    } break;
+    case FT_BASE: {
+      return UnhandledType::Base;
+    } break;
+    case FT_NOCHG: {
+      return UnhandledType::UnchangedFile;
+    } break;
+    case FT_DIRNOCHG: {
+      return UnhandledType::UnchangedDirectory;
+    } break;
+    case FT_DIRBEGIN: {
+      return UnhandledType::DirectoryStart;
     } break;
   }
-  return bco::FILE_TYPE_UNSPECIFIED;
+  return UnhandledType::Unknown;
 }
 
 bp::ReturnCode to_grpc(bRC res)
@@ -608,36 +622,98 @@ auto PluginService::startBackupFile(ServerContext*,
     }
   }
 
-  if (IS_FT_OBJECT(sp.type)) {
-    if (!sp.object_name) {
-      return Status(grpc::StatusCode::INTERNAL, "no object name set");
-    }
+  auto type = to_grpc(sp.type);
 
-    auto* obj = response->mutable_object();
-    obj->set_index(sp.index);
-    obj->set_name(sp.object_name);
-    obj->set_data(sp.object, sp.object_len);
+  return std::visit(
+      [&](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
 
+        if constexpr (std::is_same_v<T, bco::FileType>) {
+          if (!sp.fname) {
+            return Status(grpc::StatusCode::INTERNAL, "no file name set");
+          }
+          if (arg == bco::FILE_TYPE_UNSPECIFIED) {
+            return Status(grpc::StatusCode::INTERNAL, "bad file type");
+          }
 
-  } else {
-    if (!sp.fname) {
-      return Status(grpc::StatusCode::INTERNAL, "no file name set");
-    }
-    auto* file = response->mutable_file();
-    file->set_no_read(sp.no_read);
-    file->set_portable(sp.portable);
-    if (BitIsSet(FO_DELTA, sp.flags)) { file->set_delta_seq(sp.delta_seq); }
-    file->set_offset_backup(BitIsSet(FO_OFFSETS, sp.flags));
-    file->set_sparse_backup(BitIsSet(FO_SPARSE, sp.flags));
-    file->set_ft(to_grpc(sp.type));
-    if (file->ft() == bco::FILE_TYPE_UNSPECIFIED) {
-      return Status(grpc::StatusCode::INTERNAL, "bad file type");
-    }
-    file->set_stats(&sp.statp, sizeof(sp.statp));
-    file->set_file(sp.fname);
-  }
+          auto* file = response->mutable_file();
+          file->set_no_read(sp.no_read);
+          file->set_portable(sp.portable);
+          if (BitIsSet(FO_DELTA, sp.flags)) {
+            file->set_delta_seq(sp.delta_seq);
+          }
+          file->set_offset_backup(BitIsSet(FO_OFFSETS, sp.flags));
+          file->set_sparse_backup(BitIsSet(FO_SPARSE, sp.flags));
+          file->set_ft(arg);
+          file->set_stats(&sp.statp, sizeof(sp.statp));
+          file->set_file(sp.fname);
 
-  return Status::OK;
+          if (arg == bco::SoftLink) { file->set_link(sp.link); }
+
+        } else if constexpr (std::is_same_v<T, bco::FileErrorType>) {
+          auto* error = response->mutable_error();
+
+          if (!sp.fname) {
+            return Status(grpc::StatusCode::INTERNAL, "no file name set");
+          }
+
+          error->set_file(sp.fname);
+          error->set_error(arg);
+
+        } else if constexpr (std::is_same_v<T, bco::ObjectType>) {
+          if (!sp.object_name) {
+            return Status(grpc::StatusCode::INTERNAL, "no object name set");
+          }
+          if (arg == bco::OBJECT_TYPE_UNSPECIFIED) {
+            return Status(grpc::StatusCode::INTERNAL, "bad object type");
+          }
+
+          auto* obj = response->mutable_object();
+          obj->set_index(sp.index);
+          obj->set_name(sp.object_name);
+          obj->set_data(sp.object, sp.object_len);
+          obj->set_type(arg);
+        } else if constexpr (std::is_same_v<T, UnhandledType>) {
+          switch (arg) {
+            case UnhandledType::Unknown: {
+              JobLog(bc::JMSG_ERROR, FMT_STRING("unknown file type {}"),
+                     sp.type);
+              return Status(grpc::StatusCode::INTERNAL, "unknown file type");
+            } break;
+            case UnhandledType::Plugin: {
+              JobLog(bc::JMSG_INFO,
+                     FMT_STRING("ignoring file of type 'Plugin'"));
+            } break;
+            case UnhandledType::Base: {
+              JobLog(bc::JMSG_INFO,
+                     FMT_STRING("ignoring file of type 'Plugin'"));
+            } break;
+            case UnhandledType::UnchangedFile: {
+              JobLog(bc::JMSG_INFO,
+                     FMT_STRING("ignoring file of type 'UnchangedFile'"));
+            } break;
+            case UnhandledType::UnchangedDirectory: {
+              JobLog(bc::JMSG_INFO,
+                     FMT_STRING("ignoring file of type 'UnchangedDirectory'"));
+            } break;
+            case UnhandledType::DirectoryStart: {
+              JobLog(bc::JMSG_INFO,
+                     FMT_STRING("ignoring file of type 'DirectoryStart'"));
+            } break;
+          }
+
+          auto* file = response->mutable_file();
+          file->set_file(sp.fname ? sp.fname : "<unknown file name>");
+
+          response->set_result(bp::SBF_Skip);
+
+        } else {
+          static_assert(false, "unhandled type");
+        }
+
+        return Status::OK;
+      },
+      type);
 }
 auto PluginService::endBackupFile(ServerContext*,
                                   const bp::endBackupFileRequest* request,

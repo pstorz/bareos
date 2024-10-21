@@ -371,61 +371,29 @@ std::optional<bco::FileType> to_grpc(int32_t num)
 {
   switch (num) {
     case FT_LNKSAVED:
-      return bco::FileType::FT_LNKSAVED;
+      return bco::FileType::HardlinkCopy;
     case FT_REGE:
-      return bco::FileType::FT_REGE;
+      return bco::FileType::RegularFile;
     case FT_REG:
-      return bco::FileType::FT_REG;
+      return bco::FileType::RegularFile;
     case FT_LNK:
-      return bco::FileType::FT_LNK;
+      return bco::FileType::SoftLink;
     case FT_DIREND:
-      return bco::FileType::FT_DIREND;
+      return bco::FileType::Directory;
     case FT_SPEC:
-      return bco::FileType::FT_SPEC;
-    case FT_NOACCESS:
-      return bco::FileType::FT_NOACCESS;
-    case FT_NOFOLLOW:
-      return bco::FileType::FT_NOFOLLOW;
-    case FT_NOSTAT:
-      return bco::FileType::FT_NOSTAT;
-    case FT_NOCHG:
-      return bco::FileType::FT_NOCHG;
-    case FT_DIRNOCHG:
-      return bco::FileType::FT_DIRNOCHG;
+      return bco::FileType::SpecialFile;
     case FT_ISARCH:
-      return bco::FileType::FT_ISARCH;
-    case FT_NORECURSE:
-      return bco::FileType::FT_NORECURSE;
-    case FT_NOFSCHG:
-      return bco::FileType::FT_NOFSCHG;
-    case FT_NOOPEN:
-      return bco::FileType::FT_NOOPEN;
+      return bco::FileType::RegularFile;
     case FT_RAW:
-      return bco::FileType::FT_RAW;
+      return bco::FileType::BlockDevice;
     case FT_FIFO:
-      return bco::FileType::FT_FIFO;
-    case FT_DIRBEGIN:
-      return bco::FileType::FT_DIRBEGIN;
-    case FT_INVALIDFS:
-      return bco::FileType::FT_INVALIDFS;
-    case FT_INVALIDDT:
-      return bco::FileType::FT_INVALIDDT;
+      return bco::FileType::Fifo;
     case FT_REPARSE:
-      return bco::FileType::FT_REPARSE;
-    case FT_PLUGIN:
-      return bco::FileType::FT_PLUGIN;
+      return bco::FileType::ReparsePoint;
     case FT_DELETED:
-      return bco::FileType::FT_DELETED;
-    case FT_BASE:
-      return bco::FileType::FT_BASE;
-    case FT_RESTORE_FIRST:
-      return bco::FileType::FT_RESTORE_FIRST;
+      return bco::FileType::Deleted;
     case FT_JUNCTION:
-      return bco::FileType::FT_JUNCTION;
-    case FT_PLUGIN_CONFIG:
-      return bco::FileType::FT_PLUGIN_CONFIG;
-    case FT_PLUGIN_CONFIG_FILLED:
-      return bco::FileType::FT_PLUGIN_CONFIG_FILLED;
+      return bco::FileType::Junction;
     default:
       return std::nullopt;
   }

@@ -101,6 +101,7 @@ message startBackupFileResponse {
   oneof payload {
     bareos.common.plugin_object object = 2;
     bareos.common.plugin_file file = 3;
+    bareos.common.plugin_file_error error = 4;
   };
 };
 

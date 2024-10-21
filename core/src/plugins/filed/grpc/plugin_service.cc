@@ -303,17 +303,18 @@ auto PluginService::startBackupFile(ServerContext*,
   f->set_stats(&file.s, sizeof(file.s));
   // f->set_delta_seq(0);
   if (file.isdir()) {
-    f->set_ft(bco::FT_DIREND);
+    f->set_ft(bco::Directory);
     f->set_no_read(true);
     DebugLog(100, FMT_STRING("{} is a directory"), file.name);
   } else if (file.islnk()) {
     DebugLog(100, FMT_STRING("{} is a link"), file.name);
-    f->set_ft(bco::FT_LNK);
+    f->set_ft(bco::SoftLink);
+    f->set_link("link target");
     f->set_no_read(true);
   } else {
     DebugLog(100, FMT_STRING("{} is a file (mode = {}, {}, {})"), file.name,
              file.s.st_mode, file.s.st_mode & S_IFMT, S_IFLNK);
-    f->set_ft(bco::FT_REG);
+    f->set_ft(bco::RegularFile);
     f->set_no_read(false);
   }
   f->set_portable(true);  // default value
