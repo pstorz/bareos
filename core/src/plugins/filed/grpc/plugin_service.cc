@@ -194,6 +194,7 @@ auto PluginService::handlePluginEvent(
     response->set_res(bp::RC_OK);
   } else if (event.has_restore_command()) {
     auto& inner = event.restore_command();
+    response->set_res(bp::RC_OK);  // there is nothing for us to do
   } else if (event.has_vss_init_backup()) {
     auto& inner = event.vss_init_backup();
   } else if (event.has_estimate_command()) {
@@ -623,12 +624,10 @@ auto PluginService::createFile(ServerContext*,
 {
   auto& pkt = request->pkt();
 
-
   JobLog(
       bareos::core::JMsgType::JMSG_INFO,
       FMT_STRING("{{ofname = {}, olname = {}, where = {}, regexwhere = {}}}"),
       pkt.ofname(), pkt.olname(), pkt.where(), pkt.regex_where());
-
 
   response->set_status(bareos::plugin::CF_Core);
 
@@ -639,6 +638,8 @@ auto PluginService::setFileAttributes(
     const bp::setFileAttributesRequest* request,
     bp::setFileAttributesResponse* response) -> Status
 {
+  JobLog(bc::JMSG_INFO, FMT_STRING("setting attributes for {} in core"),
+         request->file());
   response->set_set_attributes_in_core(true);
   return Status::OK;
 }
