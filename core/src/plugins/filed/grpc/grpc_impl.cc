@@ -937,17 +937,22 @@ class PluginClient {
         (void)inner;
       } break;
       case filedaemon::bEventRestoreObject: {
-        auto* rop = reinterpret_cast<filedaemon::restore_object_pkt*>(data);
+        if (data == nullptr) {
+          auto* inner = event->mutable_end_restore_object();
+          (void)inner;
+        } else {
+          auto* rop = reinterpret_cast<filedaemon::restore_object_pkt*>(data);
 
-        auto* inner = event->mutable_restore_object();
-        auto* grop = inner->mutable_rop();
-        grop->set_jobid(rop->JobId);
-        // TODO: we need to remove grpc: from this!
-        grop->set_used_cmd_string(rop->plugin_name);
-        auto* sent = grop->mutable_sent();
-        sent->set_index(rop->object_index);
-        sent->set_data(rop->object, rop->object_len);
-        sent->set_name(rop->object_name);
+          auto* inner = event->mutable_restore_object();
+          auto* grop = inner->mutable_rop();
+          grop->set_jobid(rop->JobId);
+          // TODO: we need to remove grpc: from this!
+          grop->set_used_cmd_string(rop->plugin_name);
+          auto* sent = grop->mutable_sent();
+          sent->set_index(rop->object_index);
+          sent->set_data(rop->object, rop->object_len);
+          sent->set_name(rop->object_name);
+        }
       } break;
       case filedaemon::bEventEndFileSet: {
         auto* inner = event->mutable_end_fileset();

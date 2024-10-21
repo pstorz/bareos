@@ -79,6 +79,7 @@ struct plugin_ctx {
     std::string_view options_string{(const char*)data};
 
     std::string new_plugin_name{};
+    std::string inferior_name{};
 
     if (!next_section(options_string, new_plugin_name, ':')) {
       DebugLog(50, FMT_STRING("could not parse plugin name in {}"),
@@ -93,23 +94,24 @@ struct plugin_ctx {
     }
 
 
-    if (!next_section(options_string, name, ':')) {
+    if (!next_section(options_string, inferior_name, ':')) {
       DebugLog(50, FMT_STRING("could not parse name in {}"), options_string);
       return false;
     }
 
-    DebugLog(100, FMT_STRING("found name = {}"), name);
+    DebugLog(100, FMT_STRING("found name = {}"), inferior_name);
 
     // TODO: we probably want to allow some options for the grpc plugin itself
     //       as well.  Maybe the separator could be :: ? I.e.
     //       grpc:opt=val:opt=val::child:childopt=val:childopt=val:...
-    cmd = options_string;
-
     if (new_plugin_name != plugin_name) {
       DebugLog(50, FMT_STRING("not same name ({} != {}) supplied"), plugin_name,
                new_plugin_name);
       return false;
     }
+
+    cmd = options_string;
+    name = std::move(inferior_name);
 
     return true;
   }
@@ -293,6 +295,8 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
       [[fallthrough]];
     case bEventBackupCommand:
       [[fallthrough]];
+    case bEventEstimateCommand: {
+    } break;
     case bEventRestoreCommand: {
       if (!plugin->re_setup(ctx, data)) { return bRC_Error; }
 
@@ -302,6 +306,22 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
       // we do not want to give "grpc:" to the plugin
       return plugin->child->con.handlePluginEvent(bEventType(event->eventType),
                                                   (void*)plugin->cmd.c_str());
+    } break;
+    case bEventRestoreObject: {
+      if (data == nullptr) {
+        return plugin->child->con.handlePluginEvent(
+            bEventType(event->eventType), nullptr);
+      }
+
+      auto* rop = reinterpret_cast<restore_object_pkt*>(data);
+      if (!plugin->re_setup(ctx, rop->plugin_name)) { return bRC_Error; }
+
+      char* old = rop->plugin_name;
+      rop->plugin_name = const_cast<char*>(plugin->cmd.c_str());
+      auto res = plugin->child->con.handlePluginEvent(
+          bEventType(event->eventType), (void*)rop);
+      rop->plugin_name = old;
+      return res;
     } break;
     default: {
       if (plugin->needs_setup()) {

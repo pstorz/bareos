@@ -1144,7 +1144,25 @@ bRC Wrapper_handlePluginEvent(PluginContext*, bEvent* event, void* value)
 
 
     switch (event->eventType) {
+      case bEventRestoreObject: {
+        auto* rop = reinterpret_cast<restore_object_pkt*>(value);
+        std::string_view cmd{rop->plugin_name};
+        DebugLog(100, FMT_STRING("got cmd string \"{}\""), cmd);
+        std::optional pstring = inferior_setup(ctx, cmd);
+        if (!pstring) { return bRC_Error; }
+
+        DebugLog(100, FMT_STRING("using cmd string \"{}\" for the plugin"),
+                 pstring.value());
+
+        auto* old = rop->plugin_name;
+        rop->plugin_name = const_cast<char*>(pstring->data());
+        auto res = plugin_funs->handlePluginEvent(ctx, event, (void*)rop);
+        rop->plugin_name = old;
+        return res;
+      } break;
       case bEventPluginCommand:
+        [[fallthrough]];
+      case bEventEstimateCommand:
         [[fallthrough]];
       case bEventBackupCommand:
         [[fallthrough]];
