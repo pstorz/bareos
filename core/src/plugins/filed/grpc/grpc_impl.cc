@@ -1555,9 +1555,9 @@ class PluginClient {
 
 struct grpc_connection_members {
   PluginClient client;
+  std::vector<std::unique_ptr<grpc::Service>> services;
   std::shared_ptr<grpc::Channel> channel;
   std::unique_ptr<grpc::Server> server;
-  std::vector<std::unique_ptr<grpc::Service>> services;
 
   grpc_connection_members() = delete;
 };
@@ -1635,8 +1635,8 @@ struct connection_builder {
     grpc_connection con{};
 
     con.members = new grpc_connection_members{
-        std::move(opt_client.value()), std::move(channel),
-        std::move(opt_server), std::move(services)};
+        std::move(opt_client.value()), std::move(services), std::move(channel),
+        std::move(opt_server)};
 
     return con;
   }
