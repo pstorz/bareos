@@ -640,7 +640,49 @@ auto PluginService::setFileAttributes(
 {
   JobLog(bc::JMSG_INFO, FMT_STRING("setting attributes for {} in core"),
          request->file());
-  response->set_set_attributes_in_core(true);
+
+  if (!current_file) {
+    DebugLog(100, FMT_STRING("trying to seek file while it is not open"));
+    return Status(grpc::StatusCode::FAILED_PRECONDITION,
+                  "there is no open file");
+  }
+
+  auto& name = request->file();
+  auto& attrs = request->stats();
+
+  struct stat s;
+  if (attrs.size() != sizeof(s)) {
+    return grpc::Status(
+        grpc::StatusCode::INVALID_ARGUMENT,
+        fmt::format(
+            FMT_STRING(
+                "stats is not a valid stats object: size mismatch {} != {}"),
+            attrs.size(), sizeof(s)));
+  }
+
+  memcpy(&s, attrs.data(), attrs.size());
+
+
+  if (fchown(current_file->get(), s.st_uid, s.st_gid) < 0) {
+    return grpc::Status(grpc::StatusCode::INTERNAL,
+                        fmt::format(FMT_STRING("failed setting owner. Err={}"),
+                                    strerror(errno)));
+  }
+  if (fchmod(current_file->get(), s.st_mode) < 0) {
+    return grpc::Status(
+        grpc::StatusCode::INTERNAL,
+        fmt::format(FMT_STRING("failed setting permissions. Err={}"),
+                    strerror(errno)));
+  }
+  if (struct timeval times[2] = {{s.st_atime, 0}, {s.st_mtime, 0}};
+      futimes(current_file->get(), times) < 0) {
+    return grpc::Status(
+        grpc::StatusCode::INTERNAL,
+        fmt::format(FMT_STRING("failed setting file times. Err={}"),
+                    strerror(errno)));
+  }
+
+  // response->set_set_attributes_in_core(true);
   return Status::OK;
 }
 auto PluginService::checkFile(ServerContext*,
