@@ -1427,7 +1427,6 @@ class PluginClient {
     req.set_stats((char*)&statp, sizeof(statp));
     req.set_extended_attributes(extended_attributes.data(),
                                 extended_attributes.size());
-    req.set_user_id(user_id);
     req.set_where(where.data(), where.size());
 
     bp::setFileAttributesResponse resp;

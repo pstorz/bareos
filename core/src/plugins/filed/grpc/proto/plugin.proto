@@ -199,8 +199,7 @@ message setFileAttributesRequest {
   bytes file = 1;
   bytes stats = 2;
   bytes extended_attributes = 3;
-  bytes where = 5; // sadly some plugins actually want this ...
-  int64 user_id = 4;
+  bytes where = 4; // sadly some plugins actually want this ...
 };
 
 message setFileAttributesResponse {

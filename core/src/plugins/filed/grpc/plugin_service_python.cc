@@ -1046,7 +1046,6 @@ auto PluginService::setFileAttributes(
     bp::setFileAttributesResponse* response) -> Status
 {
   filedaemon::restore_pkt rp = {};
-  rp.uid = request->user_id();
   if (sizeof(rp.statp) != request->stats().size()) {
     return Status(grpc::StatusCode::INVALID_ARGUMENT, "bad stats");
   }
