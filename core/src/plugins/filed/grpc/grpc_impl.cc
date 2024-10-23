@@ -1479,13 +1479,18 @@ class PluginClient {
     grpc::ClientContext ctx;
     grpc::Status status = stub_->getAcl(&ctx, req, &resp);
 
-    if (!status.ok()) { return bRC_Error; }
+    if (!status.ok()) {
+      DebugLog(50,
+               FMT_STRING("rpc did not succeed for event getAcl ({}): Err={}"),
+               int(status.error_code()), status.error_message());
+      return bRC_Error;
+    }
 
     auto& data = resp.content().data();
     *buffer = reinterpret_cast<char*>(malloc(data.size() + 1));
     *size = data.size();
 
-    memcpy(buffer, data.data(), data.size() + 1);
+    memcpy(*buffer, data.data(), data.size() + 1);
 
     return bRC_OK;
   }
@@ -1538,7 +1543,7 @@ class PluginClient {
 
     if (current_xattr_index == xattribute_cache.size()) {
       current_xattr_index = -1;  // reset
-      return bRC_OK;
+      return bRC_Error;
     }
 
     auto& current = xattribute_cache[current_xattr_index++];
@@ -1548,13 +1553,18 @@ class PluginClient {
 
     *name_size = key.size();
     *name_buf = reinterpret_cast<char*>(malloc(key.size() + 1));
-    memcpy(name_buf, key.data(), key.size() + 1);
+    memcpy(*name_buf, key.data(), key.size() + 1);
 
     *value_size = val.size();
     *value_buf = reinterpret_cast<char*>(malloc(val.size() + 1));
-    memcpy(value_buf, val.data(), val.size() + 1);
+    memcpy(*value_buf, val.data(), val.size() + 1);
 
-    return bRC_More;
+    if (current_xattr_index == xattribute_cache.size()) {
+      current_xattr_index = -1;  // reset
+      return bRC_OK;
+    } else {
+      return bRC_More;
+    }
   }
 
  private:
