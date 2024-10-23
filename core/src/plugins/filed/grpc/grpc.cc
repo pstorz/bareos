@@ -282,7 +282,10 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
   switch (event->eventType) {
     using namespace filedaemon;
     case bEventPluginCommand: {
-      if (!plugin->setup(ctx, data)) { return bRC_Error; }
+      if (!plugin->setup(ctx, data)) {
+        JobLog(ctx, M_FATAL, FMT_STRING("could not connect to plugin"));
+        return bRC_Error;
+      }
 
 
       DebugLog(ctx, 100, FMT_STRING("using cmd string \"{}\" for the plugin"),
@@ -295,8 +298,8 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
       [[fallthrough]];
     case bEventBackupCommand:
       [[fallthrough]];
-    case bEventEstimateCommand: {
-    } break;
+    case bEventEstimateCommand:
+      [[fallthrough]];
     case bEventRestoreCommand: {
       if (!plugin->re_setup(ctx, data)) { return bRC_Error; }
 
