@@ -156,8 +156,7 @@ auto PluginService::Setup(ServerContext*,
   auto events = std::array{
       bc::EventType::Event_JobStart,       bc::EventType::Event_JobEnd,
       bc::EventType::Event_PluginCommand,  bc::EventType::Event_BackupCommand,
-      bc::EventType::Event_StartBackupJob, bc::EventType::Event_EndBackupJob,
-      bc::EventType::Event_EndRestoreJob,  bc::EventType::Event_StartRestoreJob,
+      bc::EventType::Event_StartBackupJob, bc::EventType::Event_StartRestoreJob,
       bc::EventType::Event_RestoreCommand,
   };
 

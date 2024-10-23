@@ -999,8 +999,6 @@ bRC Wrapper_newPlugin(PluginContext*)
         bc::EventType::Event_PluginCommand,
         bc::EventType::Event_BackupCommand,
         bc::EventType::Event_StartBackupJob,
-        bc::EventType::Event_EndBackupJob,
-        bc::EventType::Event_EndRestoreJob,
         bc::EventType::Event_StartRestoreJob,
         bc::EventType::Event_RestoreCommand,
     };

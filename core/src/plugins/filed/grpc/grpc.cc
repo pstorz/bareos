@@ -238,8 +238,6 @@ bRC newPlugin(PluginContext* ctx)
    * at the moment we have no idea which plugin to start! */
 
   RegisterBareosEvent(ctx, filedaemon::bEventPluginCommand);
-  RegisterBareosEvent(ctx, filedaemon::bEventLevel);
-  RegisterBareosEvent(ctx, filedaemon::bEventSince);
   RegisterBareosEvent(ctx, filedaemon::bEventNewPluginOptions);
   RegisterBareosEvent(ctx, filedaemon::bEventPluginCommand);
   RegisterBareosEvent(ctx, filedaemon::bEventJobStart);
