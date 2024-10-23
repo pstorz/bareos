@@ -51,6 +51,20 @@ namespace bp = bareos::plugin;
 namespace bc = bareos::core;
 namespace bco = bareos::common;
 
+std::string_view strip_prefix(std::string_view v)
+{
+  auto pos = v.find_first_of(":");
+  if (pos == v.npos) { return v; }
+  auto spos = v.find_first_of(":", pos + 1);
+
+  if (spos == v.npos) { return v; }
+  auto res = v.substr(spos + 1);
+
+  DebugLog(100, FMT_STRING("{} => {}"), v, res);
+
+  return res;
+}
+
 bool SetNonBlocking(PluginContext* ctx, OSFile& f)
 {
   int flags = fcntl(f.get(), F_GETFL);
@@ -977,7 +991,10 @@ class PluginClient {
     bp::startBackupFileRequest req;
     req.set_no_read(pkt->no_read);
     req.set_portable(pkt->portable);
-    req.set_cmd(pkt->cmd);
+
+    auto inner = strip_prefix(pkt->cmd);
+
+    req.set_cmd(inner.data(), inner.size());
     req.set_flags(pkt->flags, sizeof(pkt->flags));
 
     bp::startBackupFileResponse resp;
@@ -1170,7 +1187,10 @@ class PluginClient {
   bRC startRestoreFile(std::string_view cmd)
   {
     bp::startRestoreFileRequest req;
-    req.set_command(cmd.data(), cmd.size());
+
+    auto inner = strip_prefix(cmd);
+
+    req.set_command(inner.data(), inner.size());
 
     bp::startRestoreFileResponse resp;
     grpc::ClientContext ctx;
