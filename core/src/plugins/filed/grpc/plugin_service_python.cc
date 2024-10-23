@@ -465,7 +465,8 @@ auto PluginService::handlePluginEvent(
     rop.plugin_name = const_cast<char*>(grop.used_cmd_string().c_str());
     rop.JobId = grop.jobid();
     rop.object_len = grop.sent().data().size();
-    rop.object_name = const_cast<char*>(grop.sent().data().data());
+    rop.object = const_cast<char*>(grop.sent().data().data());
+    rop.object_name = const_cast<char*>(grop.sent().name().c_str());
     // TODO: maybe this should be set by us ?
     // rop.object_type        = ;
     rop.object_index = grop.sent().index();
