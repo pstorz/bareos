@@ -955,6 +955,8 @@ struct plugin_thread {
     t.join();
   }
 
+  ~plugin_thread() { join(); }
+
  private:
   plugin_thread(channel::channel_pair<callback> p)
       : in{std::move(p.first)}, out{std::move(p.second)}
@@ -966,7 +968,10 @@ struct plugin_thread {
 
   void run()
   {
-    if (!WaitForReady()) { fprintf(stderr, "WaitForReady failed.\n"); }
+    if (!WaitForReady()) {
+      fprintf(stderr, "WaitForReady failed.\n");
+      return;
+    }
     DebugLog(100, FMT_STRING("plugin thread starting (ctx={})..."),
              (void*)&pctx);
     for (;;) {
@@ -1374,16 +1379,20 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
             .connect_server(server_sock)
             .build();
 
-  SetReady(!!con);
-
-  if (!con) { exit(1); }
+  if (!con) {
+    fprintf(stderr, "Could not establish grpc connection ...\n");
+    exit(1);
+  }
 
 
   DebugLog(100, FMT_STRING("setting up ..."));
   if (!setup()) {
     DebugLog(50, FMT_STRING("setup failed"));
+    SetReady(false);
   } else {
-    DebugLog(100, FMT_STRING("waiting for server to finish ..."));
+    DebugLog(100,
+             FMT_STRING("... successfully.\nwaiting for server to finish ..."));
+    SetReady(true);
 
     server_status_changed.wait(l, []() { return !server_should_be_running; });
 
@@ -1395,8 +1404,9 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
 }
 
 
-int main(int argc, char* argv[])
+int main(int argc, char* argv[], char* envp[])
 {
+  (void)envp;
   (void)argv;
   if (argc != 1) {
     fprintf(

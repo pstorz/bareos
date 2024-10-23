@@ -275,6 +275,7 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
     JobLog(ctx, M_ERROR,
            FMT_STRING("instructed to handle plugin event by core even though "
                       "context was not setup"));
+    return bRC_Error;
   }
 
   switch (event->eventType) {
@@ -336,6 +337,10 @@ bRC handlePluginEvent(PluginContext* ctx, filedaemon::bEvent* event, void* data)
     } break;
   }
 
+  if (!plugin->child) {
+    JobLog(ctx, M_FATAL, FMT_STRING("plugin is not running"));
+    return bRC_Error;
+  }
   return plugin->child->con.handlePluginEvent(
       (filedaemon::bEventType)(event->eventType), data);
 }
