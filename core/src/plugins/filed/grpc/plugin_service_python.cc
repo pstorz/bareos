@@ -142,6 +142,8 @@ bool send_fd(int unix_socket, int fd)
     return false;
   }
 
+  DebugLog(50, FMT_STRING("sent fd {} to core. control len = {}/{}"), fd,
+           CMSG_LEN(sizeof(fd)), msg.msg_controllen);
   return true;
 }
 

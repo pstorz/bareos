@@ -143,6 +143,7 @@ class grpc_connection {
   grpc_connection() = default;
 
   grpc_connection_members* members{nullptr};
+  bool do_io_in_core{false};
 };
 
 struct process {

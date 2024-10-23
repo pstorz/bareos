@@ -2131,6 +2131,16 @@ std::optional<int> receive_fd(int unix_socket, int expected_name)
              expected_name);
   }
 
+  if ((msg.msg_flags & MSG_CTRUNC) != 0) {
+    DebugLog(
+        50,
+        FMT_STRING("some control messages were truncated! space given = {}"),
+        sizeof(buf));
+  }
+
+  DebugLog(100, FMT_STRING("received msg with clen {}"), msg.msg_controllen);
+
+
   auto* control = CMSG_FIRSTHDR(&msg);
 
   if (!control) {
@@ -2152,13 +2162,18 @@ std::optional<int> receive_fd(int unix_socket, int expected_name)
   // size checked above
   memcpy(&fd, data, sizeof(fd));
 
-  DebugLog(100, FMT_STRING("got fd = {}"), fd);
+  DebugLog(100, FMT_STRING("received control message {}"), fd);
+
+  if (auto* c2 = CMSG_NXTHDR(&msg, control); c2) {
+    DebugLog(50, FMT_STRING("encountered second control message {}!"),
+             (void*)c2);
+  }
 
   if (fcntl(fd, F_GETFD) < 0) {
-    DebugLog(50, FMT_STRING("got bad fd = {}"), fd);
+    DebugLog(50, FMT_STRING("{} is not an fd"), fd);
     return std::nullopt;
   } else {
-    DebugLog(100, FMT_STRING("got fd = {}"), fd);
+    DebugLog(100, FMT_STRING("{} is an fd"), fd);
     return std::make_optional(fd);
   }
 }
@@ -2210,6 +2225,7 @@ static bool full_read(int fd, char* data, size_t size)
 bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
 {
   PluginClient* client = &members->client;
+
   switch (pkt->func) {
     case filedaemon::IO_OPEN: {
       bool io_in_core;
@@ -2235,6 +2251,7 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
         }
         pkt->filedes = *fd;
         pkt->status = IoStatus::do_io_in_core;
+        do_io_in_core = true;
       } else {
         DebugLog(100, FMT_STRING("not using io_in_core"));
         pkt->filedes = kInvalidFiledescriptor;
@@ -2343,6 +2360,12 @@ bRC grpc_connection::pluginIO(filedaemon::io_pkt* pkt, int iosock)
       return res;
     } break;
     case filedaemon::IO_CLOSE: {
+      if (do_io_in_core) {
+        // why is the plugin not told if it used io in core or not ?!
+        DebugLog(100, FMT_STRING("closing core fd {}"), pkt->filedes);
+        close(pkt->filedes);
+        do_io_in_core = false;
+      }
       return client->FileClose();
     } break;
     case filedaemon::IO_SEEK: {
