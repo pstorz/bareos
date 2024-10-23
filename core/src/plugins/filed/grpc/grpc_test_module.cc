@@ -31,6 +31,7 @@
 
 #include <fmt/format.h>
 #include <condition_variable>
+#include <future>
 
 #include "plugin_service.h"
 #include "test_module.h"
@@ -333,23 +334,14 @@ std::optional<bool> Bareos_GetFlag(bc::BareosFlagVariable var)
   return resp.value();
 }
 
-std::condition_variable server_status_changed;
-std::mutex server_mutex;
-bool server_should_be_running = true;
-
-void shutdown_plugin()
-{
-  // con->server->Shutdown();
-  std::unique_lock l{server_mutex};
-  server_should_be_running = false;
-  server_status_changed.notify_all();
-}
-
 void HandleConnection(int server_sock, int client_sock, int io_sock)
 {
-  std::unique_lock l{server_mutex};
+  std::promise<void> shutdown_signal;
 
-  con = connection_builder{std::make_unique<PluginService>(io_sock)}
+  auto barrier = shutdown_signal.get_future();
+
+  con = connection_builder{std::make_unique<PluginService>(
+                               io_sock, std::move(shutdown_signal))}
             .connect_client(client_sock)
             .connect_server(server_sock)
             .build();
@@ -358,7 +350,7 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
 
   DebugLog(100, FMT_STRING("waiting for server to finish ..."));
 
-  server_status_changed.wait(l, []() { return !server_should_be_running; });
+  barrier.wait();
 
   // con->server->Wait();
 

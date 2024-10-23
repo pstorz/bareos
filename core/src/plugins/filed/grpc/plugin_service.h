@@ -23,6 +23,7 @@
 #define BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_H_
 
 #include <sys/stat.h>
+#include <future>
 #include <optional>
 #include "plugin.grpc.pb.h"
 #include "plugin.pb.h"
@@ -56,7 +57,10 @@ class raii_fd {
 
 class PluginService : public bp::Plugin::Service {
  public:
-  PluginService(int io_sock) : io{io_sock} {}
+  PluginService(int io_sock, std::promise<void> shutdown_signal)
+      : io{io_sock}, shutdown{std::move(shutdown_signal)}
+  {
+  }
 
   ~PluginService()
   {
@@ -146,8 +150,8 @@ class PluginService : public bp::Plugin::Service {
   std::vector<prepared_file> files_to_backup{};
   std::optional<raii_fd> current_file{};
 
-
   int io;
+  std::promise<void> shutdown;
 };
 
 #endif  // BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_H_

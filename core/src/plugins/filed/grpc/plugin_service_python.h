@@ -23,6 +23,7 @@
 #define BAREOS_PLUGINS_FILED_GRPC_PLUGIN_SERVICE_PYTHON_H_
 
 #include <sys/stat.h>
+#include <future>
 #include <optional>
 #include "plugin.grpc.pb.h"
 #include "plugin.pb.h"
@@ -59,8 +60,14 @@ struct PluginFunctions {
 
 class PluginService : public bp::Plugin::Service {
  public:
-  PluginService(PluginContext* context, int io_sock, PluginFunctions functions)
-      : funcs{functions}, ctx{context}, io{io_sock}
+  PluginService(PluginContext* context,
+                int io_sock,
+                PluginFunctions functions,
+                std::promise<void>&& shutdown_signal)
+      : funcs{functions}
+      , ctx{context}
+      , io{io_sock}
+      , shutdown{std::move(shutdown_signal)}
   {
   }
 
@@ -132,6 +139,8 @@ class PluginService : public bp::Plugin::Service {
   PluginFunctions funcs;
   PluginContext* ctx;
   int io;
+
+  std::promise<void> shutdown;
 
   std::vector<char> vec;
 

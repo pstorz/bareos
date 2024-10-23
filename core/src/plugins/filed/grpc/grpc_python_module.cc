@@ -347,18 +347,6 @@ std::optional<bool> Bareos_GetFlag(bc::BareosFlagVariable var)
   return resp.value();
 }
 
-std::condition_variable server_status_changed;
-std::mutex server_mutex;
-bool server_should_be_running = true;
-
-void shutdown_plugin()
-{
-  // con->server->Shutdown();
-  std::unique_lock l{server_mutex};
-  server_should_be_running = false;
-  server_status_changed.notify_all();
-}
-
 static Plugin plugin_data;
 static std::string plugin_path;
 
@@ -1371,10 +1359,14 @@ void SetReady(bool result)
 
 void HandleConnection(int server_sock, int client_sock, int io_sock)
 {
-  std::unique_lock l{server_mutex};
+  std::promise<void> shutdown_signal;
 
-  con = connection_builder{std::make_unique<PluginService>(nullptr, io_sock,
-                                                           funcs)}
+  auto barrier = shutdown_signal.get_future();
+
+
+  con = connection_builder{std::make_unique<PluginService>(
+                               nullptr, io_sock, funcs,
+                               std::move(shutdown_signal))}
             .connect_client(client_sock)
             .connect_server(server_sock)
             .build();
@@ -1394,7 +1386,7 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
              FMT_STRING("... successfully.\nwaiting for server to finish ..."));
     SetReady(true);
 
-    server_status_changed.wait(l, []() { return !server_should_be_running; });
+    barrier.wait();  // wait for the server to order a shutdown
 
     DebugLog(100, FMT_STRING("grpc server finished: closing connections"));
   }

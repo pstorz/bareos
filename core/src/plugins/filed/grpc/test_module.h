@@ -130,6 +130,4 @@ std::optional<int> Bareos_GetInt(bc::BareosIntVariable var);
 bool Bareos_SetFlag(bc::BareosFlagVariable var, bool val);
 std::optional<bool> Bareos_GetFlag(bc::BareosFlagVariable var);
 
-void shutdown_plugin();
-
 #endif  // BAREOS_PLUGINS_FILED_GRPC_TEST_MODULE_H_

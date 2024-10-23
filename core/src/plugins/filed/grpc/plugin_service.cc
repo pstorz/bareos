@@ -156,7 +156,7 @@ auto PluginService::handlePluginEvent(
     DebugLog(100, FMT_STRING("got job end event ({}). shutting down ..."),
              inner.DebugString());
 
-    shutdown_plugin();
+    shutdown.set_value();
   } else if (event.has_job_start()) {
     auto& inner = event.job_start();
     DebugLog(100, FMT_STRING("got job start event ({})."), inner.DebugString());
