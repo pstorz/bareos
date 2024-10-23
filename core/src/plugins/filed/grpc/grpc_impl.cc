@@ -1398,6 +1398,7 @@ class PluginClient {
   bRC setFileAttributes(std::string_view name,
                         const struct stat& statp,
                         std::string_view extended_attributes,
+                        std::string_view where,
                         uid_t user_id,
                         bool* do_in_core)
   {
@@ -1407,6 +1408,7 @@ class PluginClient {
     req.set_extended_attributes(extended_attributes.data(),
                                 extended_attributes.size());
     req.set_user_id(user_id);
+    req.set_where(where.data(), where.size());
 
     bp::setFileAttributesResponse resp;
     grpc::ClientContext ctx;
@@ -2333,7 +2335,7 @@ bRC grpc_connection::setFileAttributes(filedaemon::restore_pkt* pkt)
   bool do_in_core = false;
 
   auto res = client->setFileAttributes(pkt->ofname, pkt->statp, pkt->attrEx,
-                                       pkt->uid, &do_in_core);
+                                       pkt->where, pkt->uid, &do_in_core);
   if (res != bRC_Error && do_in_core) { pkt->create_status = CF_CORE; }
 
   return res;

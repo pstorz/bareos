@@ -1048,6 +1048,7 @@ auto PluginService::setFileAttributes(
   rp.attrEx = request->extended_attributes().c_str();
   rp.ofname = request->file().c_str();
   rp.olname = request->file().c_str();
+  rp.where = request->where().c_str();
   rp.create_status = CF_ERROR;
   rp.filedes = kInvalidFiledescriptor;
   auto res = funcs.setFileAttributes(ctx, &rp);
