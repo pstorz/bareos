@@ -615,14 +615,18 @@ auto PluginService::startBackupFile(ServerContext*,
     } break;
     case bRC_Skip: {
       response->set_result(bp::SBF_Skip);
+      return Status::OK;
     } break;
     case bRC_Stop: {
       response->set_result(bp::SBF_Stop);
+      return Status::OK;
     } break;
     default: {
       return Status(grpc::StatusCode::INTERNAL, "bad return value");
     }
   }
+
+  DebugLog(100, FMT_STRING("received save packet of type {}"), sp.type);
 
   auto type = to_grpc(sp.type);
 
