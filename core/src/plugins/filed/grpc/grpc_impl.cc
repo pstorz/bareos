@@ -1360,32 +1360,73 @@ class PluginClient {
     return std::nullopt;
   }
 
+  std::optional<bareos::common::FileType> grpc_file_type(int ft)
+  {
+    switch (ft) {
+      case FT_LNKSAVED: {
+        return bco::HardlinkCopy;
+      } break;
+      case FT_REGE: {
+        return bco::RegularFile;
+      } break;
+      case FT_REG: {
+        return bco::RegularFile;
+      } break;
+      case FT_LNK: {
+        return bco::SoftLink;
+      } break;
+      case FT_DIREND: {
+        return bco::Directory;
+      } break;
+      case FT_SPEC: {
+        return bco::SpecialFile;
+      } break;
+      case FT_RAW: {
+        return bco::BlockDevice;
+      } break;
+      case FT_REPARSE: {
+        return bco::ReparsePoint;
+      } break;
+      case FT_JUNCTION: {
+        return bco::Junction;
+      } break;
+      case FT_FIFO: {
+        return bco::Fifo;
+      } break;
+      case FT_DELETED: {
+        return bco::Deleted;
+      } break;
+      case FT_ISARCH: {
+        return bco::RegularFile;
+      } break;
+    }
+
+    return std::nullopt;
+  }
+
   bRC createFile(filedaemon::restore_pkt* pkt)
   {
     bp::createFileRequest req;
-    auto* grpc_pkt = req.mutable_pkt();
 
     auto replace_type = grpc_replace_type(pkt->replace);
+    auto file_type = grpc_file_type(pkt->type);
 
     if (!replace_type) {
       DebugLog(50, FMT_STRING("got a bad replace value {}"), pkt->replace);
       return bRC_Error;
     }
 
-    grpc_pkt->set_stream_id(pkt->stream);
-    grpc_pkt->set_data_stream(pkt->data_stream);
-    grpc_pkt->set_type(pkt->type);
-    grpc_pkt->set_file_index(pkt->file_index);
-    grpc_pkt->set_link_fi(pkt->LinkFI);
-    grpc_pkt->set_user_id(pkt->uid);
-    grpc_pkt->set_stat((char*)&pkt->statp, sizeof(pkt->statp));
-    grpc_pkt->set_extended_attributes(pkt->attrEx);
-    grpc_pkt->set_ofname(pkt->ofname);
-    grpc_pkt->set_olname(pkt->olname);
-    if (pkt->where) { grpc_pkt->set_where(pkt->where); }
-    if (pkt->RegexWhere) { grpc_pkt->set_regex_where(pkt->RegexWhere); }
-    grpc_pkt->set_replace(*replace_type);
-    grpc_pkt->set_delta_seq(pkt->delta_seq);
+    if (!file_type) {
+      DebugLog(50, FMT_STRING("got a bad file type {}"), pkt->type);
+      return bRC_Error;
+    }
+
+    req.set_ft(file_type.value());
+    req.set_stats((char*)&pkt->statp, sizeof(pkt->statp));
+    req.set_output_name(pkt->ofname);
+    req.set_soft_link_to(pkt->olname);
+    req.set_replace(*replace_type);
+    req.set_delta_seq(pkt->delta_seq);
 
     bp::createFileResponse resp;
     grpc::ClientContext ctx;
@@ -1419,7 +1460,6 @@ class PluginClient {
                         const struct stat& statp,
                         std::string_view extended_attributes,
                         std::string_view where,
-                        uid_t user_id,
                         bool* do_in_core)
   {
     bp::setFileAttributesRequest req;
@@ -2387,7 +2427,7 @@ bRC grpc_connection::setFileAttributes(filedaemon::restore_pkt* pkt)
   bool do_in_core = false;
 
   auto res = client->setFileAttributes(pkt->ofname, pkt->statp, pkt->attrEx,
-                                       pkt->where, pkt->uid, &do_in_core);
+                                       pkt->where, &do_in_core);
   if (res != bRC_Error && do_in_core) { pkt->create_status = CF_CORE; }
 
   return res;

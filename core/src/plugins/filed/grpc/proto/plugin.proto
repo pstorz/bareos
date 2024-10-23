@@ -36,23 +36,6 @@ service Plugin {
 message SetupRequest {};
 message SetupResponse {};
 
-message RestorePacket {
-  int32 stream_id = 1;
-  int32 data_stream = 2;
-  int32 type = 3;
-  int64 file_index = 4;
-  int64 link_fi = 5;
-  int64 user_id = 6;
-  bytes stat = 7;
-  bytes extended_attributes = 8;
-  bytes ofname = 9;
-  bytes olname = 10;
-  optional bytes where = 11;
-  optional bytes regex_where = 12;
-  bareos.common.ReplaceType replace = 13;
-  int32 delta_seq = 14;
-};
-
 // ---- Handle Plugin Events ----
 
 message handlePluginEventRequest {
@@ -176,7 +159,12 @@ message fileCloseResponse {
 // ---- Create File ----
 
 message createFileRequest {
-  RestorePacket pkt = 1;
+  bytes output_name = 1;
+  bytes soft_link_to = 2; // only if ft == SoftLink
+  bareos.common.FileType ft = 3;
+  bytes stats = 6;
+  optional int64 delta_seq = 4;
+  bareos.common.ReplaceType replace = 5;
 };
 
 enum CreateFileStatus {

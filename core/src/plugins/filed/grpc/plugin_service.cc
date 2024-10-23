@@ -622,12 +622,9 @@ auto PluginService::createFile(ServerContext*,
                                const bp::createFileRequest* request,
                                bp::createFileResponse* response) -> Status
 {
-  auto& pkt = request->pkt();
-
-  JobLog(
-      bareos::core::JMsgType::JMSG_INFO,
-      FMT_STRING("{{ofname = {}, olname = {}, where = {}, regexwhere = {}}}"),
-      pkt.ofname(), pkt.olname(), pkt.where(), pkt.regex_where());
+  JobLog(bareos::core::JMsgType::JMSG_INFO,
+         FMT_STRING("{{output = {} (link to = {})}}"), request->output_name(),
+         request->soft_link_to());
 
   response->set_status(bareos::plugin::CF_Core);
 

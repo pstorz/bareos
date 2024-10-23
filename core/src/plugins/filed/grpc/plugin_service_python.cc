@@ -307,6 +307,35 @@ bp::ReturnCode to_grpc(bRC res)
   }
 }
 
+std::optional<int> from_grpc(bco::FileType ft)
+{
+  switch (ft) {
+    case bco::RegularFile:
+      return FT_REG;
+    case bco::Directory:
+      return FT_DIREND;
+    case bco::SoftLink:
+      return FT_LNK;
+    case bco::SpecialFile:
+      return FT_SPEC;
+    case bco::BlockDevice:
+      return FT_RAW;
+    case bco::Fifo:
+      return FT_FIFO;
+    case bco::ReparsePoint:
+      return FT_REPARSE;
+    case bco::Junction:
+      return FT_JUNCTION;
+    case bco::Deleted:
+      return FT_DELETED;
+    case bco::HardlinkCopy:
+      return FT_LNKSAVED;
+    default: {
+      return std::nullopt;
+    }
+  }
+}
+
 static const char* event_case_to_str(bp::events::Event::EventCase ec)
 {
   switch (ec) {
@@ -969,31 +998,31 @@ auto PluginService::FileClose(ServerContext*,
 
   return Status::OK;
 }
+
 auto PluginService::createFile(ServerContext*,
                                const bp::createFileRequest* request,
                                bp::createFileResponse* response) -> Status
 {
   filedaemon::restore_pkt rp = {};
-  auto& packet = request->pkt();
-  rp.stream = packet.stream_id();
-  rp.data_stream = packet.data_stream();
-  rp.type = packet.type();
-  rp.file_index = packet.file_index();
-  rp.LinkFI = packet.link_fi();
-  rp.uid = packet.user_id();
-  if (packet.stat().size() != sizeof(rp.statp)) {
+  auto type = from_grpc(request->ft());
+
+  if (!type) {
+    JobLog(bc::JMSG_ERROR, FMT_STRING("received unknown file type {}"),
+           int(request->ft()));
+    return Status(grpc::StatusCode::FAILED_PRECONDITION, "unknown file type");
+  }
+
+  rp.type = type.value();
+  if (request->stats().size() != sizeof(rp.statp)) {
     JobLog(bc::JMSG_ERROR,
            FMT_STRING("bad stats value (size = {}, should be {})"),
-           packet.stat().size(), sizeof(rp.statp));
+           request->stats().size(), sizeof(rp.statp));
     return Status(grpc::StatusCode::INVALID_ARGUMENT, "bad stats value");
   }
-  memcpy(&rp.statp, packet.stat().c_str(), sizeof(rp.statp));
-  rp.attrEx = packet.extended_attributes().c_str();
-  rp.ofname = packet.ofname().c_str();
-  rp.olname = packet.olname().c_str();
-  rp.where = packet.where().c_str();
-  rp.RegexWhere = packet.regex_where().c_str();
-  switch (packet.replace()) {
+  memcpy(&rp.statp, request->stats().c_str(), sizeof(rp.statp));
+  rp.ofname = request->output_name().c_str();
+  rp.olname = request->soft_link_to().c_str();
+  switch (request->replace()) {
     case bareos::common::ReplaceIfNewer: {
       rp.replace = REPLACE_IFNEWER;
     } break;
@@ -1008,11 +1037,11 @@ auto PluginService::createFile(ServerContext*,
     } break;
     default: {
       JobLog(bc::JMSG_ERROR, FMT_STRING("bad replace value {}"),
-             int(packet.replace()));
+             int(request->replace()));
       return Status(grpc::StatusCode::INVALID_ARGUMENT, "bad replace value");
     } break;
   }
-  rp.delta_seq = packet.delta_seq();
+  rp.delta_seq = request->delta_seq();
 
   auto res = funcs.createFile(ctx, &rp);
   if (res != bRC_OK) {
