@@ -579,11 +579,21 @@ bail_out:
   return retval;
 }
 
+// this is needed because windows does not come with strndup ...
+static char* MallocCopyStringView(std::string_view value)
+{
+  char* x = reinterpret_cast<char*>(malloc(value.size() + 1));
+
+  x[value.size()] = 0;
+  memcpy(x, value.data(), value.size());
+  return x;
+}
+
 // Only set destination to value when it has no previous setting.
 void SetStringIfNull(char** destination, std::string_view val)
 {
   if (!*destination) {
-    *destination = strndup(val.data(), val.size());
+    *destination = MallocCopyStringView(val);
     StripBackSlashes(*destination);
   }
 }
