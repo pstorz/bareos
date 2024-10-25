@@ -65,12 +65,22 @@ static inline int64_t parse_integer(const char* argument_value)
   return str_to_int64(argument_value);
 }
 
+// this is needed because windows does not come with strndup ...
+static char* CopyStringView(std::string_view value)
+{
+        char* x = reinterpret_cast<char*>(malloc(value.size() + 1));
+
+        x[value.size()] = 0;
+        memcpy(x, value.data(), value.size());
+        return x;
+}
+
 // Always set destination to value and clean any previous one.
 static inline void SetString(char** destination, std::string_view value)
 {
   if (*destination) { free(*destination); }
 
-  *destination = strndup(value.data(), value.size());
+  *destination = CopyStringView(value);
   StripBackSlashes(*destination);
 }
 
