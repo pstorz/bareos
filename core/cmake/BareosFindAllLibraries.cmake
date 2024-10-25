@@ -188,6 +188,23 @@ if(ENABLE_JANSSON)
   find_package(Jansson)
 endif()
 
+option(ENABLE_GRPC "Build with grpc support" ON)
+set(HAVE_GRPC 0)
+
+if(ENABLE_GRPC)
+  find_package(Protobuf)
+  # Find gRPC installation Looks for gRPCConfig.cmake file installed by gRPC's
+  # cmake installation.
+  find_package(gRPC CONFIG)
+  if(NOT Protobuf_FOUND)
+    message(STATUS "Disabling grpc support as protobuf not found")
+  elseif(NOT gRPC_FOUND)
+    message(STATUS "Disabling grpc support as grpc not found")
+  else()
+    set(HAVE_GRPC 1)
+  endif()
+endif()
+
 if(NOT MSVC)
   include(thread)
 else()
