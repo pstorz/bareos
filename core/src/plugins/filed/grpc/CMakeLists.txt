@@ -52,11 +52,11 @@ elseif(HAVE_GRPC)
       set(proto_hdr "${CMAKE_CURRENT_BINARY_DIR}/${stem}.pb.h")
       set(grpc_src "${CMAKE_CURRENT_BINARY_DIR}/${stem}.grpc.pb.cc")
       set(grpc_hdr "${CMAKE_CURRENT_BINARY_DIR}/${stem}.grpc.pb.h")
-
       add_custom_command(
         OUTPUT "${proto_src}" "${proto_hdr}" "${grpc_src}" "${grpc_hdr}"
         COMMAND
           ${_PROTOBUF_PROTOC} ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
+          -I ${CMAKE_BINARY_DIR}/_deps/grpc-src/third_party/protobuf/src
           --cpp_out "${CMAKE_CURRENT_BINARY_DIR}" -I "${path}"
           --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
           "${absolute}"
