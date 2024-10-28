@@ -1414,6 +1414,9 @@ mkdir -p %{?buildroot}/%{_libdir}/bareos/plugins/vmware_plugin
 %files filedaemon-python3-plugin
 %defattr(-, root, root)
 %{plugin_dir}/python3-fd.so
+%{plugin_dir}/grpc-fd.so
+%{plugin_dir}/grpc-python-module
+%{plugin_dir}/grpc-test-module
 %{python3_sitearch}/bareosfd*.so
 
 %files filedaemon-python-plugins-common
