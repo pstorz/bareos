@@ -188,7 +188,7 @@ if(ENABLE_JANSSON)
   find_package(Jansson)
 endif()
 
-option(ENABLE_GRPC "Build with grpc support" ON)
+option(ENABLE_GRPC "Build with grpc support" OFF)
 set(HAVE_GRPC 0)
 
 if(ENABLE_GRPC)
