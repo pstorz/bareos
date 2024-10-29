@@ -59,6 +59,7 @@ elseif(HAVE_GRPC)
           ${_PROTOBUF_PROTOC} ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
           --cpp_out "${CMAKE_CURRENT_BINARY_DIR}" -I "${path}"
           --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
+          --experimental_allow_proto3_optional
           "${absolute}"
         DEPENDS "${absolute}"
       )
