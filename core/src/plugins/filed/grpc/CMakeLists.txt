@@ -81,7 +81,6 @@ elseif(HAVE_GRPC)
   target_link_libraries(
     grpc-proto PUBLIC ${_REFLECTION} ${_GRPC_GRPCPP} ${_PROTOBUF_LIBPROTOBUF}
   )
-  bareos_disable_warnings(TARGET grpc-proto WARNINGS -Wshadow)
   # add_library(grpc-plugin SHARED grpc.cc restore.cc config.cc database.cc) #
   # Include generated *.pb.h files target_link_libraries( grpc-plugin
   # ${_REFLECTION} ${_GRPC_GRPCPP} ${_PROTOBUF_LIBPROTOBUF} grpc-proto )
@@ -99,7 +98,6 @@ elseif(HAVE_GRPC)
     COMPONENT filedaemon
   )
   target_link_libraries(grpc-fd bareos fmt grpc-proto)
-  bareos_disable_warnings(TARGET grpc-fd WARNINGS -Wshadow)
 
   add_executable(grpc-test-module grpc_test_module.cc plugin_service.cc)
   target_link_libraries(grpc-test-module fmt grpc-proto)
@@ -108,7 +106,6 @@ elseif(HAVE_GRPC)
     DESTINATION ${plugindir}
     COMPONENT filedaemon
   )
-  bareos_disable_warnings(TARGET grpc-test-module WARNINGS -Wshadow)
 
   add_executable(
     grpc-python-module grpc_python_module.cc plugin_service_python.cc
@@ -120,7 +117,6 @@ elseif(HAVE_GRPC)
     DESTINATION ${plugindir}
     COMPONENT filedaemon
   )
-  bareos_disable_warnings(TARGET grpc-python-module WARNINGS -Wshadow)
 
   set_target_properties(
     grpc-fd PROPERTIES PREFIX "" LIBRARY_OUTPUT_DIRECTORY ..
