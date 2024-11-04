@@ -28,6 +28,7 @@
 #include "test_module.h"
 
 #include <sys/sendfile.h>
+#include <sys/time.h>
 
 #include <filesystem>
 #include <thread>
