@@ -108,8 +108,6 @@ if(HAVE_GLUSTERFS AND ENABLE_GFAPI_FD)
   target_include_directories(gfapi-fd PRIVATE ${GFAPI_INCLUDE_DIRS})
 endif()
 
-#if (HAVE_GRPC)
-  add_subdirectory(grpc)
-#endif()
+add_subdirectory(grpc)
 
 include(DebugEdit)
