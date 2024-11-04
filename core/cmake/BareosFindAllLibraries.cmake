@@ -193,14 +193,13 @@ set(HAVE_GRPC 0)
 
 if(ENABLE_GRPC)
   find_package(Protobuf)
-  if (Protobuf_VERSION VERSION_LESS_EQUAL 3.12.0)
-	  message(FATAL_ERROR "PROTOBUF is too old, we need at least 3.12.0 but have only ${Protobuf_VERSION} for optional fields in proto3")
-  endif()
   # Find gRPC installation Looks for gRPCConfig.cmake file installed by gRPC's
   # cmake installation.
   find_package(gRPC CONFIG)
   if(NOT Protobuf_FOUND)
     message(FATAL_ERROR "ENABLE_GRPC=ON but protobuf not found")
+  elseif (Protobuf_VERSION VERSION_LESS_EQUAL 3.12.0)
+	  message(FATAL_ERROR "PROTOBUF is too old, we need at least 3.12.0 but have only ${Protobuf_VERSION} for optional fields in proto3")
   elseif(NOT gRPC_FOUND)
     message(INFO "ENABLE_GRPC=ON but grpc not (yet) found, fallback to pkg_check_modules()")
     pkg_check_modules (gRPC grpc++ REQUIRED)
