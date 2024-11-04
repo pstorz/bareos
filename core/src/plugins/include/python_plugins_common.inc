@@ -31,7 +31,7 @@ static inline void StripBackSlashes(char* value)
 
   char* out = in;
 
-  do {
+  while (*in) {
     switch (*in) {
       case '\\': {
         in += 1;
@@ -42,7 +42,7 @@ static inline void StripBackSlashes(char* value)
         out += 1;
       } break;
     }
-  } while (*in);
+  }
 }
 
 /**
