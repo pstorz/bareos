@@ -743,7 +743,7 @@ auto PluginService::startBackupFile(ServerContext*,
           response->set_result(bp::SBF_Skip);
 
         } else {
-          static_assert(false, "unhandled type");
+          static_assert(!std::is_same_v<T, T>, "unhandled type");
         }
 
         return Status::OK;
