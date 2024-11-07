@@ -1,5 +1,2 @@
 @plugindir@/python3-fd.so
-@plugindir@/grpc-fd.so
-@plugindir@/grpc-python-module
-@plugindir@/grpc-test-module
 @Python3_SITEARCH@/bareosfd.cpython*.so
