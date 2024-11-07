@@ -62,11 +62,13 @@ CONFIGURE_COMMON       += -Dscsi-crypto=no -Dndmp=no
 endif
 
 
-# no gprc for Ubuntu20.04 and Debian11
-ifneq ($(DIST_ID_REL),Ubuntu20.04))
-	ifneq ($(DIST_ID_REL),Debian11))
-CONFIGURE_COMMON       += -DENABLE_GRPC=yes
-  endif
+# no gprc for universal client, Ubuntu20.04 and Debian11
+ifneq (build-universal-client,$(filter build-universal-client,$(DEB_BUILD_OPTIONS)))
+	ifneq ($(DIST_ID_REL),Ubuntu20.04))
+		ifneq ($(DIST_ID_REL),Debian11))
+	CONFIGURE_COMMON       += -DENABLE_GRPC=yes
+		endif
+	endif
 endif
 
 
