@@ -30,6 +30,7 @@
 #include <grpcpp/create_channel_posix.h>
 #include <grpcpp/server_posix.h>
 #include <dlfcn.h>
+#include <clocale>
 
 #undef ASSERT
 #define ASSERT(x)                                 \
@@ -1395,9 +1396,13 @@ void HandleConnection(int server_sock, int client_sock, int io_sock)
   if (plugin_data.plugin_handle) { dlclose(plugin_data.plugin_handle); }
 }
 
-
 int main(int argc, char* argv[], char* envp[])
 {
+  // every (C) program is started in the C locale,
+  // so the following call ensures that we respect the users locale setting.
+  // This is necessary to ensure UTF-8 support as well.
+  setlocale(LC_ALL, "");
+
   (void)envp;
   (void)argv;
   if (argc != 1) {
@@ -1411,8 +1416,6 @@ int main(int argc, char* argv[], char* envp[])
   int server = 3;
   int client = 4;
   int io = 5;
-
-  printf("Hallo, from grpc module\n");
 
   if (fcntl(server, F_GETFD) < 0) {
     fprintf(stderr, "bad server file descriptor given: %d\n", server);
