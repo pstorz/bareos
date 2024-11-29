@@ -258,7 +258,7 @@ bool send_scsi_cmd_page(int fd,
                           (USCSI_WRITE | USCSI_SILENT | USCSI_RQENABLE));
 }
 
-bool CheckScsiAtEod(int fd) { return false; }
+bool CheckScsiAtEod([[maybe_unused]] int fd) { return false; }
 
 #  elif defined(HAVE_FREEBSD_OS)
 

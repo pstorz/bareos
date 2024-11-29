@@ -58,11 +58,7 @@ static bool PamConvSendMessage(BareosSocket* UA_sock,
 }
 
 static int PamConversationCallback(int num_msg,
-#if defined(__sun)
-                                   struct pam_message** msgm,
-#else
                                    const struct pam_message** msgm,
-#endif
                                    struct pam_response** response,
                                    void* appdata_ptr)
 {
@@ -142,11 +138,7 @@ static int PamConversationCallback(int num_msg,
 }
 
 static int PamLocalCallback(int num_msg,
-#if defined(__sun)
-                            struct pam_message**,
-#else
                             const struct pam_message**,
-#endif
                             struct pam_response** response,
                             void* appdata_ptr)
 {
@@ -188,11 +180,7 @@ static int DoPamAuth(struct pam_handle* pamh,
     return err;
   }
 
-#if defined(__sun)
-  void* data;
-#else
   const void* data;
-#endif
   err = pam_get_item(pamh, PAM_USER, &data);
   if (err != PAM_SUCCESS) {
     Dmsg1(debuglevel, "PAM get_item failed: %s\n", pam_strerror(pamh, err));
