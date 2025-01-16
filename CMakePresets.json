@@ -3,10 +3,10 @@
   "configurePresets": [
     {
       "name": "vcpkg",
-      "generator": "Ninja-Multiconfig",
-      "binaryDir": "${sourceDir}/build",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "C:/src/build",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
       }
     }
   ]

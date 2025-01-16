@@ -1,6 +1,5 @@
 {
   "dependencies": [
-    "add",
     "gettext",
     "gtest",
     "jansson",
@@ -12,7 +11,6 @@
         "tools"
       ]
     },
-    "port",
     "pthread",
     {
       "name": "qtbase",
@@ -23,7 +21,6 @@
       ]
     },
     "readline",
-    "vcpkg",
     "zlib",
     "libxml2"
   ]
