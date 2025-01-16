@@ -1,0 +1,30 @@
+{
+  "dependencies": [
+    "add",
+    "gettext",
+    "gtest",
+    "jansson",
+    "libpq",
+    "lzo",
+    {
+      "name": "openssl",
+      "features": [
+        "tools"
+      ]
+    },
+    "port",
+    "pthread",
+    {
+      "name": "qtbase",
+      "default-features": false,
+      "features": [
+        "png",
+        "widgets"
+      ]
+    },
+    "readline",
+    "vcpkg",
+    "zlib",
+    "libxml2"
+  ]
+}
