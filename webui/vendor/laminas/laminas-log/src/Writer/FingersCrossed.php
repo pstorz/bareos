@@ -13,6 +13,7 @@ use Laminas\Log\Filter\Priority as PriorityFilter;
 use Laminas\Log\Formatter\FormatterInterface;
 use Laminas\Log\Logger;
 use Laminas\Log\WriterPluginManager;
+use Laminas\ServiceManager\ServiceManager;
 use Laminas\Stdlib\ArrayUtils;
 use Traversable;
 
@@ -129,7 +130,7 @@ class FingersCrossed extends AbstractWriter
     public function getWriterPluginManager()
     {
         if (null === $this->writerPlugins) {
-            $this->setWriterPluginManager(new WriterPluginManager());
+            $this->setWriterPluginManager(new WriterPluginManager(new ServiceManager()));
         }
         return $this->writerPlugins;
     }

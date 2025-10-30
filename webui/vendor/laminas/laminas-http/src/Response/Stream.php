@@ -88,7 +88,7 @@ class Stream extends Response
      * Set the response stream
      *
      * @param resource $stream
-     * @return Stream
+     * @return $this
      */
     public function setStream($stream)
     {
@@ -130,7 +130,7 @@ class Stream extends Response
      * Set file name associated with the stream
      *
      * @param string $streamName Name to set
-     * @return Stream
+     * @return $this
      */
     public function setStreamName($streamName)
     {
@@ -143,7 +143,7 @@ class Stream extends Response
      *
      * @param  string $responseString
      * @param  resource $stream
-     * @return Stream
+     * @return $this
      * @throws Exception\InvalidArgumentException
      * @throws Exception\OutOfRangeException
      */
@@ -287,7 +287,7 @@ class Stream extends Response
         if (is_resource($this->stream)) {
             $this->stream = null; //Could be listened by others
         }
-        if ($this->cleanup) {
+        if ($this->cleanup && is_string($this->streamName) && file_exists($this->streamName)) {
             ErrorHandler::start(E_WARNING);
             unlink($this->streamName);
             ErrorHandler::stop();

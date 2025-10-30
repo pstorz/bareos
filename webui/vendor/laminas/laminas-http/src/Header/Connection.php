@@ -27,7 +27,7 @@ class Connection implements HeaderInterface
 
     /**
      * @param string $headerLine
-     * @return Connection
+     * @return static
      * @throws Exception\InvalidArgumentException
      */
     public static function fromString($headerLine)
@@ -50,7 +50,7 @@ class Connection implements HeaderInterface
      * Set Connection header to define persistent connection
      *
      * @param  bool $flag
-     * @return Connection
+     * @return $this
      */
     public function setPersistent($flag)
     {
@@ -75,7 +75,7 @@ class Connection implements HeaderInterface
      * RFC allows any token as value, 'close' and 'keep-alive' are commonly used
      *
      * @param string $value
-     * @return Connection
+     * @return $this
      */
     public function setValue($value)
     {

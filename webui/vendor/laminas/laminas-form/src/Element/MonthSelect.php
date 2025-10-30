@@ -1,22 +1,23 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Element;
 
 use DateTime as PhpDateTime;
+use Exception;
 use Laminas\Form\Element;
 use Laminas\Form\ElementPrepareAwareInterface;
+use Laminas\Form\Exception\InvalidArgumentException;
 use Laminas\Form\FormInterface;
 use Laminas\InputFilter\InputProviderInterface;
-use Laminas\Stdlib\ArrayUtils;
 use Laminas\Validator\Regex as RegexValidator;
 use Laminas\Validator\ValidatorInterface;
-use Traversable;
+
+use function date;
+use function is_array;
+use function is_string;
+use function sprintf;
 
 class MonthSelect extends Element implements InputProviderInterface, ElementPrepareAwareInterface
 {
@@ -64,24 +65,22 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
      */
     protected $renderDelimiters = true;
 
-    /**
-     * @var ValidatorInterface
-     */
+    /** @var null|ValidatorInterface */
     protected $validator;
 
     /**
      * Constructor. Add two selects elements
      *
-     * @param  null|int|string  $name    Optional name for the element
-     * @param  array            $options Optional options for the element
+     * @param  null|int|string $name    Optional name for the element
+     * @param  iterable        $options Optional options for the element
      */
-    public function __construct($name = null, $options = [])
+    public function __construct($name = null, iterable $options = [])
     {
-        $this->minYear = date('Y') - 100;
-        $this->maxYear = date('Y');
+        $this->minYear = ((int) date('Y')) - 100;
+        $this->maxYear = (int) date('Y');
 
         $this->monthElement = new Select('month');
-        $this->yearElement = new Select('year');
+        $this->yearElement  = new Select('year');
 
         parent::__construct($name, $options);
     }
@@ -96,56 +95,45 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
      * - min_year: min year to use in the year select
      * - max_year: max year to use in the year select
      *
-     * @param array|Traversable $options
-     * @return self
+     * @return $this
      */
-    public function setOptions($options)
+    public function setOptions(iterable $options)
     {
         parent::setOptions($options);
 
-        if ($options instanceof Traversable) {
-            $options = ArrayUtils::iteratorToArray($options);
+        if (isset($this->options['month_attributes'])) {
+            $this->setMonthAttributes($this->options['month_attributes']);
         }
 
-        if (isset($options['month_attributes'])) {
-            $this->setMonthAttributes($options['month_attributes']);
+        if (isset($this->options['year_attributes'])) {
+            $this->setYearAttributes($this->options['year_attributes']);
         }
 
-        if (isset($options['year_attributes'])) {
-            $this->setYearAttributes($options['year_attributes']);
+        if (isset($this->options['min_year'])) {
+            $this->setMinYear($this->options['min_year']);
         }
 
-        if (isset($options['min_year'])) {
-            $this->setMinYear($options['min_year']);
+        if (isset($this->options['max_year'])) {
+            $this->setMaxYear($this->options['max_year']);
         }
 
-        if (isset($options['max_year'])) {
-            $this->setMaxYear($options['max_year']);
+        if (isset($this->options['create_empty_option'])) {
+            $this->setShouldCreateEmptyOption($this->options['create_empty_option']);
         }
 
-        if (isset($options['create_empty_option'])) {
-            $this->setShouldCreateEmptyOption($options['create_empty_option']);
-        }
-
-        if (isset($options['render_delimiters'])) {
-            $this->setShouldRenderDelimiters($options['render_delimiters']);
+        if (isset($this->options['render_delimiters'])) {
+            $this->setShouldRenderDelimiters($this->options['render_delimiters']);
         }
 
         return $this;
     }
 
-    /**
-     * @return Select
-     */
-    public function getMonthElement()
+    public function getMonthElement(): Select
     {
         return $this->monthElement;
     }
 
-    /**
-     * @return Select
-     */
-    public function getYearElement()
+    public function getYearElement(): Select
     {
         return $this->yearElement;
     }
@@ -155,7 +143,7 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
      *
      * @return array
      */
-    public function getElements()
+    public function getElements(): array
     {
         return [$this->monthElement, $this->yearElement];
     }
@@ -164,7 +152,7 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
      * Set the month attributes
      *
      * @param  array $monthAttributes
-     * @return self
+     * @return $this
      */
     public function setMonthAttributes(array $monthAttributes)
     {
@@ -177,7 +165,7 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
      *
      * @return array
      */
-    public function getMonthAttributes()
+    public function getMonthAttributes(): array
     {
         return $this->monthElement->getAttributes();
     }
@@ -186,7 +174,7 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
      * Set the year attributes
      *
      * @param  array $yearAttributes
-     * @return self
+     * @return $this
      */
     public function setYearAttributes(array $yearAttributes)
     {
@@ -199,120 +187,123 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
      *
      * @return array
      */
-    public function getYearAttributes()
+    public function getYearAttributes(): array
     {
         return $this->yearElement->getAttributes();
     }
 
     /**
-     * @param  int $minYear
-     * @return self
+     * @return $this
      */
-    public function setMinYear($minYear)
+    public function setMinYear(int $minYear)
     {
         $this->minYear = $minYear;
         return $this;
     }
 
-    /**
-     * @return int
-     */
-    public function getMinYear()
+    public function getMinYear(): int
     {
         return $this->minYear;
     }
 
     /**
-     * @param  int $maxYear
-     * @return self
+     * @return $this
      */
-    public function setMaxYear($maxYear)
+    public function setMaxYear(int $maxYear)
     {
         $this->maxYear = $maxYear;
         return $this;
     }
 
-    /**
-     * @return int
-     */
-    public function getMaxYear()
+    public function getMaxYear(): int
     {
         return $this->maxYear;
     }
 
     /**
-     * @param  bool $createEmptyOption
-     * @return self
+     * @return $this
      */
-    public function setShouldCreateEmptyOption($createEmptyOption)
+    public function setShouldCreateEmptyOption(bool $createEmptyOption)
     {
-        $this->createEmptyOption = (bool) $createEmptyOption;
+        $this->createEmptyOption = $createEmptyOption;
         return $this;
     }
 
-    /**
-     * @return bool
-     */
-    public function shouldCreateEmptyOption()
+    public function shouldCreateEmptyOption(): bool
     {
         return $this->createEmptyOption;
     }
 
     /**
-     * @param  bool $renderDelimiters
-     * @return self
+     * @return $this
      */
-    public function setShouldRenderDelimiters($renderDelimiters)
+    public function setShouldRenderDelimiters(bool $renderDelimiters)
     {
-        $this->renderDelimiters = (bool) $renderDelimiters;
+        $this->renderDelimiters = $renderDelimiters;
         return $this;
     }
 
-    /**
-     * @return bool
-     */
-    public function shouldRenderDelimiters()
+    public function shouldRenderDelimiters(): bool
     {
         return $this->renderDelimiters;
     }
 
     /**
-     * @param mixed $value
-     * @return self
+     * @param  PhpDateTime|iterable|string|null|mixed $value
+     * @return $this
      */
     public function setValue($value)
     {
+        if (is_string($value)) {
+            try {
+                $value = new PhpDateTime($value);
+            } catch (Exception $exception) {
+                throw new InvalidArgumentException(
+                    'Value should be a parsable string or an instance of \DateTime',
+                    0,
+                    $exception
+                );
+            }
+        }
+
+        if (null === $value && ! $this->shouldCreateEmptyOption()) {
+            $value = new PhpDateTime();
+        }
+
         if ($value instanceof PhpDateTime) {
             $value = [
                 'year'  => $value->format('Y'),
-                'month' => $value->format('m')
+                'month' => $value->format('m'),
             ];
         }
 
-        $this->yearElement->setValue($value['year']);
-        $this->monthElement->setValue($value['month']);
+        if (is_array($value)) {
+            $this->yearElement->setValue($value['year']);
+            $this->monthElement->setValue($value['month']);
+        } else {
+            $this->yearElement->setValue(null);
+            $this->monthElement->setValue(null);
+        }
+
         return $this;
     }
 
-    /**
-     * @return string
-     */
-    public function getValue()
+    public function getValue(): ?string
     {
-        return sprintf(
-            '%s-%s',
-            $this->getYearElement()->getValue(),
-            $this->getMonthElement()->getValue()
-        );
+        $year  = $this->getYearElement()->getValue();
+        $month = $this->getMonthElement()->getValue();
+
+        if ($this->shouldCreateEmptyOption() && null === $year && null === $month) {
+            return null;
+        }
+
+        return sprintf('%04d-%02d', $year, $month);
     }
 
     /**
      * Prepare the form element (mostly used for rendering purposes)
-     *
-     * @param  FormInterface $form
-     * @return void
      */
-    public function prepareElement(FormInterface $form)
+    public function prepareElement(FormInterface $form): void
     {
         $name = $this->getName();
         $this->monthElement->setName($name . '[month]');
@@ -321,10 +312,8 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
 
     /**
      * Get validator
-     *
-     * @return ValidatorInterface
      */
-    protected function getValidator()
+    protected function getValidator(): ValidatorInterface
     {
         return new RegexValidator('/^[0-9]{4}\-(0?[1-9]|1[012])$/');
     }
@@ -335,12 +324,12 @@ class MonthSelect extends Element implements InputProviderInterface, ElementPrep
      *
      * @return array
      */
-    public function getInputSpecification()
+    public function getInputSpecification(): array
     {
         return [
-            'name' => $this->getName(),
-            'required' => false,
-            'filters' => [
+            'name'       => $this->getName(),
+            'required'   => false,
+            'filters'    => [
                 ['name' => 'MonthSelect'],
             ],
             'validators' => [

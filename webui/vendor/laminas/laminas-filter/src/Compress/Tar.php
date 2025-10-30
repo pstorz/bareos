@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\Compress;
 
 use Archive_Tar;
@@ -21,16 +15,16 @@ class Tar extends AbstractCompressionAlgorithm
     /**
      * Compression Options
      * array(
-     *     'archive'  => Archive to use
-     *     'target'   => Target to write the files to
+     *     'archive' => Archive to use
+     *     'target'  => Target to write the files to
      * )
      *
      * @var array
      */
     protected $options = [
-        'archive'  => null,
-        'target'   => '.',
-        'mode'     => null,
+        'archive' => null,
+        'target'  => '.',
+        'mode'    => null,
     ];
 
     /**
@@ -41,7 +35,7 @@ class Tar extends AbstractCompressionAlgorithm
      */
     public function __construct($options = null)
     {
-        if (!class_exists('Archive_Tar')) {
+        if (! class_exists('Archive_Tar')) {
             throw new Exception\ExtensionNotLoadedException(
                 'This filter needs PEAR\'s Archive_Tar component. '
                 . 'Ensure loading Archive_Tar (registering autoload or require_once)'
@@ -94,7 +88,7 @@ class Tar extends AbstractCompressionAlgorithm
      */
     public function setTarget($target)
     {
-        if (!file_exists(dirname($target))) {
+        if (! file_exists(dirname($target))) {
             throw new Exception\InvalidArgumentException("The directory '$target' does not exist");
         }
 
@@ -127,15 +121,15 @@ class Tar extends AbstractCompressionAlgorithm
     public function setMode($mode)
     {
         $mode = strtolower($mode);
-        if (($mode != 'bz2') && ($mode != 'gz')) {
+        if ($mode !== 'bz2' && $mode !== 'gz') {
             throw new Exception\InvalidArgumentException("The mode '$mode' is unknown");
         }
 
-        if (($mode == 'bz2') && (!extension_loaded('bz2'))) {
+        if ($mode === 'bz2' && ! extension_loaded('bz2')) {
             throw new Exception\ExtensionNotLoadedException('This mode needs the bz2 extension');
         }
 
-        if (($mode == 'gz') && (!extension_loaded('zlib'))) {
+        if ($mode === 'gz' && ! extension_loaded('zlib')) {
             throw new Exception\ExtensionNotLoadedException('This mode needs the zlib extension');
         }
 
@@ -154,10 +148,10 @@ class Tar extends AbstractCompressionAlgorithm
     public function compress($content)
     {
         $archive = new Archive_Tar($this->getArchive(), $this->getMode());
-        if (!file_exists($content)) {
+        if (! file_exists($content)) {
             $file = $this->getTarget();
             if (is_dir($file)) {
-                $file .= DIRECTORY_SEPARATOR . "tar.tmp";
+                $file .= DIRECTORY_SEPARATOR . 'tar.tmp';
             }
 
             $result = file_put_contents($file, $content);
@@ -201,14 +195,15 @@ class Tar extends AbstractCompressionAlgorithm
     public function decompress($content)
     {
         $archive = $this->getArchive();
-        if (empty($archive) || !file_exists($archive)) {
+        if (file_exists($content)) {
+            $archive = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, realpath($content));
+        } elseif (empty($archive) || ! file_exists($archive)) {
             throw new Exception\RuntimeException('Tar Archive not found');
         }
 
-        $archive = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, realpath($content));
         $archive = new Archive_Tar($archive, $this->getMode());
         $target  = $this->getTarget();
-        if (!is_dir($target)) {
+        if (! is_dir($target)) {
             $target = dirname($target) . DIRECTORY_SEPARATOR;
         }
 

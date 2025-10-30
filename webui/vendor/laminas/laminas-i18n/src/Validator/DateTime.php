@@ -22,12 +22,13 @@ class DateTime extends AbstractValidator
     const INVALID_DATETIME = 'datetimeInvalidDateTime';
 
     /**
+     * Validation failure message template definitions
      *
-     * @var array
+     * @var string[]
      */
     protected $messageTemplates = [
-        self::INVALID          => "Invalid type given. String expected",
-        self::INVALID_DATETIME => "The input does not appear to be a valid datetime",
+        self::INVALID          => 'Invalid type given. String expected',
+        self::INVALID_DATETIME => 'The input does not appear to be a valid datetime',
     ];
 
     /**
@@ -38,29 +39,29 @@ class DateTime extends AbstractValidator
     protected $locale;
 
     /**
-     * @var int
+     * @var int|null
      */
     protected $dateType;
 
     /**
-     * @var int
+     * @var int|null
      */
     protected $timeType;
 
     /**
      * Optional timezone
      *
-     * @var string
+     * @var string|null
      */
     protected $timezone;
 
     /**
-     * @var string
+     * @var string|null
      */
     protected $pattern;
 
     /**
-     * @var int
+     * @var int|null
      */
     protected $calendar;
 
@@ -85,7 +86,7 @@ class DateTime extends AbstractValidator
      */
     public function __construct($options = [])
     {
-        if (!extension_loaded('intl')) {
+        if (! extension_loaded('intl')) {
             throw new I18nException\ExtensionNotLoadedException(
                 sprintf('%s component requires the intl PHP extension', __NAMESPACE__)
             );
@@ -110,7 +111,7 @@ class DateTime extends AbstractValidator
      * Sets the calendar to be used by the IntlDateFormatter
      *
      * @param int|null $calendar
-     * @return DateTime provides fluent interface
+     * @return $this
      */
     public function setCalendar($calendar)
     {
@@ -122,18 +123,22 @@ class DateTime extends AbstractValidator
     /**
      * Returns the calendar to by the IntlDateFormatter
      *
-     * @return int
+     * @return int|null
      */
     public function getCalendar()
     {
-        return ($this->formatter && !$this->invalidateFormatter) ? $this->getIntlDateFormatter()->getCalendar() : $this->calendar;
+        if ($this->formatter && ! $this->invalidateFormatter) {
+            return $this->getIntlDateFormatter()->getCalendar();
+        }
+
+        return $this->calendar;
     }
 
     /**
      * Sets the date format to be used by the IntlDateFormatter
      *
      * @param int|null $dateType
-     * @return DateTime provides fluent interface
+     * @return $this
      */
     public function setDateType($dateType)
     {
@@ -146,7 +151,7 @@ class DateTime extends AbstractValidator
     /**
      * Returns the date format used by the IntlDateFormatter
      *
-     * @return int
+     * @return int|null
      */
     public function getDateType()
     {
@@ -157,7 +162,7 @@ class DateTime extends AbstractValidator
      * Sets the pattern to be used by the IntlDateFormatter
      *
      * @param string|null $pattern
-     * @return DateTime provides fluent interface
+     * @return $this
      */
     public function setPattern($pattern)
     {
@@ -169,18 +174,22 @@ class DateTime extends AbstractValidator
     /**
      * Returns the pattern used by the IntlDateFormatter
      *
-     * @return string
+     * @return string|null
      */
     public function getPattern()
     {
-        return ($this->formatter && !$this->invalidateFormatter) ? $this->getIntlDateFormatter()->getPattern() : $this->pattern;
+        if ($this->formatter && ! $this->invalidateFormatter) {
+            return $this->getIntlDateFormatter()->getPattern();
+        }
+
+        return $this->pattern;
     }
 
     /**
      * Sets the time format to be used by the IntlDateFormatter
      *
      * @param int|null $timeType
-     * @return DateTime provides fluent interface
+     * @return $this
      */
     public function setTimeType($timeType)
     {
@@ -193,7 +202,7 @@ class DateTime extends AbstractValidator
     /**
      * Returns the time format used by the IntlDateFormatter
      *
-     * @return int
+     * @return int|null
      */
     public function getTimeType()
     {
@@ -204,7 +213,7 @@ class DateTime extends AbstractValidator
      * Sets the timezone to be used by the IntlDateFormatter
      *
      * @param string|null $timezone
-     * @return DateTime provides fluent interface
+     * @return $this
      */
     public function setTimezone($timezone)
     {
@@ -216,18 +225,22 @@ class DateTime extends AbstractValidator
     /**
      * Returns the timezone used by the IntlDateFormatter or the system default if none given
      *
-     * @return string
+     * @return string|null
      */
     public function getTimezone()
     {
-        return ($this->formatter && !$this->invalidateFormatter) ? $this->getIntlDateFormatter()->getTimeZoneId() : $this->timezone;
+        if ($this->formatter && ! $this->invalidateFormatter) {
+            return $this->getIntlDateFormatter()->getTimeZoneId();
+        }
+
+        return $this->timezone;
     }
 
     /**
      * Sets the locale to be used by the IntlDateFormatter
      *
      * @param string|null $locale
-     * @return DateTime provides fluent interface
+     * @return $this
      */
     public function setLocale($locale)
     {
@@ -240,7 +253,7 @@ class DateTime extends AbstractValidator
     /**
      * Returns the locale used by the IntlDateFormatter or the system default if none given
      *
-     * @return string
+     * @return string|null
      */
     public function getLocale()
     {
@@ -256,7 +269,7 @@ class DateTime extends AbstractValidator
      */
     public function isValid($value)
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             $this->error(self::INVALID);
 
             return false;

@@ -112,9 +112,14 @@ abstract class AbstractContainer extends ArrayObject
      */
     public function toString($indent = null)
     {
-        $indent = ($indent !== null)
-            ? $this->getWhitespace($indent)
-            : $this->getIndent();
+        // If we don't have items - do not show prefix and postfix
+        if (! count($this)) {
+            return '';
+        }
+
+        $indent = ($indent === null)
+            ? $this->getIndent()
+            : $this->getWhitespace($indent);
 
         $items  = $this->getArrayCopy();
         $return = $indent
@@ -290,7 +295,7 @@ abstract class AbstractContainer extends ArrayObject
     public function nextIndex()
     {
         $keys = $this->getKeys();
-        if (0 == count($keys)) {
+        if (empty($keys)) {
             return 0;
         }
 

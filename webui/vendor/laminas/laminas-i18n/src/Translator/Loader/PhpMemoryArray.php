@@ -32,25 +32,24 @@ class PhpMemoryArray implements RemoteLoaderInterface
      *
      * @param  string $locale
      * @param  string $textDomain
-     *
-     * @throws \Laminas\I18n\Exception\InvalidArgumentException
-     * @return \Laminas\I18n\Translator\TextDomain|null
+     * @return TextDomain
+     * @throws Exception\InvalidArgumentException
      */
     public function load($locale, $textDomain)
     {
-        if (!is_array($this->messages)) {
+        if (! is_array($this->messages)) {
             throw new Exception\InvalidArgumentException(
                 sprintf('Expected an array, but received %s', gettype($this->messages))
             );
         }
 
-        if (!isset($this->messages[$textDomain])) {
+        if (! isset($this->messages[$textDomain])) {
             throw new Exception\InvalidArgumentException(
                 sprintf('Expected textdomain "%s" to be an array, but it is not set', $textDomain)
             );
         }
 
-        if (!isset($this->messages[$textDomain][$locale])) {
+        if (! isset($this->messages[$textDomain][$locale])) {
             throw new Exception\InvalidArgumentException(
                 sprintf('Expected locale "%s" to be an array, but it is not set', $locale)
             );
@@ -58,7 +57,7 @@ class PhpMemoryArray implements RemoteLoaderInterface
 
         $textDomain = new TextDomain($this->messages[$textDomain][$locale]);
 
-        if (array_key_exists('', $textDomain)) {
+        if ($textDomain->offsetExists('')) {
             if (isset($textDomain['']['plural_forms'])) {
                 $textDomain->setPluralRule(
                     PluralRule::fromString($textDomain['']['plural_forms'])

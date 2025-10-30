@@ -1,17 +1,13 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Element;
 
 use Laminas\Form\Element;
 use Laminas\InputFilter\InputProviderInterface;
 use Laminas\Validator\InArray as InArrayValidator;
-use Traversable;
+use Laminas\Validator\ValidatorInterface;
 
 class Checkbox extends Element implements InputProviderInterface
 {
@@ -21,27 +17,19 @@ class Checkbox extends Element implements InputProviderInterface
      * @var array
      */
     protected $attributes = [
-        'type' => 'checkbox'
+        'type' => 'checkbox',
     ];
 
-    /**
-     * @var \Laminas\Validator\ValidatorInterface
-     */
+    /** @var null|ValidatorInterface */
     protected $validator;
 
-    /**
-     * @var bool
-     */
+    /** @var bool */
     protected $useHiddenElement = true;
 
-    /**
-     * @var string
-     */
+    /** @var string */
     protected $uncheckedValue = '0';
 
-    /**
-     * @var string
-     */
+    /** @var string */
     protected $checkedValue = '1';
 
     /**
@@ -50,23 +38,22 @@ class Checkbox extends Element implements InputProviderInterface
      * - unchecked_value: value for checkbox when unchecked
      * - checked_value: value for checkbox when checked
      *
-     * @param  array|Traversable $options
-     * @return Checkbox
+     * @return $this
      */
-    public function setOptions($options)
+    public function setOptions(iterable $options)
     {
         parent::setOptions($options);
 
-        if (isset($options['use_hidden_element'])) {
-            $this->setUseHiddenElement($options['use_hidden_element']);
+        if (isset($this->options['use_hidden_element'])) {
+            $this->setUseHiddenElement($this->options['use_hidden_element']);
         }
 
-        if (isset($options['unchecked_value'])) {
-            $this->setUncheckedValue($options['unchecked_value']);
+        if (isset($this->options['unchecked_value'])) {
+            $this->setUncheckedValue($this->options['unchecked_value']);
         }
 
-        if (isset($options['checked_value'])) {
-            $this->setCheckedValue($options['checked_value']);
+        if (isset($this->options['checked_value'])) {
+            $this->setCheckedValue($this->options['checked_value']);
         }
 
         return $this;
@@ -75,21 +62,18 @@ class Checkbox extends Element implements InputProviderInterface
     /**
      * Do we render hidden element?
      *
-     * @param  bool $useHiddenElement
-     * @return Checkbox
+     * @return $this
      */
-    public function setUseHiddenElement($useHiddenElement)
+    public function setUseHiddenElement(bool $useHiddenElement)
     {
-        $this->useHiddenElement = (bool) $useHiddenElement;
+        $this->useHiddenElement = $useHiddenElement;
         return $this;
     }
 
     /**
      * Do we render hidden element?
-     *
-     * @return bool
      */
-    public function useHiddenElement()
+    public function useHiddenElement(): bool
     {
         return $this->useHiddenElement;
     }
@@ -97,10 +81,9 @@ class Checkbox extends Element implements InputProviderInterface
     /**
      * Set the value to use when checkbox is unchecked
      *
-     * @param $uncheckedValue
-     * @return Checkbox
+     * @return $this
      */
-    public function setUncheckedValue($uncheckedValue)
+    public function setUncheckedValue(string $uncheckedValue)
     {
         $this->uncheckedValue = $uncheckedValue;
         return $this;
@@ -108,10 +91,8 @@ class Checkbox extends Element implements InputProviderInterface
 
     /**
      * Get the value to use when checkbox is unchecked
-     *
-     * @return string
      */
-    public function getUncheckedValue()
+    public function getUncheckedValue(): string
     {
         return $this->uncheckedValue;
     }
@@ -119,10 +100,9 @@ class Checkbox extends Element implements InputProviderInterface
     /**
      * Set the value to use when checkbox is checked
      *
-     * @param $checkedValue
-     * @return Checkbox
+     * @return $this
      */
-    public function setCheckedValue($checkedValue)
+    public function setCheckedValue(string $checkedValue)
     {
         $this->checkedValue = $checkedValue;
         return $this;
@@ -130,25 +110,21 @@ class Checkbox extends Element implements InputProviderInterface
 
     /**
      * Get the value to use when checkbox is checked
-     *
-     * @return string
      */
-    public function getCheckedValue()
+    public function getCheckedValue(): string
     {
         return $this->checkedValue;
     }
 
     /**
      * Get validator
-     *
-     * @return \Laminas\Validator\ValidatorInterface
      */
-    protected function getValidator()
+    protected function getValidator(): ?ValidatorInterface
     {
         if (null === $this->validator) {
             $this->validator = new InArrayValidator([
                 'haystack' => [$this->checkedValue, $this->uncheckedValue],
-                'strict'   => false
+                'strict'   => false,
             ]);
         }
         return $this->validator;
@@ -161,10 +137,10 @@ class Checkbox extends Element implements InputProviderInterface
      *
      * @return array
      */
-    public function getInputSpecification()
+    public function getInputSpecification(): array
     {
         $spec = [
-            'name' => $this->getName(),
+            'name'     => $this->getName(),
             'required' => true,
         ];
 
@@ -179,10 +155,8 @@ class Checkbox extends Element implements InputProviderInterface
 
     /**
      * Checks if this checkbox is checked.
-     *
-     * @return bool
      */
-    public function isChecked()
+    public function isChecked(): bool
     {
         return $this->value === $this->getCheckedValue();
     }
@@ -191,9 +165,9 @@ class Checkbox extends Element implements InputProviderInterface
      * Checks or unchecks the checkbox.
      *
      * @param bool $value The flag to set.
-     * @return Checkbox
+     * @return $this
      */
-    public function setChecked($value)
+    public function setChecked(bool $value)
     {
         $this->value = $value ? $this->getCheckedValue() : $this->getUncheckedValue();
         return $this;
@@ -202,13 +176,13 @@ class Checkbox extends Element implements InputProviderInterface
     /**
      * Checks or unchecks the checkbox.
      *
-     * @param mixed $value A boolean flag or string that is checked against the "checked value".
-     * @return Element
+     * @param  mixed $value A boolean flag or string that is checked against the "checked value".
+     * @return $this
      */
     public function setValue($value)
     {
         // Cast to strings because POST data comes in string form
-        $checked = (string) $value === (string) $this->getCheckedValue();
+        $checked     = (string) $value === $this->getCheckedValue();
         $this->value = $checked ? $this->getCheckedValue() : $this->getUncheckedValue();
         return $this;
     }

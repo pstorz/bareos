@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-inputfilter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-inputfilter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-inputfilter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\InputFilter;
 
 use Laminas\Filter\FilterChain;
@@ -265,7 +259,7 @@ class Input implements
      */
     public function getFilterChain()
     {
-        if (!$this->filterChain) {
+        if (! $this->filterChain) {
             $this->setFilterChain(new FilterChain());
         }
         return $this->filterChain;
@@ -300,7 +294,7 @@ class Input implements
      */
     public function getValidatorChain()
     {
-        if (!$this->validatorChain) {
+        if (! $this->validatorChain) {
             $this->setValidatorChain(new ValidatorChain());
         }
         return $this->validatorChain;
@@ -318,7 +312,8 @@ class Input implements
     /**
      * Flag for inform if input value was set.
      *
-     * This flag used for distinguish when {@link Input::getValue()} will return the value previously set or the default.
+     * This flag used for distinguish when {@link Input::getValue()}
+     * will return the value previously set or the default.
      *
      * @see Input::getValue() For retrieve the input value.
      * @see Input::setValue() For set a new value.
@@ -367,7 +362,7 @@ class Input implements
         $this->setName($input->getName());
         $this->setRequired($input->isRequired());
         $this->setAllowEmpty($input->allowEmpty());
-        if (!($input instanceof Input) || $input->hasValue()) {
+        if (! $input instanceof Input || $input->hasValue()) {
             $this->setValue($input->getRawValue());
         }
 
@@ -385,6 +380,10 @@ class Input implements
      */
     public function isValid($context = null)
     {
+        if (is_array($this->errorMessage)) {
+            $this->errorMessage = null;
+        }
+
         $value           = $this->getValue();
         $hasValue        = $this->hasValue();
         $empty           = ($value === null || $value === '' || $value === []);
@@ -458,7 +457,7 @@ class Input implements
      */
     protected function injectNotEmptyValidator()
     {
-        if ((!$this->isRequired() && $this->allowEmpty()) || $this->notEmptyValidator) {
+        if ((! $this->isRequired() && $this->allowEmpty()) || $this->notEmptyValidator) {
             return;
         }
         $chain = $this->getValidatorChain();

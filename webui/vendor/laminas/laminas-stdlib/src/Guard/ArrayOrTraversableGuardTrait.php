@@ -10,6 +10,12 @@ namespace Laminas\Stdlib\Guard;
 
 use Traversable;
 
+use function get_class;
+use function gettype;
+use function is_array;
+use function is_object;
+use function sprintf;
+
 /**
  * Provide a guard method for array or Traversable data
  */
@@ -28,7 +34,7 @@ trait ArrayOrTraversableGuardTrait
         $dataName = 'Argument',
         $exceptionClass = 'Laminas\Stdlib\Exception\InvalidArgumentException'
     ) {
-        if (!is_array($data) && !($data instanceof Traversable)) {
+        if (! is_array($data) && ! ($data instanceof Traversable)) {
             $message = sprintf(
                 "%s must be an array or Traversable, [%s] given",
                 $dataName,

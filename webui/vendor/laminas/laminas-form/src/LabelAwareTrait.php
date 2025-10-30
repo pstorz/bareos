@@ -1,14 +1,10 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form;
 
-use Traversable;
+use function array_key_exists;
 
 trait LabelAwareTrait
 {
@@ -17,7 +13,7 @@ trait LabelAwareTrait
      *
      * @var array
      */
-    protected $labelAttributes;
+    protected $labelAttributes = [];
 
     /**
      * Label specific options
@@ -30,7 +26,7 @@ trait LabelAwareTrait
      * Set the attributes to use with the label
      *
      * @param array $labelAttributes
-     * @return LabelAwareInterface
+     * @return $this
      */
     public function setLabelAttributes(array $labelAttributes)
     {
@@ -43,7 +39,7 @@ trait LabelAwareTrait
      *
      * @return array
      */
-    public function getLabelAttributes()
+    public function getLabelAttributes(): array
     {
         return $this->labelAttributes;
     }
@@ -53,19 +49,11 @@ trait LabelAwareTrait
      *
      * Implementation will decide if this will overwrite or merge.
      *
-     * @param  array|Traversable $arrayOrTraversable
-     * @return Element|ElementInterface
+     * @return $this
      * @throws Exception\InvalidArgumentException
      */
-    public function setLabelOptions($arrayOrTraversable)
+    public function setLabelOptions(iterable $arrayOrTraversable)
     {
-        if (!is_array($arrayOrTraversable) && !$arrayOrTraversable instanceof Traversable) {
-            throw new Exception\InvalidArgumentException(sprintf(
-                '%s expects an array or Traversable argument; received "%s"',
-                __METHOD__,
-                (is_object($arrayOrTraversable) ? get_class($arrayOrTraversable) : gettype($arrayOrTraversable))
-            ));
-        }
         foreach ($arrayOrTraversable as $key => $value) {
             $this->setLabelOption($key, $value);
         }
@@ -77,7 +65,7 @@ trait LabelAwareTrait
      *
      * @return array
      */
-    public function getLabelOptions()
+    public function getLabelOptions(): array
     {
         return $this->labelOptions;
     }
@@ -85,7 +73,7 @@ trait LabelAwareTrait
     /**
      * Clear all label options
      *
-     * @return Element|ElementInterface
+     * @return $this
      */
     public function clearLabelOptions()
     {
@@ -96,8 +84,8 @@ trait LabelAwareTrait
     /**
      * Remove many attributes at once
      *
-     * @param array $keys
-     * @return ElementInterface
+     * @param  array $keys
+     * @return $this
      */
     public function removeLabelOptions(array $keys)
     {
@@ -111,11 +99,10 @@ trait LabelAwareTrait
     /**
      * Set a single label optionn
      *
-     * @param  string $key
      * @param  mixed  $value
-     * @return Element|ElementInterface
+     * @return $this
      */
-    public function setLabelOption($key, $value)
+    public function setLabelOption(string $key, $value)
     {
         $this->labelOptions[$key] = $value;
         return $this;
@@ -124,13 +111,12 @@ trait LabelAwareTrait
     /**
      * Retrieve a single label option
      *
-     * @param  $key
      * @return mixed|null
      */
-    public function getLabelOption($key)
+    public function getLabelOption(string $key)
     {
-        if (!array_key_exists($key, $this->labelOptions)) {
-            return;
+        if (! array_key_exists($key, $this->labelOptions)) {
+            return null;
         }
         return $this->labelOptions[$key];
     }
@@ -138,10 +124,9 @@ trait LabelAwareTrait
     /**
      * Remove a single label option
      *
-     * @param string $key
-     * @return ElementInterface
+     * @return $this
      */
-    public function removeLabelOption($key)
+    public function removeLabelOption(string $key)
     {
         unset($this->labelOptions[$key]);
         return $this;
@@ -149,11 +134,8 @@ trait LabelAwareTrait
 
     /**
      * Does the element has a specific label option ?
-     *
-     * @param  string $key
-     * @return bool
      */
-    public function hasLabelOption($key)
+    public function hasLabelOption(string $key): bool
     {
         return array_key_exists($key, $this->labelOptions);
     }

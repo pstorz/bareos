@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter;
 
 use Laminas\Stdlib\ArrayUtils;
@@ -54,7 +48,7 @@ class Compress extends AbstractFilter
      */
     public function setOptions($options)
     {
-        if (!is_array($options) && !$options instanceof Traversable) {
+        if (! is_array($options) && ! $options instanceof Traversable) {
             throw new Exception\InvalidArgumentException(sprintf(
                 '"%s" expects an array or Traversable; received "%s"',
                 __METHOD__,
@@ -63,7 +57,7 @@ class Compress extends AbstractFilter
         }
 
         foreach ($options as $key => $value) {
-            if ($key == 'options') {
+            if ($key === 'options') {
                 $key = 'adapterOptions';
             }
             $method = 'set' . ucfirst($key);
@@ -89,9 +83,9 @@ class Compress extends AbstractFilter
 
         $adapter = $this->adapter;
         $options = $this->getAdapterOptions();
-        if (!class_exists($adapter)) {
+        if (! class_exists($adapter)) {
             $adapter = 'Laminas\\Filter\\Compress\\' . ucfirst($adapter);
-            if (!class_exists($adapter)) {
+            if (! class_exists($adapter)) {
                 throw new Exception\RuntimeException(sprintf(
                     '%s unable to load adapter; class "%s" not found',
                     __METHOD__,
@@ -101,8 +95,11 @@ class Compress extends AbstractFilter
         }
 
         $this->adapter = new $adapter($options);
-        if (!$this->adapter instanceof Compress\CompressionAlgorithmInterface) {
-            throw new Exception\InvalidArgumentException("Compression adapter '" . $adapter . "' does not implement Laminas\\Filter\\Compress\\CompressionAlgorithmInterface");
+        if (! $this->adapter instanceof Compress\CompressionAlgorithmInterface) {
+            throw new Exception\InvalidArgumentException(
+                "Compression adapter '" . $adapter
+                . "' does not implement Laminas\\Filter\\Compress\\CompressionAlgorithmInterface"
+            );
         }
         return $this->adapter;
     }
@@ -130,8 +127,11 @@ class Compress extends AbstractFilter
             $this->adapter = $adapter;
             return $this;
         }
-        if (!is_string($adapter)) {
-            throw new Exception\InvalidArgumentException('Invalid adapter provided; must be string or instance of Laminas\\Filter\\Compress\\CompressionAlgorithmInterface');
+        if (! is_string($adapter)) {
+            throw new Exception\InvalidArgumentException(
+                'Invalid adapter provided; must be string or instance of '
+                . 'Laminas\\Filter\\Compress\\CompressionAlgorithmInterface'
+            );
         }
         $this->adapter = $adapter;
 
@@ -183,7 +183,7 @@ class Compress extends AbstractFilter
     public function __call($method, $options)
     {
         $adapter = $this->getAdapter();
-        if (!method_exists($adapter, $method)) {
+        if (! method_exists($adapter, $method)) {
             throw new Exception\BadMethodCallException("Unknown method '{$method}'");
         }
 
@@ -200,7 +200,7 @@ class Compress extends AbstractFilter
      */
     public function filter($value)
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return $value;
         }
 

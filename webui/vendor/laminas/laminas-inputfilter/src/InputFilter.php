@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-inputfilter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-inputfilter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-inputfilter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\InputFilter;
 
 use Traversable;
@@ -54,7 +48,7 @@ class InputFilter extends BaseInputFilter
     public function add($input, $name = null)
     {
         if (is_array($input)
-            || ($input instanceof Traversable && !$input instanceof InputFilterInterface)
+            || ($input instanceof Traversable && ! $input instanceof InputFilterInterface)
         ) {
             $factory = $this->getFactory();
             $input = $factory->createInput($input);

@@ -11,6 +11,7 @@ namespace Laminas\Mvc;
 use Laminas\EventManager\EventManagerAwareInterface;
 use Laminas\EventManager\EventManagerInterface;
 use Laminas\ServiceManager\ServiceManager;
+use Laminas\Stdlib\RequestInterface;
 use Laminas\Stdlib\ResponseInterface;
 
 /**
@@ -26,6 +27,7 @@ use Laminas\Stdlib\ResponseInterface;
  * - RouteListener
  * - Router
  * - DispatchListener
+ * - MiddlewareListener
  * - ViewManager
  *
  * The most common workflow is:
@@ -51,11 +53,7 @@ class Application implements
     const ERROR_CONTROLLER_INVALID         = 'error-controller-invalid';
     const ERROR_EXCEPTION                  = 'error-exception';
     const ERROR_ROUTER_NO_MATCH            = 'error-router-no-match';
-
-    /**
-     * @var array
-     */
-    protected $configuration = null;
+    const ERROR_MIDDLEWARE_CANNOT_DISPATCH = 'error-middleware-cannot-dispatch';
 
     /**
      * Default application event listeners
@@ -64,6 +62,7 @@ class Application implements
      */
     protected $defaultListeners = [
         'RouteListener',
+        'MiddlewareListener',
         'DispatchListener',
         'HttpMethodListener',
         'ViewManager',
@@ -94,23 +93,26 @@ class Application implements
     /**
      * @var ServiceManager
      */
-    protected $serviceManager = null;
+    protected $serviceManager;
 
     /**
      * Constructor
      *
-     * @param mixed $configuration
      * @param ServiceManager $serviceManager
+     * @param null|EventManagerInterface $events
+     * @param null|RequestInterface $request
+     * @param null|ResponseInterface $response
      */
-    public function __construct($configuration, ServiceManager $serviceManager)
-    {
-        $this->configuration  = $configuration;
+    public function __construct(
+        ServiceManager $serviceManager,
+        EventManagerInterface $events = null,
+        RequestInterface $request = null,
+        ResponseInterface $response = null
+    ) {
         $this->serviceManager = $serviceManager;
-
-        $this->setEventManager($serviceManager->get('EventManager'));
-
-        $this->request        = $serviceManager->get('Request');
-        $this->response       = $serviceManager->get('Response');
+        $this->setEventManager($events ?: $serviceManager->get('EventManager'));
+        $this->request        = $request ?: $serviceManager->get('Request');
+        $this->response       = $response ?: $serviceManager->get('Response');
     }
 
     /**
@@ -120,7 +122,7 @@ class Application implements
      */
     public function getConfig()
     {
-        return $this->serviceManager->get('Config');
+        return $this->serviceManager->get('config');
     }
 
     /**
@@ -138,22 +140,25 @@ class Application implements
         $serviceManager = $this->serviceManager;
         $events         = $this->events;
 
+        // Setup default listeners
         $listeners = array_unique(array_merge($this->defaultListeners, $listeners));
 
         foreach ($listeners as $listener) {
-            $events->attach($serviceManager->get($listener));
+            $serviceManager->get($listener)->attach($events);
         }
 
         // Setup MVC Event
         $this->event = $event  = new MvcEvent();
+        $event->setName(MvcEvent::EVENT_BOOTSTRAP);
         $event->setTarget($this);
-        $event->setApplication($this)
-              ->setRequest($this->request)
-              ->setResponse($this->response)
-              ->setRouter($serviceManager->get('Router'));
+        $event->setApplication($this);
+        $event->setRequest($this->request);
+        $event->setResponse($this->response);
+        $event->setRouter($serviceManager->get('Router'));
 
         // Trigger bootstrap events
-        $events->trigger(MvcEvent::EVENT_BOOTSTRAP, $event);
+        $events->triggerEvent($event);
+
         return $this;
     }
 
@@ -246,13 +251,20 @@ class Application implements
      */
     public static function init($configuration = [])
     {
+        // Prepare the service manager
         $smConfig = isset($configuration['service_manager']) ? $configuration['service_manager'] : [];
-        $serviceManager = new ServiceManager(new Service\ServiceManagerConfig($smConfig));
+        $smConfig = new Service\ServiceManagerConfig($smConfig);
+
+        $serviceManager = new ServiceManager();
+        $smConfig->configureServiceManager($serviceManager);
         $serviceManager->setService('ApplicationConfig', $configuration);
+
+        // Load modules
         $serviceManager->get('ModuleManager')->loadModules();
 
+        // Prepare list of listeners to bootstrap
         $listenersFromAppConfig     = isset($configuration['listeners']) ? $configuration['listeners'] : [];
-        $config                     = $serviceManager->get('Config');
+        $config                     = $serviceManager->get('config');
         $listenersFromConfigService = isset($config['listeners']) ? $config['listeners'] : [];
 
         $listeners = array_unique(array_merge($listenersFromConfigService, $listenersFromAppConfig));
@@ -293,13 +305,17 @@ class Application implements
         };
 
         // Trigger route event
-        $result = $events->trigger(MvcEvent::EVENT_ROUTE, $event, $shortCircuit);
+        $event->setName(MvcEvent::EVENT_ROUTE);
+        $event->stopPropagation(false); // Clear before triggering
+        $result = $events->triggerEventUntil($shortCircuit, $event);
         if ($result->stopped()) {
             $response = $result->last();
             if ($response instanceof ResponseInterface) {
+                $event->setName(MvcEvent::EVENT_FINISH);
                 $event->setTarget($this);
                 $event->setResponse($response);
-                $events->trigger(MvcEvent::EVENT_FINISH, $event);
+                $event->stopPropagation(false); // Clear before triggering
+                $events->triggerEvent($event);
                 $this->response = $response;
                 return $this;
             }
@@ -310,30 +326,25 @@ class Application implements
         }
 
         // Trigger dispatch event
-        $result = $events->trigger(MvcEvent::EVENT_DISPATCH, $event, $shortCircuit);
+        $event->setName(MvcEvent::EVENT_DISPATCH);
+        $event->stopPropagation(false); // Clear before triggering
+        $result = $events->triggerEventUntil($shortCircuit, $event);
 
         // Complete response
         $response = $result->last();
         if ($response instanceof ResponseInterface) {
+            $event->setName(MvcEvent::EVENT_FINISH);
             $event->setTarget($this);
             $event->setResponse($response);
-            $events->trigger(MvcEvent::EVENT_FINISH, $event);
+            $event->stopPropagation(false); // Clear before triggering
+            $events->triggerEvent($event);
             $this->response = $response;
             return $this;
         }
 
         $response = $this->response;
         $event->setResponse($response);
-        $this->completeRequest($event);
-
-        return $this;
-    }
-
-    /**
-     * @deprecated
-     */
-    public function send()
-    {
+        return $this->completeRequest($event);
     }
 
     /**
@@ -349,8 +360,15 @@ class Application implements
     {
         $events = $this->events;
         $event->setTarget($this);
-        $events->trigger(MvcEvent::EVENT_RENDER, $event);
-        $events->trigger(MvcEvent::EVENT_FINISH, $event);
+
+        $event->setName(MvcEvent::EVENT_RENDER);
+        $event->stopPropagation(false); // Clear before triggering
+        $events->triggerEvent($event);
+
+        $event->setName(MvcEvent::EVENT_FINISH);
+        $event->stopPropagation(false); // Clear before triggering
+        $events->triggerEvent($event);
+
         return $this;
     }
 }

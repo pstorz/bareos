@@ -8,6 +8,7 @@
 
 namespace Laminas\Mvc\Service;
 
+use Interop\Container\ContainerInterface;
 use Laminas\ServiceManager\FactoryInterface;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Resolver as ViewResolver;
@@ -20,19 +21,21 @@ class ViewResolverFactory implements FactoryInterface
      * Creates a Laminas\View\Resolver\AggregateResolver and attaches the template
      * map resolver and path stack resolver
      *
-     * @param  ServiceLocatorInterface        $serviceLocator
+     * @param  ContainerInterface $container
+     * @param  string $name
+     * @param  null|array $options
      * @return ViewResolver\AggregateResolver
      */
-    public function createService(ServiceLocatorInterface $serviceLocator)
+    public function __invoke(ContainerInterface $container, $name, array $options = null)
     {
         $resolver = new ViewResolver\AggregateResolver();
 
         /* @var $mapResolver \Laminas\View\Resolver\ResolverInterface */
-        $mapResolver             = $serviceLocator->get('ViewTemplateMapResolver');
+        $mapResolver             = $container->get('ViewTemplateMapResolver');
         /* @var $pathResolver \Laminas\View\Resolver\ResolverInterface */
-        $pathResolver            = $serviceLocator->get('ViewTemplatePathStack');
+        $pathResolver            = $container->get('ViewTemplatePathStack');
         /* @var $prefixPathStackResolver \Laminas\View\Resolver\ResolverInterface */
-        $prefixPathStackResolver = $serviceLocator->get('ViewPrefixPathStackResolver');
+        $prefixPathStackResolver = $container->get('ViewPrefixPathStackResolver');
 
         $resolver
             ->attach($mapResolver)
@@ -43,5 +46,18 @@ class ViewResolverFactory implements FactoryInterface
             ->attach(new ViewResolver\RelativeFallbackResolver($prefixPathStackResolver));
 
         return $resolver;
+    }
+
+    /**
+     * Create and return ViewResolver\AggregateResolver instance
+     *
+     * For use with laminas-servicemanager v2; proxies to __invoke().
+     *
+     * @param ServiceLocatorInterface $container
+     * @return ViewResolver\AggregateResolver
+     */
+    public function createService(ServiceLocatorInterface $container)
+    {
+        return $this($container, ViewResolver\AggregateResolver::class);
     }
 }

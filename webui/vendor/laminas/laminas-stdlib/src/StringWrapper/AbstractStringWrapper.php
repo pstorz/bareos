@@ -11,6 +11,18 @@ namespace Laminas\Stdlib\StringWrapper;
 use Laminas\Stdlib\Exception;
 use Laminas\Stdlib\StringUtils;
 
+use function floor;
+use function in_array;
+use function sprintf;
+use function str_pad;
+use function str_repeat;
+use function strtoupper;
+use function wordwrap;
+
+use const STR_PAD_BOTH;
+use const STR_PAD_LEFT;
+use const STR_PAD_RIGHT;
+
 abstract class AbstractStringWrapper implements StringWrapperInterface
 {
     /**
@@ -37,11 +49,11 @@ abstract class AbstractStringWrapper implements StringWrapperInterface
     {
         $supportedEncodings = static::getSupportedEncodings();
 
-        if (!in_array(strtoupper($encoding), $supportedEncodings)) {
+        if (! in_array(strtoupper($encoding), $supportedEncodings)) {
             return false;
         }
 
-        if ($convertEncoding !== null && !in_array(strtoupper($convertEncoding), $supportedEncodings)) {
+        if ($convertEncoding !== null && ! in_array(strtoupper($convertEncoding), $supportedEncodings)) {
             return false;
         }
 
@@ -60,7 +72,7 @@ abstract class AbstractStringWrapper implements StringWrapperInterface
         $supportedEncodings = static::getSupportedEncodings();
 
         $encodingUpper = strtoupper($encoding);
-        if (!in_array($encodingUpper, $supportedEncodings)) {
+        if (! in_array($encodingUpper, $supportedEncodings)) {
             throw new Exception\InvalidArgumentException(
                 'Wrapper doesn\'t support character encoding "' . $encoding . '"'
             );
@@ -68,7 +80,7 @@ abstract class AbstractStringWrapper implements StringWrapperInterface
 
         if ($convertEncoding !== null) {
             $convertEncodingUpper = strtoupper($convertEncoding);
-            if (!in_array($convertEncodingUpper, $supportedEncodings)) {
+            if (! in_array($convertEncodingUpper, $supportedEncodings)) {
                 throw new Exception\InvalidArgumentException(
                     'Wrapper doesn\'t support character encoding "' . $convertEncoding . '"'
                 );

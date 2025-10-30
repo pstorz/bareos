@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter;
 
 use Traversable;
@@ -21,12 +15,12 @@ class Callback extends AbstractFilter
     ];
 
     /**
-     * @param callable|array|Traversable $callbackOrOptions
+     * @param callable|array|string|Traversable $callbackOrOptions
      * @param array $callbackParams
      */
     public function __construct($callbackOrOptions = [], $callbackParams = [])
     {
-        if (is_callable($callbackOrOptions)) {
+        if (is_callable($callbackOrOptions) || is_string($callbackOrOptions)) {
             $this->setCallback($callbackOrOptions);
             $this->setCallbackParams($callbackParams);
         } else {
@@ -43,7 +37,11 @@ class Callback extends AbstractFilter
      */
     public function setCallback($callback)
     {
-        if (!is_callable($callback)) {
+        if (is_string($callback) && class_exists($callback)) {
+            $callback = new $callback();
+        }
+
+        if (! is_callable($callback)) {
             throw new Exception\InvalidArgumentException(
                 'Invalid parameter for callback: must be callable'
             );

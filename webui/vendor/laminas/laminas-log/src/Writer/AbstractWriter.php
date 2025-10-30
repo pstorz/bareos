@@ -11,6 +11,7 @@ namespace Laminas\Log\Writer;
 use Laminas\Log\Exception;
 use Laminas\Log\Filter;
 use Laminas\Log\Formatter;
+use Laminas\ServiceManager\ServiceManager;
 use Laminas\Stdlib\ErrorHandler;
 use Traversable;
 
@@ -147,7 +148,7 @@ abstract class AbstractWriter implements WriterInterface
     public function getFilterPluginManager()
     {
         if (null === $this->filterPlugins) {
-            $this->setFilterPluginManager(new FilterPluginManager());
+            $this->setFilterPluginManager(new FilterPluginManager(new ServiceManager()));
         }
         return $this->filterPlugins;
     }
@@ -196,7 +197,7 @@ abstract class AbstractWriter implements WriterInterface
     public function getFormatterPluginManager()
     {
         if (null === $this->formatterPlugins) {
-            $this->setFormatterPluginManager(new FormatterPluginManager());
+            $this->setFormatterPluginManager(new FormatterPluginManager(new ServiceManager()));
         }
         return $this->formatterPlugins;
     }

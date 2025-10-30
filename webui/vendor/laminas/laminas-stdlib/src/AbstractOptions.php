@@ -10,8 +10,19 @@ namespace Laminas\Stdlib;
 
 use Traversable;
 
+use function array_shift;
+use function is_array;
+use function is_callable;
+use function method_exists;
+use function preg_replace_callback;
+use function sprintf;
+use function str_replace;
+use function strtolower;
+use function ucwords;
+
 abstract class AbstractOptions implements ParameterObjectInterface
 {
+    // @codingStandardsIgnoreStart
     /**
      * We use the __ prefix to avoid collisions with properties in
      * user-implementations.
@@ -19,6 +30,7 @@ abstract class AbstractOptions implements ParameterObjectInterface
      * @var bool
      */
     protected $__strictMode__ = true;
+    // @codingStandardsIgnoreEnd
 
     /**
      * Constructor
@@ -45,7 +57,7 @@ abstract class AbstractOptions implements ParameterObjectInterface
             $options = $options->toArray();
         }
 
-        if (!is_array($options) && !$options instanceof Traversable) {
+        if (! is_array($options) && ! $options instanceof Traversable) {
             throw new Exception\InvalidArgumentException(
                 sprintf(
                     'Parameter provided to %s must be an %s, %s or %s',

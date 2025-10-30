@@ -66,7 +66,7 @@ abstract class AbstractDate implements HeaderInterface
      * Create date-based header from string
      *
      * @param string $headerLine
-     * @return AbstractDate
+     * @return static
      * @throws Exception\InvalidArgumentException
      */
     public static function fromString($headerLine)
@@ -91,9 +91,7 @@ abstract class AbstractDate implements HeaderInterface
      * Create date-based header from strtotime()-compatible string
      *
      * @param int|string $time
-     *
-     * @return self
-     *
+     * @return static
      * @throws Exception\InvalidArgumentException
      */
     public static function fromTimeString($time)
@@ -105,9 +103,7 @@ abstract class AbstractDate implements HeaderInterface
      * Create date-based header from Unix timestamp
      *
      * @param int $time
-     *
-     * @return self
-     *
+     * @return static
      * @throws Exception\InvalidArgumentException
      */
     public static function fromTimestamp($time)
@@ -157,7 +153,7 @@ abstract class AbstractDate implements HeaderInterface
      * Set the date for this header, this can be a string or an instance of \DateTime
      *
      * @param string|DateTime $date
-     * @return AbstractDate
+     * @return $this
      * @throws Exception\InvalidArgumentException
      */
     public function setDate($date)

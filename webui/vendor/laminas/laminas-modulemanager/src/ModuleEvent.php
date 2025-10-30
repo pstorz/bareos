@@ -61,7 +61,7 @@ class ModuleEvent extends Event
      */
     public function setModuleName($moduleName)
     {
-        if (!is_string($moduleName)) {
+        if (! is_string($moduleName)) {
             throw new Exception\InvalidArgumentException(
                 sprintf(
                     '%s expects a string as an argument; %s provided',
@@ -95,7 +95,7 @@ class ModuleEvent extends Event
      */
     public function setModule($module)
     {
-        if (!is_object($module)) {
+        if (! is_object($module)) {
             throw new Exception\InvalidArgumentException(
                 sprintf(
                     '%s expects a module object as an argument; %s provided',

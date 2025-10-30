@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter;
 
 use Traversable;
@@ -27,7 +21,7 @@ class StringToLower extends AbstractUnicode
     public function __construct($encodingOrOptions = null)
     {
         if ($encodingOrOptions !== null) {
-            if (!static::isOptions($encodingOrOptions)) {
+            if (! static::isOptions($encodingOrOptions)) {
                 $this->setEncoding($encodingOrOptions);
             } else {
                 $this->setOptions($encodingOrOptions);
@@ -47,7 +41,7 @@ class StringToLower extends AbstractUnicode
      */
     public function filter($value)
     {
-        if (!is_scalar($value)) {
+        if (! is_scalar($value)) {
             return $value;
         }
         $value = (string) $value;

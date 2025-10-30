@@ -8,7 +8,8 @@
 
 namespace Laminas\I18n\View\Helper;
 
-use DateTime;
+use DateTimeInterface;
+use IntlCalendar;
 use IntlDateFormatter;
 use Laminas\I18n\Exception;
 use Laminas\View\Helper\AbstractHelper;
@@ -45,7 +46,7 @@ class DateFormat extends AbstractHelper
      */
     public function __construct()
     {
-        if (!extension_loaded('intl')) {
+        if (! extension_loaded('intl')) {
             throw new Exception\ExtensionNotLoadedException(sprintf(
                 '%s component requires the intl PHP extension',
                 __NAMESPACE__
@@ -56,11 +57,11 @@ class DateFormat extends AbstractHelper
     /**
      * Format a date
      *
-     * @param  DateTime|int|array $date
-     * @param  int                    $dateType
-     * @param  int                    $timeType
-     * @param  string                 $locale
-     * @param  string|null            $pattern
+     * @param  DateTimeInterface|IntlCalendar|int|array $date
+     * @param  int                                      $dateType
+     * @param  int                                      $timeType
+     * @param  string|null                              $locale
+     * @param  string|null                              $pattern
      * @return string
      */
     public function __invoke(
@@ -75,9 +76,9 @@ class DateFormat extends AbstractHelper
         }
 
         $timezone    = $this->getTimezone();
-        $formatterId = md5($dateType . "\0" . $timeType . "\0" . $locale ."\0" . $pattern);
+        $formatterId = md5($dateType . "\0" . $timeType . "\0" . $locale . "\0" . $pattern . "\0" . $timezone);
 
-        if (!isset($this->formatters[$formatterId])) {
+        if (! isset($this->formatters[$formatterId])) {
             $this->formatters[$formatterId] = new IntlDateFormatter(
                 $locale,
                 $dateType,
@@ -95,7 +96,7 @@ class DateFormat extends AbstractHelper
      * Set locale to use instead of the default
      *
      * @param  string $locale
-     * @return DateFormat
+     * @return $this
      */
     public function setLocale($locale)
     {
@@ -106,7 +107,7 @@ class DateFormat extends AbstractHelper
     /**
      * Get the locale to use
      *
-     * @return string|null
+     * @return string
      */
     public function getLocale()
     {
@@ -121,7 +122,7 @@ class DateFormat extends AbstractHelper
      * Set timezone to use instead of the default
      *
      * @param  string $timezone
-     * @return DateFormat
+     * @return $this
      */
     public function setTimezone($timezone)
     {
@@ -140,11 +141,11 @@ class DateFormat extends AbstractHelper
     /**
      * Get the timezone to use
      *
-     * @return string|null
+     * @return string
      */
     public function getTimezone()
     {
-        if (!$this->timezone) {
+        if (! $this->timezone) {
             return date_default_timezone_get();
         }
 

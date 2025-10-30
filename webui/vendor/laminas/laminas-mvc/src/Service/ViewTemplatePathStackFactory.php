@@ -8,6 +8,7 @@
 
 namespace Laminas\Mvc\Service;
 
+use Interop\Container\ContainerInterface;
 use Laminas\ServiceManager\FactoryInterface;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Resolver as ViewResolver;
@@ -21,12 +22,14 @@ class ViewTemplatePathStackFactory implements FactoryInterface
      * ['view_manager']['template_path_stack'] and sets the default suffix with the
      * ['view_manager']['default_template_suffix']
      *
-     * @param  ServiceLocatorInterface $serviceLocator
+     * @param  ContainerInterface $container
+     * @param  string $name
+     * @param  null|array $options
      * @return ViewResolver\TemplatePathStack
      */
-    public function createService(ServiceLocatorInterface $serviceLocator)
+    public function __invoke(ContainerInterface $container, $name, array $options = null)
     {
-        $config = $serviceLocator->get('Config');
+        $config = $container->get('config');
 
         $templatePathStack = new ViewResolver\TemplatePathStack();
 
@@ -43,5 +46,18 @@ class ViewTemplatePathStackFactory implements FactoryInterface
         }
 
         return $templatePathStack;
+    }
+
+    /**
+     * Create and return ViewResolver\TemplatePathStack instance
+     *
+     * For use with laminas-servicemanager v2; proxies to __invoke().
+     *
+     * @param ServiceLocatorInterface $container
+     * @return ViewResolver\TemplatePathStack
+     */
+    public function createService(ServiceLocatorInterface $container)
+    {
+        return $this($container, ViewResolver\TemplatePathStack::class);
     }
 }

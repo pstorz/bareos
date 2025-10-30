@@ -8,6 +8,7 @@
 
 namespace Laminas\Mvc\Service;
 
+use Interop\Container\ContainerInterface;
 use Laminas\ServiceManager\FactoryInterface;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Resolver\PrefixPathStackResolver;
@@ -20,12 +21,14 @@ class ViewPrefixPathStackResolverFactory implements FactoryInterface
      * Creates a Laminas\View\Resolver\PrefixPathStackResolver and populates it with the
      * ['view_manager']['prefix_template_path_stack']
      *
-     * @param  ServiceLocatorInterface $serviceLocator
+     * @param  ContainerInterface $container
+     * @param  string $name
+     * @param  null|array $options
      * @return PrefixPathStackResolver
      */
-    public function createService(ServiceLocatorInterface $serviceLocator)
+    public function __invoke(ContainerInterface $container, $name, array $options = null)
     {
-        $config   = $serviceLocator->get('Config');
+        $config   = $container->get('config');
         $prefixes = [];
 
         if (isset($config['view_manager']['prefix_template_path_stack'])) {
@@ -33,5 +36,18 @@ class ViewPrefixPathStackResolverFactory implements FactoryInterface
         }
 
         return new PrefixPathStackResolver($prefixes);
+    }
+
+    /**
+     * Create and return PrefixPathStackResolver instance
+     *
+     * For use with laminas-servicemanager v2; proxies to __invoke().
+     *
+     * @param ServiceLocatorInterface $container
+     * @return PrefixPathStackResolver
+     */
+    public function createService(ServiceLocatorInterface $container)
+    {
+        return $this($container, PrefixPathStackResolver::class);
     }
 }

@@ -1,6 +1,6 @@
 {
     "name": "laminas/laminas-inputfilter",
-    "description": " ",
+    "description": "Normalize and validate input sets from the web, APIs, the CLI, and more, including files",
     "license": "BSD-3-Clause",
     "keywords": [
         "laminas",
@@ -19,25 +19,30 @@
         "sort-packages": true
     },
     "extra": {
-        "branch-alias": {
-            "dev-master": "2.6-dev",
-            "dev-develop": "2.7-dev"
+        "laminas": {
+            "component": "Laminas\\InputFilter",
+            "config-provider": "Laminas\\InputFilter\\ConfigProvider"
         }
     },
     "require": {
-        "php": "^5.5 || ^7.0",
-        "laminas/laminas-filter": "^2.6",
-        "laminas/laminas-stdlib": "^2.7 || ^3.0",
-        "laminas/laminas-validator": "^2.6",
+        "php": "^7.3 || ~8.0.0",
+        "laminas/laminas-filter": "^2.9.1",
+        "laminas/laminas-servicemanager": "^3.3.1",
+        "laminas/laminas-stdlib": "^3.0",
+        "laminas/laminas-validator": "^2.11",
         "laminas/laminas-zendframework-bridge": "^1.0"
     },
     "require-dev": {
-        "fabpot/php-cs-fixer": "1.7.*",
-        "laminas/laminas-servicemanager": "^2.7.5 || ^3.0.3",
-        "phpunit/phpunit": "^4.5"
+        "laminas/laminas-coding-standard": "~1.0.0",
+        "laminas/laminas-db": "^2.12",
+        "phpspec/prophecy-phpunit": "^2.0",
+        "phpunit/phpunit": "^9.4.2",
+        "psalm/plugin-phpunit": "^0.15.1",
+        "psr/http-message": "^1.0",
+        "vimeo/psalm": "^4.6"
     },
     "suggest": {
-        "laminas/laminas-servicemanager": "To support plugin manager support"
+        "psr/http-message-implementation": "PSR-7 is required if you wish to validate PSR-7 UploadedFileInterface payloads"
     },
     "autoload": {
         "psr-4": {
@@ -49,7 +54,18 @@
             "LaminasTest\\InputFilter\\": "test/"
         }
     },
+    "scripts": {
+        "check": [
+            "@cs-check",
+            "@test"
+        ],
+        "cs-check": "phpcs",
+        "cs-fix": "phpcbf",
+        "test": "phpunit --colors=always",
+        "test-coverage": "phpunit --colors=always --coverage-clover clover.xml",
+        "static-analysis": "psalm --shepherd --stats"
+    },
     "replace": {
-        "zendframework/zend-inputfilter": "self.version"
+        "zendframework/zend-inputfilter": "^2.10.1"
     }
 }

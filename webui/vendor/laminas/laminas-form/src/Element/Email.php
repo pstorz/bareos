@@ -1,13 +1,10 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Element;
 
+use Laminas\Filter\StringTrim;
 use Laminas\Form\Element;
 use Laminas\InputFilter\InputProviderInterface;
 use Laminas\Validator\Explode as ExplodeValidator;
@@ -25,28 +22,21 @@ class Email extends Element implements InputProviderInterface
         'type' => 'email',
     ];
 
-    /**
-     * @var ValidatorInterface
-     */
+    /** @var null|ValidatorInterface */
     protected $validator;
 
-    /**
-     * @var ValidatorInterface
-     */
+    /** @var null|ValidatorInterface */
     protected $emailValidator;
 
     /**
      * Get primary validator
-     *
-     * @return ValidatorInterface
      */
-    public function getValidator()
+    public function getValidator(): ValidatorInterface
     {
         if (null === $this->validator) {
             $emailValidator = $this->getEmailValidator();
 
-            $multiple = (isset($this->attributes['multiple']))
-                      ? $this->attributes['multiple'] : null;
+            $multiple = $this->attributes['multiple'] ?? null;
 
             if (true === $multiple || 'multiple' === $multiple) {
                 $this->validator = new ExplodeValidator([
@@ -63,8 +53,7 @@ class Email extends Element implements InputProviderInterface
     /**
      * Sets the primary validator to use for this element
      *
-     * @param  ValidatorInterface $validator
-     * @return Email
+     * @return $this
      */
     public function setValidator(ValidatorInterface $validator)
     {
@@ -89,10 +78,8 @@ class Email extends Element implements InputProviderInterface
      * browser validation, but you are free to set a different
      * (more strict) email validator such as Laminas\Validator\Email
      * if you wish.
-     *
-     * @return ValidatorInterface
      */
-    public function getEmailValidator()
+    public function getEmailValidator(): ValidatorInterface
     {
         if (null === $this->emailValidator) {
             $this->emailValidator = new RegexValidator(
@@ -106,8 +93,7 @@ class Email extends Element implements InputProviderInterface
      * Sets the email validator to use for multiple or single
      * email addresses.
      *
-     * @param  ValidatorInterface $validator
-     * @return Email
+     * @return $this
      */
     public function setEmailValidator(ValidatorInterface $validator)
     {
@@ -122,13 +108,13 @@ class Email extends Element implements InputProviderInterface
      *
      * @return array
      */
-    public function getInputSpecification()
+    public function getInputSpecification(): array
     {
         return [
-            'name' => $this->getName(),
-            'required' => true,
-            'filters' => [
-                ['name' => 'Laminas\Filter\StringTrim'],
+            'name'       => $this->getName(),
+            'required'   => true,
+            'filters'    => [
+                ['name' => StringTrim::class],
             ],
             'validators' => [
                 $this->getValidator(),

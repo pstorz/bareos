@@ -35,7 +35,7 @@ class TextDomain extends ArrayObject
      * Set the plural rule
      *
      * @param  PluralRule $rule
-     * @return TextDomain
+     * @return $this
      */
     public function setPluralRule(PluralRule $rule)
     {
@@ -90,14 +90,16 @@ class TextDomain extends ArrayObject
      * same rule could be made up with different expression.
      *
      * @param  TextDomain $textDomain
-     * @return TextDomain
+     * @return $this
      * @throws Exception\RuntimeException
      */
     public function merge(TextDomain $textDomain)
     {
         if ($this->hasPluralRule() && $textDomain->hasPluralRule()) {
             if ($this->getPluralRule()->getNumPlurals() !== $textDomain->getPluralRule()->getNumPlurals()) {
-                throw new Exception\RuntimeException('Plural rule of merging text domain is not compatible with the current one');
+                throw new Exception\RuntimeException(
+                    'Plural rule of merging text domain is not compatible with the current one'
+                );
             }
         } elseif ($textDomain->hasPluralRule()) {
             $this->setPluralRule($textDomain->getPluralRule());

@@ -102,7 +102,7 @@ class Symbol
      * Set the null denotation getter.
      *
      * @param  Closure $getter
-     * @return Symbol
+     * @return $this
      */
     public function setNullDenotationGetter(Closure $getter)
     {
@@ -114,7 +114,7 @@ class Symbol
      * Set the left denotation getter.
      *
      * @param  Closure $getter
-     * @return Symbol
+     * @return $this
      */
     public function setLeftDenotationGetter(Closure $getter)
     {

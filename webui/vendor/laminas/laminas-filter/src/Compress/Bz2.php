@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\Compress;
 
 use Laminas\Filter\Exception;
@@ -37,7 +31,7 @@ class Bz2 extends AbstractCompressionAlgorithm
      */
     public function __construct($options = null)
     {
-        if (!extension_loaded('bz2')) {
+        if (! extension_loaded('bz2')) {
             throw new Exception\ExtensionNotLoadedException('This filter needs the bz2 extension');
         }
         parent::__construct($options);
@@ -102,9 +96,9 @@ class Bz2 extends AbstractCompressionAlgorithm
     public function compress($content)
     {
         $archive = $this->getArchive();
-        if (!empty($archive)) {
+        if (! empty($archive)) {
             $file = bzopen($archive, 'w');
-            if (!$file) {
+            if (! $file) {
                 throw new Exception\RuntimeException("Error opening the archive '" . $archive . "'");
             }
 
@@ -134,13 +128,13 @@ class Bz2 extends AbstractCompressionAlgorithm
         $archive = $this->getArchive();
 
         //check if there are null byte characters before doing a file_exists check
-        if (!strstr($content, "\0") && file_exists($content)) {
+        if (false === strpos($content, "\0") && file_exists($content)) {
             $archive = $content;
         }
 
         if (file_exists($archive)) {
             $file = bzopen($archive, 'r');
-            if (!$file) {
+            if (! $file) {
                 throw new Exception\RuntimeException("Error opening the archive '" . $content . "'");
             }
 

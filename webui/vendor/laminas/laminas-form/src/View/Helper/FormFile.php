@@ -1,15 +1,16 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\View\Helper;
 
 use Laminas\Form\ElementInterface;
 use Laminas\Form\Exception;
+
+use function array_key_exists;
+use function is_array;
+use function is_string;
+use function sprintf;
 
 class FormFile extends FormInput
 {
@@ -19,24 +20,22 @@ class FormFile extends FormInput
      * @var array
      */
     protected $validTagAttributes = [
-        'name'           => true,
-        'accept'         => true,
-        'autofocus'      => true,
-        'disabled'       => true,
-        'form'           => true,
-        'multiple'       => true,
-        'required'       => true,
-        'type'           => true,
+        'name'      => true,
+        'accept'    => true,
+        'autofocus' => true,
+        'disabled'  => true,
+        'form'      => true,
+        'multiple'  => true,
+        'required'  => true,
+        'type'      => true,
     ];
 
     /**
      * Render a form <input> element from the provided $element
      *
-     * @param  ElementInterface $element
      * @throws Exception\DomainException
-     * @return string
      */
-    public function render(ElementInterface $element)
+    public function render(ElementInterface $element): string
     {
         $name = $element->getName();
         if ($name === null || $name === '') {
@@ -46,15 +45,15 @@ class FormFile extends FormInput
             ));
         }
 
-        $attributes          = $element->getAttributes();
-        $attributes['type']  = $this->getType($element);
-        $attributes['name']  = $name;
+        $attributes         = $element->getAttributes();
+        $attributes['type'] = $this->getType($element);
+        $attributes['name'] = $name;
         if (array_key_exists('multiple', $attributes) && $attributes['multiple']) {
             $attributes['name'] .= '[]';
         }
 
         $value = $element->getValue();
-        if (is_array($value) && isset($value['name']) && !is_array($value['name'])) {
+        if (is_array($value) && isset($value['name']) && ! is_array($value['name'])) {
             $attributes['value'] = $value['name'];
         } elseif (is_string($value)) {
             $attributes['value'] = $value;
@@ -69,11 +68,8 @@ class FormFile extends FormInput
 
     /**
      * Determine input type to use
-     *
-     * @param  ElementInterface $element
-     * @return string
      */
-    protected function getType(ElementInterface $element)
+    protected function getType(ElementInterface $element): string
     {
         return 'file';
     }

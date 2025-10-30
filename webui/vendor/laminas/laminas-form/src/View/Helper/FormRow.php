@@ -1,10 +1,6 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\View\Helper;
 
@@ -15,10 +11,15 @@ use Laminas\Form\ElementInterface;
 use Laminas\Form\Exception;
 use Laminas\Form\LabelAwareInterface;
 
+use function in_array;
+use function method_exists;
+use function sprintf;
+use function strtolower;
+
 class FormRow extends AbstractHelper
 {
-    const LABEL_APPEND  = 'append';
-    const LABEL_PREPEND = 'prepend';
+    public const LABEL_APPEND  = 'append';
+    public const LABEL_PREPEND = 'prepend';
 
     /**
      * The class that is added to element that have errors
@@ -32,7 +33,7 @@ class FormRow extends AbstractHelper
      *
      * @var array
      */
-    protected $labelAttributes;
+    protected $labelAttributes = [];
 
     /**
      * Where will be label rendered?
@@ -51,27 +52,25 @@ class FormRow extends AbstractHelper
     /**
      * Form label helper instance
      *
-     * @var FormLabel
+     * @var null|FormLabel
      */
     protected $labelHelper;
 
     /**
      * Form element helper instance
      *
-     * @var FormElement
+     * @var null|FormElement
      */
     protected $elementHelper;
 
     /**
      * Form element errors helper instance
      *
-     * @var FormElementErrors
+     * @var null|FormElementErrors
      */
     protected $elementErrorsHelper;
 
-    /**
-     * @var string
-     */
+    /** @var null|string */
     protected $partial;
 
     /**
@@ -79,19 +78,22 @@ class FormRow extends AbstractHelper
      *
      * Proxies to {@link render()}.
      *
-     * @param  null|ElementInterface $element
-     * @param  null|string           $labelPosition
-     * @param  bool                  $renderErrors
-     * @param  string|null           $partial
+     * @template T as null|ElementInterface
+     * @psalm-param T $element
+     * @psalm-return (T is null ? self : string)
      * @return string|FormRow
      */
-    public function __invoke(ElementInterface $element = null, $labelPosition = null, $renderErrors = null, $partial = null)
-    {
-        if (!$element) {
+    public function __invoke(
+        ?ElementInterface $element = null,
+        ?string $labelPosition = null,
+        ?bool $renderErrors = null,
+        ?string $partial = null
+    ) {
+        if (! $element) {
             return $this;
         }
 
-        if (is_null($labelPosition)) {
+        if ($labelPosition === null) {
             $labelPosition = $this->getLabelPosition();
         }
 
@@ -109,12 +111,9 @@ class FormRow extends AbstractHelper
     /**
      * Utility form helper that renders a label (if it exists), an element and errors
      *
-     * @param  ElementInterface $element
-     * @param  null|string      $labelPosition
-     * @throws \Laminas\Form\Exception\DomainException
-     * @return string
+     * @throws Exception\DomainException
      */
-    public function render(ElementInterface $element, $labelPosition = null)
+    public function render(ElementInterface $element, ?string $labelPosition = null): string
     {
         $escapeHtmlHelper    = $this->getEscapeHtmlHelper();
         $labelHelper         = $this->getLabelHelper();
@@ -124,7 +123,7 @@ class FormRow extends AbstractHelper
         $label           = $element->getLabel();
         $inputErrorClass = $this->getInputErrorClass();
 
-        if (is_null($labelPosition)) {
+        if ($labelPosition === null) {
             $labelPosition = $this->labelPosition;
         }
 
@@ -136,25 +135,26 @@ class FormRow extends AbstractHelper
         }
 
         // Does this element have errors ?
-        if (count($element->getMessages()) > 0 && !empty($inputErrorClass)) {
-            $classAttributes = ($element->hasAttribute('class') ? $element->getAttribute('class') . ' ' : '');
-            $classAttributes = $classAttributes . $inputErrorClass;
+        if ($element->getMessages() && $inputErrorClass) {
+            $classAttributes  = $element->hasAttribute('class') ? $element->getAttribute('class') . ' ' : '';
+            $classAttributes .= $inputErrorClass;
 
             $element->setAttribute('class', $classAttributes);
         }
 
         if ($this->partial) {
             $vars = [
-                'element'           => $element,
-                'label'             => $label,
-                'labelAttributes'   => $this->labelAttributes,
-                'labelPosition'     => $labelPosition,
-                'renderErrors'      => $this->renderErrors,
+                'element'         => $element,
+                'label'           => $label,
+                'labelAttributes' => $this->labelAttributes,
+                'labelPosition'   => $labelPosition,
+                'renderErrors'    => $this->renderErrors,
             ];
 
             return $this->view->render($this->partial, $vars);
         }
 
+        $elementErrors = '';
         if ($this->renderErrors) {
             $elementErrors = $elementErrorsHelper->render($element);
         }
@@ -180,7 +180,8 @@ class FormRow extends AbstractHelper
 
             // Multicheckbox elements have to be handled differently as the HTML standard does not allow nested
             // labels. The semantic way is to group them inside a fieldset
-            if ($type === 'multi_checkbox'
+            if (
+                $type === 'multi_checkbox'
                 || $type === 'radio'
                 || $element instanceof MonthSelect
                 || $element instanceof Captcha
@@ -193,18 +194,20 @@ class FormRow extends AbstractHelper
             } else {
                 // Ensure element and label will be separated if element has an `id`-attribute.
                 // If element has label option `always_wrap` it will be nested in any case.
-                if ($element->hasAttribute('id')
-                    && ($element instanceof LabelAwareInterface && !$element->getLabelOption('always_wrap'))
+                if (
+                    $element->hasAttribute('id')
+                    && ($element instanceof LabelAwareInterface && ! $element->getLabelOption('always_wrap'))
                 ) {
-                    $labelOpen = '';
+                    $labelOpen  = '';
                     $labelClose = '';
-                    $label = $labelHelper($element);
+                    $label      = $labelHelper->openTag($element) . $label . $labelHelper->closeTag();
                 } else {
                     $labelOpen  = $labelHelper->openTag($labelAttributes);
                     $labelClose = $labelHelper->closeTag();
                 }
 
-                if ($label !== '' && (!$element->hasAttribute('id'))
+                if (
+                    $label !== '' && (! $element->hasAttribute('id'))
                     || ($element instanceof LabelAwareInterface && $element->getLabelOption('always_wrap'))
                 ) {
                     $label = '<span>' . $label . '</span>';
@@ -247,10 +250,9 @@ class FormRow extends AbstractHelper
     /**
      * Set the class that is added to element that have errors
      *
-     * @param  string $inputErrorClass
-     * @return FormRow
+     * @return $this
      */
-    public function setInputErrorClass($inputErrorClass)
+    public function setInputErrorClass(string $inputErrorClass)
     {
         $this->inputErrorClass = $inputErrorClass;
         return $this;
@@ -258,10 +260,8 @@ class FormRow extends AbstractHelper
 
     /**
      * Get the class that is added to element that have errors
-     *
-     * @return string
      */
-    public function getInputErrorClass()
+    public function getInputErrorClass(): string
     {
         return $this->inputErrorClass;
     }
@@ -270,9 +270,9 @@ class FormRow extends AbstractHelper
      * Set the attributes for the row label
      *
      * @param  array $labelAttributes
-     * @return FormRow
+     * @return $this
      */
-    public function setLabelAttributes($labelAttributes)
+    public function setLabelAttributes(array $labelAttributes)
     {
         $this->labelAttributes = $labelAttributes;
         return $this;
@@ -283,7 +283,7 @@ class FormRow extends AbstractHelper
      *
      * @return array
      */
-    public function getLabelAttributes()
+    public function getLabelAttributes(): array
     {
         return $this->labelAttributes;
     }
@@ -291,20 +291,19 @@ class FormRow extends AbstractHelper
     /**
      * Set the label position
      *
-     * @param  string $labelPosition
-     * @throws \Laminas\Form\Exception\InvalidArgumentException
-     * @return FormRow
+     * @throws Exception\InvalidArgumentException
+     * @return $this
      */
-    public function setLabelPosition($labelPosition)
+    public function setLabelPosition(string $labelPosition)
     {
         $labelPosition = strtolower($labelPosition);
-        if (!in_array($labelPosition, [self::LABEL_APPEND, self::LABEL_PREPEND])) {
+        if (! in_array($labelPosition, [self::LABEL_APPEND, self::LABEL_PREPEND])) {
             throw new Exception\InvalidArgumentException(sprintf(
                 '%s expects either %s::LABEL_APPEND or %s::LABEL_PREPEND; received "%s"',
                 __METHOD__,
-                __CLASS__,
-                __CLASS__,
-                (string) $labelPosition
+                self::class,
+                self::class,
+                $labelPosition
             ));
         }
         $this->labelPosition = $labelPosition;
@@ -314,10 +313,8 @@ class FormRow extends AbstractHelper
 
     /**
      * Get the label position
-     *
-     * @return string
      */
-    public function getLabelPosition()
+    public function getLabelPosition(): string
     {
         return $this->labelPosition;
     }
@@ -325,21 +322,18 @@ class FormRow extends AbstractHelper
     /**
      * Set if the errors are rendered by this helper
      *
-     * @param  bool $renderErrors
-     * @return FormRow
+     * @return $this
      */
-    public function setRenderErrors($renderErrors)
+    public function setRenderErrors(bool $renderErrors)
     {
-        $this->renderErrors = (bool) $renderErrors;
+        $this->renderErrors = $renderErrors;
         return $this;
     }
 
     /**
      * Retrieve if the errors are rendered by this helper
-     *
-     * @return bool
      */
-    public function getRenderErrors()
+    public function getRenderErrors(): bool
     {
         return $this->renderErrors;
     }
@@ -347,10 +341,9 @@ class FormRow extends AbstractHelper
     /**
      * Set a partial view script to use for rendering the row
      *
-     * @param null|string $partial
-     * @return FormRow
+     * @return $this
      */
-    public function setPartial($partial)
+    public function setPartial(?string $partial)
     {
         $this->partial = $partial;
         return $this;
@@ -358,30 +351,26 @@ class FormRow extends AbstractHelper
 
     /**
      * Retrieve current partial
-     *
-     * @return null|string
      */
-    public function getPartial()
+    public function getPartial(): ?string
     {
         return $this->partial;
     }
 
     /**
      * Retrieve the FormLabel helper
-     *
-     * @return FormLabel
      */
-    protected function getLabelHelper()
+    protected function getLabelHelper(): FormLabel
     {
         if ($this->labelHelper) {
             return $this->labelHelper;
         }
 
-        if (method_exists($this->view, 'plugin')) {
+        if ($this->view !== null && method_exists($this->view, 'plugin')) {
             $this->labelHelper = $this->view->plugin('form_label');
         }
 
-        if (!$this->labelHelper instanceof FormLabel) {
+        if (! $this->labelHelper instanceof FormLabel) {
             $this->labelHelper = new FormLabel();
         }
 
@@ -397,20 +386,18 @@ class FormRow extends AbstractHelper
 
     /**
      * Retrieve the FormElement helper
-     *
-     * @return FormElement
      */
-    protected function getElementHelper()
+    protected function getElementHelper(): FormElement
     {
         if ($this->elementHelper) {
             return $this->elementHelper;
         }
 
-        if (method_exists($this->view, 'plugin')) {
+        if ($this->view !== null && method_exists($this->view, 'plugin')) {
             $this->elementHelper = $this->view->plugin('form_element');
         }
 
-        if (!$this->elementHelper instanceof FormElement) {
+        if (! $this->elementHelper instanceof FormElement) {
             $this->elementHelper = new FormElement();
         }
 
@@ -419,20 +406,18 @@ class FormRow extends AbstractHelper
 
     /**
      * Retrieve the FormElementErrors helper
-     *
-     * @return FormElementErrors
      */
-    protected function getElementErrorsHelper()
+    protected function getElementErrorsHelper(): FormElementErrors
     {
         if ($this->elementErrorsHelper) {
             return $this->elementErrorsHelper;
         }
 
-        if (method_exists($this->view, 'plugin')) {
+        if ($this->view !== null && method_exists($this->view, 'plugin')) {
             $this->elementErrorsHelper = $this->view->plugin('form_element_errors');
         }
 
-        if (!$this->elementErrorsHelper instanceof FormElementErrors) {
+        if (! $this->elementErrorsHelper instanceof FormElementErrors) {
             $this->elementErrorsHelper = new FormElementErrors();
         }
 

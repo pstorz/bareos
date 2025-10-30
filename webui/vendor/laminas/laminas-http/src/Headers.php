@@ -13,6 +13,7 @@ use Countable;
 use Iterator;
 use Laminas\Http\Header\Exception;
 use Laminas\Http\Header\GenericHeader;
+use Laminas\Http\Header\MultipleHeaderInterface;
 use Laminas\Loader\PluginClassLocator;
 use Traversable;
 
@@ -47,7 +48,7 @@ class Headers implements Countable, Iterator
      * will be lazy loaded)
      *
      * @param  string $string
-     * @return Headers
+     * @return static
      * @throws Exception\RuntimeException
      */
     public static function fromString($string)
@@ -110,8 +111,8 @@ class Headers implements Countable, Iterator
     /**
      * Set an alternate implementation for the PluginClassLoader
      *
-     * @param \Laminas\Loader\PluginClassLocator $pluginClassLoader
-     * @return Headers
+     * @param PluginClassLocator $pluginClassLoader
+     * @return $this
      */
     public function setPluginClassLoader(PluginClassLocator $pluginClassLoader)
     {
@@ -138,7 +139,7 @@ class Headers implements Countable, Iterator
      * Expects an array (or Traversable object) of type/value pairs.
      *
      * @param  array|Traversable $headers
-     * @return Headers
+     * @return $this
      * @throws Exception\InvalidArgumentException
      */
     public function addHeaders($headers)
@@ -178,7 +179,7 @@ class Headers implements Countable, Iterator
      * @throws Exception\InvalidArgumentException
      * @param string $headerFieldNameOrLine
      * @param string $fieldValue optional
-     * @return Headers
+     * @return $this
      */
     public function addHeaderLine($headerFieldNameOrLine, $fieldValue = null)
     {
@@ -195,7 +196,7 @@ class Headers implements Countable, Iterator
             $headerName = $headerFieldNameOrLine;
             $headerKey  = static::createKey($headerFieldNameOrLine);
             if (is_array($fieldValue)) {
-                $fieldValue = implode(', ', $fieldValue);
+                $fieldValue = implode('; ', $fieldValue);
             }
             $line = $headerFieldNameOrLine . ': ' . $fieldValue;
         }
@@ -210,7 +211,7 @@ class Headers implements Countable, Iterator
      * Add a Header to this container, for raw values @see addHeaderLine() and addHeaders()
      *
      * @param  Header\HeaderInterface $header
-     * @return Headers
+     * @return $this
      */
     public function addHeader(Header\HeaderInterface $header)
     {
@@ -262,7 +263,7 @@ class Headers implements Countable, Iterator
      *
      * Removes all headers from queue
      *
-     * @return Headers
+     * @return $this
      */
     public function clearHeaders()
     {
@@ -283,9 +284,9 @@ class Headers implements Countable, Iterator
             return false;
         }
 
-        $class = ($this->getPluginClassLoader()->load(str_replace('-', '', $key))) ?: 'Laminas\Http\Header\GenericHeader';
+        $class = ($this->getPluginClassLoader()->load(str_replace('-', '', $key))) ?: GenericHeader::class;
 
-        if (in_array('Laminas\Http\Header\MultipleHeaderInterface', class_implements($class, true))) {
+        if (in_array(MultipleHeaderInterface::class, class_implements($class, true))) {
             $headers = [];
             foreach (array_keys($this->headersKeys, $key) as $index) {
                 if (is_array($this->headers[$index])) {
@@ -421,21 +422,19 @@ class Headers implements Countable, Iterator
     {
         $headers = [];
         /* @var $header Header\HeaderInterface */
-        foreach ($this->headers as $header) {
+        foreach ($this->headers as $index => $header) {
+            if (is_array($header)) {
+                $header = $this->lazyLoadHeader($index);
+            }
+
             if ($header instanceof Header\MultipleHeaderInterface) {
                 $name = $header->getFieldName();
                 if (! isset($headers[$name])) {
                     $headers[$name] = [];
                 }
                 $headers[$name][] = $header->getFieldValue();
-            } elseif ($header instanceof Header\HeaderInterface) {
-                $headers[$header->getFieldName()] = $header->getFieldValue();
             } else {
-                $matches = null;
-                preg_match('/^(?P<name>[^()><@,;:\"\\/\[\]?=}{ \t]+):\s*(?P<value>.*)$/', $header['line'], $matches);
-                if ($matches) {
-                    $headers[$matches['name']] = $matches['value'];
-                }
+                $headers[$header->getFieldName()] = $header->getFieldValue();
             }
         }
         return $headers;
@@ -456,7 +455,7 @@ class Headers implements Countable, Iterator
 
     /**
      * @param $index
-     * @param bool $isGeneric
+     * @param bool $isGeneric If true, there is no need to parse $index and call the ClassLoader.
      * @return mixed|void
      */
     protected function lazyLoadHeader($index, $isGeneric = false)
@@ -473,6 +472,12 @@ class Headers implements Countable, Iterator
         try {
             $headers = $class::fromString($current['line']);
         } catch (Exception\InvalidArgumentException $exception) {
+            // Generic Header should throw an exception if it fails
+            if ($isGeneric) {
+                throw $exception;
+            }
+
+            // Retry one more time with GenericHeader
             return $this->lazyLoadHeader($index, true);
         }
         if (is_array($headers)) {

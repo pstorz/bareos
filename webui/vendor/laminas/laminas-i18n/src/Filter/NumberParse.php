@@ -24,7 +24,7 @@ class NumberParse extends AbstractLocale
     /**
      * @var NumberFormatter
      */
-    protected $formatter = null;
+    protected $formatter;
 
     /**
      * @param array|Traversable|string|null $localeOrOptions
@@ -42,7 +42,7 @@ class NumberParse extends AbstractLocale
                 $localeOrOptions = iterator_to_array($localeOrOptions);
             }
 
-            if (!is_array($localeOrOptions)) {
+            if (! is_array($localeOrOptions)) {
                 $this->setLocale($localeOrOptions);
                 $this->setStyle($style);
                 $this->setType($type);
@@ -54,7 +54,7 @@ class NumberParse extends AbstractLocale
 
     /**
      * @param  string|null $locale
-     * @return NumberFormat
+     * @return $this
      */
     public function setLocale($locale = null)
     {
@@ -65,7 +65,7 @@ class NumberParse extends AbstractLocale
 
     /**
      * @param  int $style
-     * @return NumberFormat
+     * @return $this
      */
     public function setStyle($style)
     {
@@ -84,7 +84,7 @@ class NumberParse extends AbstractLocale
 
     /**
      * @param  int $type
-     * @return NumberFormat
+     * @return $this
      */
     public function setType($type)
     {
@@ -102,7 +102,7 @@ class NumberParse extends AbstractLocale
 
     /**
      * @param  NumberFormatter $formatter
-     * @return NumberFormat
+     * @return $this
      */
     public function setFormatter(NumberFormatter $formatter)
     {
@@ -118,7 +118,7 @@ class NumberParse extends AbstractLocale
     {
         if ($this->formatter === null) {
             $formatter = NumberFormatter::create($this->getLocale(), $this->getStyle());
-            if (!$formatter) {
+            if (! $formatter) {
                 throw new Exception\RuntimeException(
                     'Can not create NumberFormatter instance; ' . intl_get_error_message()
                 );
@@ -133,14 +133,14 @@ class NumberParse extends AbstractLocale
     /**
      * Defined by Laminas\Filter\FilterInterface
      *
-     * @see    Laminas\Filter\FilterInterface::filter()
+     * @see    \Laminas\Filter\FilterInterface::filter()
      * @param  mixed $value
      * @return mixed
      */
     public function filter($value)
     {
-        if (!is_int($value)
-            && !is_float($value)
+        if (! is_int($value)
+            && ! is_float($value)
         ) {
             ErrorHandler::start();
 

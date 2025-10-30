@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter;
 
 abstract class AbstractUnicode extends AbstractFilter
@@ -21,7 +15,7 @@ abstract class AbstractUnicode extends AbstractFilter
     public function setEncoding($encoding = null)
     {
         if ($encoding !== null) {
-            if (!function_exists('mb_strtolower')) {
+            if (! function_exists('mb_strtolower')) {
                 throw new Exception\ExtensionNotLoadedException(sprintf(
                     '%s requires mbstring extension to be loaded',
                     get_class($this)
@@ -30,7 +24,7 @@ abstract class AbstractUnicode extends AbstractFilter
 
             $encoding    = strtolower($encoding);
             $mbEncodings = array_map('strtolower', mb_list_encodings());
-            if (!in_array($encoding, $mbEncodings)) {
+            if (! in_array($encoding, $mbEncodings, true)) {
                 throw new Exception\InvalidArgumentException(sprintf(
                     "Encoding '%s' is not supported by mbstring extension",
                     $encoding

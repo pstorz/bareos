@@ -1,12 +1,12 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Annotation;
+
+use Attribute;
+use Doctrine\Common\Annotations\Annotation;
+use Doctrine\Common\Annotations\Annotation\NamedArgumentConstructor;
 
 /**
  * Name annotation
@@ -15,16 +15,27 @@ namespace Laminas\Form\Annotation;
  * when building the form, element, or input. The value should be a string.
  *
  * @Annotation
+ * @NamedArgumentConstructor
  */
-class Name extends AbstractStringAnnotation
+#[Attribute]
+final class Name
 {
+    /** @var string */
+    protected $name;
+
+    /**
+     * Receive and process the contents of an annotation
+     */
+    public function __construct(string $name)
+    {
+        $this->name = $name;
+    }
+
     /**
      * Retrieve the name
-     *
-     * @return null|string
      */
-    public function getName()
+    public function getName(): string
     {
-        return $this->value;
+        return $this->name;
     }
 }

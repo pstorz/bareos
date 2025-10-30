@@ -55,8 +55,8 @@ abstract class AbstractFileLoader implements FileLoaderInterface
      */
     protected function resolveFile($filename)
     {
-        if (!is_file($filename) || !is_readable($filename)) {
-            if (!$this->useIncludePath()) {
+        if (! is_file($filename) || ! is_readable($filename)) {
+            if (! $this->useIncludePath()) {
                 return false;
             }
             return $this->resolveViaIncludePath($filename);
@@ -73,7 +73,7 @@ abstract class AbstractFileLoader implements FileLoaderInterface
     protected function resolveViaIncludePath($filename)
     {
         $resolvedIncludePath = stream_resolve_include_path($filename);
-        if (!$resolvedIncludePath || !is_file($resolvedIncludePath) || !is_readable($resolvedIncludePath)) {
+        if (! $resolvedIncludePath || ! is_file($resolvedIncludePath) || ! is_readable($resolvedIncludePath)) {
             return false;
         }
         return $resolvedIncludePath;

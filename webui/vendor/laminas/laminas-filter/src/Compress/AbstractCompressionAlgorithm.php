@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\Compress;
 
 use Laminas\Stdlib\ArrayUtils;
@@ -40,7 +34,7 @@ abstract class AbstractCompressionAlgorithm implements CompressionAlgorithmInter
     /**
      * Returns one or all set options
      *
-     * @param  string $option (Optional) Option to return
+     * @param  string|null $option Option to return
      * @return mixed
      */
     public function getOptions($option = null)
@@ -49,8 +43,8 @@ abstract class AbstractCompressionAlgorithm implements CompressionAlgorithmInter
             return $this->options;
         }
 
-        if (!array_key_exists($option, $this->options)) {
-            return;
+        if (! isset($this->options[$option])) {
+            return null;
         }
 
         return $this->options[$option];

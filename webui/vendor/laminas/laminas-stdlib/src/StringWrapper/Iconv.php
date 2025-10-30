@@ -10,6 +10,12 @@ namespace Laminas\Stdlib\StringWrapper;
 
 use Laminas\Stdlib\Exception;
 
+use function extension_loaded;
+use function iconv;
+use function iconv_strlen;
+use function iconv_strpos;
+use function iconv_substr;
+
 class Iconv extends AbstractStringWrapper
 {
     /**
@@ -213,7 +219,7 @@ class Iconv extends AbstractStringWrapper
      */
     public function __construct()
     {
-        if (!extension_loaded('iconv')) {
+        if (! extension_loaded('iconv')) {
             throw new Exception\ExtensionNotLoadedException(
                 'PHP extension "iconv" is required for this wrapper'
             );

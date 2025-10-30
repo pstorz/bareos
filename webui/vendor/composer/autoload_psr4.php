@@ -7,7 +7,7 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'Zend\\Version\\' => array($vendorDir . '/zendframework/zend-version/src'),
-    'Symfony\\Polyfill\\Php73\\' => array($vendorDir . '/symfony/polyfill-php73'),
+    'Webmozart\\Assert\\' => array($vendorDir . '/webmozart/assert/src'),
     'Psr\\Log\\' => array($vendorDir . '/psr/log/Psr/Log'),
     'Psr\\Container\\' => array($vendorDir . '/psr/container/src'),
     'Laminas\\ZendFrameworkBridge\\' => array($vendorDir . '/laminas/laminas-zendframework-bridge/src'),
@@ -18,6 +18,7 @@ return array(
     'Laminas\\Session\\' => array($vendorDir . '/laminas/laminas-session/src'),
     'Laminas\\ServiceManager\\' => array($vendorDir . '/laminas/laminas-servicemanager/src'),
     'Laminas\\Serializer\\' => array($vendorDir . '/laminas/laminas-serializer/src'),
+    'Laminas\\Router\\' => array($vendorDir . '/laminas/laminas-router/src'),
     'Laminas\\Navigation\\' => array($vendorDir . '/laminas/laminas-navigation/src'),
     'Laminas\\Mvc\\' => array($vendorDir . '/laminas/laminas-mvc/src'),
     'Laminas\\ModuleManager\\' => array($vendorDir . '/laminas/laminas-modulemanager/src'),

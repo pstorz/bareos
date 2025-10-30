@@ -339,7 +339,7 @@ class Cookies extends Headers
      *
      * @param Response $response HTTP Response object
      * @param Uri\Uri|string $refUri The requested URI
-     * @return Cookies
+     * @return static
      * @todo Add the $uri functionality.
      */
     public static function fromResponse(Response $response, $refUri)
@@ -362,7 +362,7 @@ class Cookies extends Headers
     /**
      * Empties the cookieJar of any cookie
      *
-     * @return Cookies
+     * @return $this
      */
     public function reset()
     {

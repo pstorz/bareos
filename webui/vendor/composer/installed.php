@@ -3,7 +3,7 @@
         'name' => 'bareos/bareos-webui',
         'pretty_version' => 'dev-master',
         'version' => 'dev-master',
-        'reference' => '3f1ace99bd46fbd867deb7d15306b6484508b084',
+        'reference' => '2a3015756d17cd63fc46c6051cc13d5050e744e1',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         'bareos/bareos-webui' => array(
             'pretty_version' => 'dev-master',
             'version' => 'dev-master',
-            'reference' => '3f1ace99bd46fbd867deb7d15306b6484508b084',
+            'reference' => '2a3015756d17cd63fc46c6051cc13d5050e744e1',
             'type' => 'library',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -27,6 +27,12 @@
             'install_path' => __DIR__ . '/../container-interop/container-interop',
             'aliases' => array(),
             'dev_requirement' => false,
+        ),
+        'container-interop/container-interop-implementation' => array(
+            'dev_requirement' => false,
+            'provided' => array(
+                0 => '^1.2',
+            ),
         ),
         'laminas/laminas-cache' => array(
             'pretty_version' => '2.6.1',
@@ -74,63 +80,63 @@
             'dev_requirement' => false,
         ),
         'laminas/laminas-eventmanager' => array(
-            'pretty_version' => '2.6.4',
-            'version' => '2.6.4.0',
-            'reference' => 'c894f427e40b9599284bfebf76480934b78e665b',
+            'pretty_version' => '3.5.0',
+            'version' => '3.5.0.0',
+            'reference' => '41f7209428f37cab9573365e361f4078209aaafa',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-eventmanager',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
         'laminas/laminas-filter' => array(
-            'pretty_version' => '2.6.1p2',
-            'version' => '2.6.1.0-patch2',
-            'reference' => 'b9d60c67d9fca3387a7566b221f2caaa849257e3',
+            'pretty_version' => '2.12.0',
+            'version' => '2.12.0.0',
+            'reference' => '0fc5dcd27dc22dba1a2544123684c67768fc5f88',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-filter',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
         'laminas/laminas-form' => array(
-            'pretty_version' => '2.6.0',
-            'version' => '2.6.0.0',
-            'reference' => 'c85c3c5a25d1a44f56d24312b05299a023a7bcc6',
+            'pretty_version' => '3.0.2',
+            'version' => '3.0.2.0',
+            'reference' => '6e6e8210ef7b54fdecc0eb31c8ad30613b4ab299',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-form',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
         'laminas/laminas-http' => array(
-            'pretty_version' => '2.8.4',
-            'version' => '2.8.4.0',
-            'reference' => 'c38959d605f225baf7f94e04c62f5f432d4ea5b2',
+            'pretty_version' => '2.14.2',
+            'version' => '2.14.2.0',
+            'reference' => '298f732e1acb031db70ea4fd2133a283b2a4a65e',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-http',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
         'laminas/laminas-hydrator' => array(
-            'pretty_version' => '1.1.0',
-            'version' => '1.1.0.0',
-            'reference' => '1ae0a72885be9d74a6af5086c052191e7cbcae83',
+            'pretty_version' => '4.3.2',
+            'version' => '4.3.2.0',
+            'reference' => '38d29dc88fdb090c85780239e5cdf8c5c4905431',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-hydrator',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
         'laminas/laminas-i18n' => array(
-            'pretty_version' => '2.6.0',
-            'version' => '2.6.0.0',
-            'reference' => '547e8fa20040e4583d1b96104585e7cb4c52c8b0',
+            'pretty_version' => '2.11.3',
+            'version' => '2.11.3.0',
+            'reference' => '563b1b720ee53f2748473656a250d65911fc4462',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-i18n',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
         'laminas/laminas-inputfilter' => array(
-            'pretty_version' => '2.6.1',
-            'version' => '2.6.1.0',
-            'reference' => '91e2b5a7130f38676eca73debb73f9e4f2e2350d',
+            'pretty_version' => '2.12.1',
+            'version' => '2.12.1.0',
+            'reference' => '461a7a27b70bd440f925a31221b7a5348cd0d0fd',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-inputfilter',
             'aliases' => array(),
@@ -155,9 +161,9 @@
             'dev_requirement' => false,
         ),
         'laminas/laminas-log' => array(
-            'pretty_version' => '2.6.0',
-            'version' => '2.6.0.0',
-            'reference' => '67baa6db8d8a6300a1362acb01efe40e59ffcbeb',
+            'pretty_version' => '2.7.2',
+            'version' => '2.7.2.0',
+            'reference' => 'b5f170f49e8edc1c8ae09144ccddd94ccc581d46',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-log',
             'aliases' => array(),
@@ -173,18 +179,18 @@
             'dev_requirement' => false,
         ),
         'laminas/laminas-modulemanager' => array(
-            'pretty_version' => '2.6.1',
-            'version' => '2.6.1.0',
-            'reference' => '122048a7a52e90af3eef9076f94622467fecd226',
+            'pretty_version' => '2.7.3',
+            'version' => '2.7.3.0',
+            'reference' => '7ab7bedae7541f02945a554c1c0c11c2e3e8c17c',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-modulemanager',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
         'laminas/laminas-mvc' => array(
-            'pretty_version' => '2.6.3',
-            'version' => '2.6.3.0',
-            'reference' => '96cc62412b48c5ba55b0f0a4309d0adfbd42bca6',
+            'pretty_version' => '3.0.4',
+            'version' => '3.0.4.0',
+            'reference' => 'd76722f2ad03b8651a53fdda9ac727fad8fcdf11',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-mvc',
             'aliases' => array(),
@@ -199,6 +205,15 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
+        'laminas/laminas-router' => array(
+            'pretty_version' => '3.4.5',
+            'version' => '3.4.5.0',
+            'reference' => 'aaf2eb364eedeb5c4d5b9ee14cd2938d0f7e89b7',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../laminas/laminas-router',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
         'laminas/laminas-serializer' => array(
             'pretty_version' => '2.6.1',
             'version' => '2.6.1.0',
@@ -209,9 +224,9 @@
             'dev_requirement' => false,
         ),
         'laminas/laminas-servicemanager' => array(
-            'pretty_version' => '2.7.11',
-            'version' => '2.7.11.0',
-            'reference' => '841abb656c6018afebeec1f355be438426d6a3dd',
+            'pretty_version' => '3.6.4',
+            'version' => '3.6.4.0',
+            'reference' => 'b1445e1a7077c21b0fad0974a1b7a11b9dbe0828',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-servicemanager',
             'aliases' => array(),
@@ -227,9 +242,9 @@
             'dev_requirement' => false,
         ),
         'laminas/laminas-stdlib' => array(
-            'pretty_version' => '2.7.9',
-            'version' => '2.7.9.0',
-            'reference' => '2b7ee69318bf08ed094ebf0b30f860bb26ddd9f6',
+            'pretty_version' => '3.3.1',
+            'version' => '3.3.1.0',
+            'reference' => 'd81c7ffe602ed0e6ecb18691019111c0f4bf1efe',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-stdlib',
             'aliases' => array(),
@@ -245,18 +260,18 @@
             'dev_requirement' => false,
         ),
         'laminas/laminas-validator' => array(
-            'pretty_version' => '2.10.3',
-            'version' => '2.10.3.0',
-            'reference' => 'de601c7cc17328f6acd04eede7bc3d3736ba6d46',
+            'pretty_version' => '2.11.1',
+            'version' => '2.11.1.0',
+            'reference' => '1c2be519684c6ec5fd6d02f36167d95292682977',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-validator',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
         'laminas/laminas-view' => array(
-            'pretty_version' => '2.6.8',
-            'version' => '2.6.8.0',
-            'reference' => 'cbaaf6eb047439bfc4563c11c985f523aba61d84',
+            'pretty_version' => '2.12.1',
+            'version' => '2.12.1.0',
+            'reference' => '23fc886670e05d3fae34d3ba2c5089e2d29beb03',
             'type' => 'library',
             'install_path' => __DIR__ . '/../laminas/laminas-view',
             'aliases' => array(),
@@ -280,6 +295,12 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
+        'psr/container-implementation' => array(
+            'dev_requirement' => false,
+            'provided' => array(
+                0 => '^1.0',
+            ),
+        ),
         'psr/log' => array(
             'pretty_version' => '1.1.4',
             'version' => '1.1.4.0',
@@ -289,12 +310,12 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
-        'symfony/polyfill-php73' => array(
-            'pretty_version' => 'v1.33.0',
-            'version' => '1.33.0.0',
-            'reference' => '0f68c03565dcaaf25a890667542e8bd75fe7e5bb',
+        'webmozart/assert' => array(
+            'pretty_version' => '1.12.1',
+            'version' => '1.12.1.0',
+            'reference' => '9be6926d8b485f55b9229203f962b51ed377ba68',
             'type' => 'library',
-            'install_path' => __DIR__ . '/../symfony/polyfill-php73',
+            'install_path' => __DIR__ . '/../webmozart/assert',
             'aliases' => array(),
             'dev_requirement' => false,
         ),
@@ -322,46 +343,28 @@
                 0 => '2.6.1',
             ),
         ),
-        'zendframework/zend-eventmanager' => array(
-            'dev_requirement' => false,
-            'replaced' => array(
-                0 => '2.6.4',
-            ),
-        ),
         'zendframework/zend-filter' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '~2.6.1.0',
-            ),
-        ),
-        'zendframework/zend-form' => array(
-            'dev_requirement' => false,
-            'replaced' => array(
-                0 => '2.6.0',
+                0 => '^2.9.2',
             ),
         ),
         'zendframework/zend-http' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.8.4',
-            ),
-        ),
-        'zendframework/zend-hydrator' => array(
-            'dev_requirement' => false,
-            'replaced' => array(
-                0 => '1.1.0',
+                0 => '^2.11.2',
             ),
         ),
         'zendframework/zend-i18n' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.6.0',
+                0 => '^2.10.1',
             ),
         ),
         'zendframework/zend-inputfilter' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.6.1',
+                0 => '^2.10.1',
             ),
         ),
         'zendframework/zend-json' => array(
@@ -379,7 +382,7 @@
         'zendframework/zend-log' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.6.0',
+                0 => '2.7.2',
             ),
         ),
         'zendframework/zend-math' => array(
@@ -391,19 +394,25 @@
         'zendframework/zend-modulemanager' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.6.1',
+                0 => '2.7.3',
             ),
         ),
         'zendframework/zend-mvc' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.6.3',
+                0 => '3.0.4',
             ),
         ),
         'zendframework/zend-navigation' => array(
             'dev_requirement' => false,
             'replaced' => array(
                 0 => '2.6.1',
+            ),
+        ),
+        'zendframework/zend-router' => array(
+            'dev_requirement' => false,
+            'replaced' => array(
+                0 => '^3.3.0',
             ),
         ),
         'zendframework/zend-serializer' => array(
@@ -415,7 +424,7 @@
         'zendframework/zend-servicemanager' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.7.11',
+                0 => '^3.4.0',
             ),
         ),
         'zendframework/zend-session' => array(
@@ -427,7 +436,7 @@
         'zendframework/zend-stdlib' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.7.9',
+                0 => '^3.2.1',
             ),
         ),
         'zendframework/zend-uri' => array(
@@ -439,7 +448,7 @@
         'zendframework/zend-validator' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.10.3',
+                0 => '2.11.1',
             ),
         ),
         'zendframework/zend-version' => array(
@@ -454,7 +463,7 @@
         'zendframework/zend-view' => array(
             'dev_requirement' => false,
             'replaced' => array(
-                0 => '2.6.8',
+                0 => '^2.11.4',
             ),
         ),
     ),

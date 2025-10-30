@@ -53,8 +53,10 @@ class Stream
      * @param         $opened_path
      * @return bool
      */
+    // @codingStandardsIgnoreStart
     public function stream_open($path, $mode, $options, &$opened_path)
     {
+        // @codingStandardsIgnoreEnd
         // get the view script source
         $path        = str_replace('laminas.view://', '', $path);
         $this->data = file_get_contents($path);
@@ -90,8 +92,10 @@ class Stream
      *
      * @return array
      */
+    // @codingStandardsIgnoreStart
     public function url_stat()
     {
+        // @codingStandardsIgnoreEnd
         return $this->stat;
     }
 
@@ -101,8 +105,10 @@ class Stream
      * @param  int $count
      * @return string
      */
+    // @codingStandardsIgnoreStart
     public function stream_read($count)
     {
+        // @codingStandardsIgnoreEnd
         $ret = substr($this->data, $this->pos, $count);
         $this->pos += strlen($ret);
         return $ret;
@@ -113,8 +119,10 @@ class Stream
      *
      * @return int
      */
+    // @codingStandardsIgnoreStart
     public function stream_tell()
     {
+        // @codingStandardsIgnoreEnd
         return $this->pos;
     }
 
@@ -123,8 +131,10 @@ class Stream
      *
      * @return bool
      */
+    // @codingStandardsIgnoreStart
     public function stream_eof()
     {
+        // @codingStandardsIgnoreEnd
         return $this->pos >= strlen($this->data);
     }
 
@@ -133,8 +143,10 @@ class Stream
      *
      * @return array
      */
+    // @codingStandardsIgnoreStart
     public function stream_stat()
     {
+        // @codingStandardsIgnoreEnd
         return $this->stat;
     }
 
@@ -145,8 +157,10 @@ class Stream
      * @param  $whence
      * @return bool
      */
+    // @codingStandardsIgnoreStart
     public function stream_seek($offset, $whence)
     {
+        // @codingStandardsIgnoreEnd
         switch ($whence) {
             case SEEK_SET:
                 if ($offset < strlen($this->data) && $offset >= 0) {

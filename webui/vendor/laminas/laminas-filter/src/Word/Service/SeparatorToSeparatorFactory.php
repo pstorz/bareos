@@ -7,6 +7,7 @@ use Laminas\Filter\Word\SeparatorToSeparator;
 use Laminas\ServiceManager\Exception\InvalidServiceException;
 use Laminas\ServiceManager\FactoryInterface;
 use Laminas\ServiceManager\ServiceLocatorInterface;
+use Traversable;
 
 class SeparatorToSeparatorFactory implements FactoryInterface
 {

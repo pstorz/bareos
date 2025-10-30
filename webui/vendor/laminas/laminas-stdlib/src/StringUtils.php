@@ -10,6 +10,14 @@ namespace Laminas\Stdlib;
 
 use Laminas\Stdlib\StringWrapper\StringWrapperInterface;
 
+use function array_search;
+use function defined;
+use function extension_loaded;
+use function in_array;
+use function is_string;
+use function preg_match;
+use function strtoupper;
+
 /**
  * Utility class for handling strings of different character encodings
  * using available PHP extensions.
@@ -21,7 +29,7 @@ abstract class StringUtils
     /**
      * Ordered list of registered string wrapper instances
      *
-     * @var list<class-string<StringWrapperInterface>>|null
+     * @var StringWrapperInterface[]
      */
     protected static $wrapperRegistry = null;
 
@@ -49,7 +57,7 @@ abstract class StringUtils
     /**
      * Get registered wrapper classes
      *
-     * @return list<class-string<StringWrapperInterface>>
+     * @return string[]
      */
     public static function getRegisteredWrappers()
     {
@@ -77,14 +85,13 @@ abstract class StringUtils
     /**
      * Register a string wrapper class
      *
-     * @param class-string<StringWrapperInterface> $wrapper
+     * @param string $wrapper
      * @return void
      */
     public static function registerWrapper($wrapper)
     {
         $wrapper = (string) $wrapper;
-        // using getRegisteredWrappers() here to ensure that the list is initialized
-        if (!in_array($wrapper, static::getRegisteredWrappers(), true)) {
+        if (! in_array($wrapper, static::$wrapperRegistry, true)) {
             static::$wrapperRegistry[] = $wrapper;
         }
     }
@@ -92,13 +99,12 @@ abstract class StringUtils
     /**
      * Unregister a string wrapper class
      *
-     * @param class-string<StringWrapperInterface> $wrapper
+     * @param string $wrapper
      * @return void
      */
     public static function unregisterWrapper($wrapper)
     {
-        // using getRegisteredWrappers() here to ensure that the list is initialized
-        $index = array_search((string) $wrapper, static::getRegisteredWrappers(), true);
+        $index = array_search((string) $wrapper, static::$wrapperRegistry, true);
         if ($index !== false) {
             unset(static::$wrapperRegistry[$index]);
         }

@@ -1,12 +1,12 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Annotation;
+
+use Attribute;
+use Doctrine\Common\Annotations\Annotation;
+use Doctrine\Common\Annotations\Annotation\NamedArgumentConstructor;
 
 /**
  * Options annotation
@@ -17,16 +17,31 @@ namespace Laminas\Form\Annotation;
  * The value should be an associative array.
  *
  * @Annotation
+ * @NamedArgumentConstructor
  */
-class Options extends AbstractArrayAnnotation
+#[Attribute]
+final class Options
 {
+    /** @var array */
+    protected $options;
+
+    /**
+     * Receive and process the contents of an annotation
+     *
+     * @param array $options
+     */
+    public function __construct(array $options)
+    {
+        $this->options = $options;
+    }
+
     /**
      * Retrieve the options
      *
-     * @return null|array
+     * @return array
      */
-    public function getOptions()
+    public function getOptions(): array
     {
-        return $this->value;
+        return $this->options;
     }
 }

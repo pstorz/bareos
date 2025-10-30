@@ -11,16 +11,19 @@ namespace Laminas\Http;
 use ArrayIterator;
 use Laminas\Http\Client\Adapter\Curl;
 use Laminas\Http\Client\Adapter\Socket;
-use Laminas\Stdlib;
+use Laminas\Http\Header\SetCookie;
 use Laminas\Stdlib\ArrayUtils;
+use Laminas\Stdlib\DispatchableInterface;
 use Laminas\Stdlib\ErrorHandler;
+use Laminas\Stdlib\RequestInterface;
+use Laminas\Stdlib\ResponseInterface;
 use Laminas\Uri\Http;
 use Traversable;
 
 /**
  * Http client
  */
-class Client implements Stdlib\DispatchableInterface
+class Client implements DispatchableInterface
 {
     /**
      * @const string Supported HTTP Authentication methods
@@ -107,7 +110,7 @@ class Client implements Stdlib\DispatchableInterface
     protected $config = [
         'maxredirects'    => 5,
         'strictredirects' => false,
-        'useragent'       => Client::class,
+        'useragent'       => 'Laminas_Http_Client',
         'timeout'         => 10,
         'connecttimeout'  => null,
         'adapter'         => Socket::class,
@@ -152,7 +155,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set configuration parameters for this HTTP client
      *
      * @param  array|Traversable $options
-     * @return Client
+     * @return $this
      * @throws Client\Exception\InvalidArgumentException
      */
     public function setOptions($options = [])
@@ -184,7 +187,7 @@ class Client implements Stdlib\DispatchableInterface
      * separated from ->request() to preserve logic and readability
      *
      * @param  Client\Adapter\AdapterInterface|string $adapter
-     * @return Client
+     * @return $this
      * @throws Client\Exception\InvalidArgumentException
      */
     public function setAdapter($adapter)
@@ -212,7 +215,7 @@ class Client implements Stdlib\DispatchableInterface
     /**
      * Load the connection adapter
      *
-     * @return Client\Adapter\AdapterInterface $adapter
+     * @return Client\Adapter\AdapterInterface
      */
     public function getAdapter()
     {
@@ -227,7 +230,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set request
      *
      * @param Request $request
-     * @return Client
+     * @return $this
      */
     public function setRequest(Request $request)
     {
@@ -253,7 +256,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set response
      *
      * @param Response $response
-     * @return Client
+     * @return $this
      */
     public function setResponse(Response $response)
     {
@@ -308,7 +311,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set Uri (to the request)
      *
      * @param string|Http $uri
-     * @return Client
+     * @return $this
      */
     public function setUri($uri)
     {
@@ -356,7 +359,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set the HTTP method (to the request)
      *
      * @param string $method
-     * @return Client
+     * @return $this
      */
     public function setMethod($method)
     {
@@ -395,7 +398,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set the query string argument separator
      *
      * @param string $argSeparator
-     * @return Client
+     * @return $this
      */
     public function setArgSeparator($argSeparator)
     {
@@ -423,7 +426,7 @@ class Client implements Stdlib\DispatchableInterface
      *
      * @param string $encType
      * @param string $boundary
-     * @return Client
+     * @return $this
      */
     public function setEncType($encType, $boundary = null)
     {
@@ -454,7 +457,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set raw body (for advanced use cases)
      *
      * @param string $body
-     * @return Client
+     * @return $this
      */
     public function setRawBody($body)
     {
@@ -466,7 +469,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set the POST parameters
      *
      * @param array $post
-     * @return Client
+     * @return $this
      */
     public function setParameterPost(array $post)
     {
@@ -478,7 +481,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set the GET parameters
      *
      * @param array $query
-     * @return Client
+     * @return $this
      */
     public function setParameterGet(array $query)
     {
@@ -491,7 +494,7 @@ class Client implements Stdlib\DispatchableInterface
      *
      * @param  bool   $clearCookies  Also clear all valid cookies? (defaults to false)
      * @param  bool   $clearAuth     Also clear http authentication? (defaults to true)
-     * @return Client
+     * @return $this
      */
     public function resetParameters($clearCookies = false /*, $clearAuth = true */)
     {
@@ -559,7 +562,7 @@ class Client implements Stdlib\DispatchableInterface
      * @param string  $maxAge
      * @param string  $version
      * @throws Exception\InvalidArgumentException
-     * @return Client
+     * @return $this
      */
     public function addCookie(
         $cookie,
@@ -604,16 +607,20 @@ class Client implements Stdlib\DispatchableInterface
     /**
      * Set an array of cookies
      *
-     * @param  array $cookies
+     * @param  array|SetCookie[] $cookies Cookies as name=>value pairs or instances of SetCookie.
      * @throws Exception\InvalidArgumentException
-     * @return Client
+     * @return $this
      */
     public function setCookies($cookies)
     {
         if (is_array($cookies)) {
             $this->clearCookies();
             foreach ($cookies as $name => $value) {
-                $this->addCookie($name, $value);
+                if ($value instanceof SetCookie) {
+                    $this->addCookie($value);
+                } else {
+                    $this->addCookie($name, $value);
+                }
             }
         } else {
             throw new Exception\InvalidArgumentException('Invalid cookies passed as parameter, it must be an array');
@@ -634,7 +641,7 @@ class Client implements Stdlib\DispatchableInterface
      *
      * @param  Headers|array $headers
      * @throws Exception\InvalidArgumentException
-     * @return Client
+     * @return $this
      */
     public function setHeaders($headers)
     {
@@ -689,7 +696,7 @@ class Client implements Stdlib\DispatchableInterface
      * Set streaming for received data
      *
      * @param string|bool $streamfile Stream file, true for temp file, false/null for no streaming
-     * @return \Laminas\Http\Client
+     * @return $this
      */
     public function setStream($streamfile = true)
     {
@@ -713,8 +720,8 @@ class Client implements Stdlib\DispatchableInterface
     /**
      * Create temporary stream
      *
-     * @throws Exception\RuntimeException
      * @return resource
+     * @throws Exception\RuntimeException
      */
     protected function openTempStream()
     {
@@ -749,7 +756,7 @@ class Client implements Stdlib\DispatchableInterface
      * @param string $password
      * @param string $type
      * @throws Exception\InvalidArgumentException
-     * @return Client
+     * @return $this
      */
     public function setAuth($user, $password, $type = self::AUTH_BASIC)
     {
@@ -849,20 +856,19 @@ class Client implements Stdlib\DispatchableInterface
     /**
      * Dispatch
      *
-     * @param Stdlib\RequestInterface $request
-     * @param Stdlib\ResponseInterface $response
-     * @return Stdlib\ResponseInterface
+     * @param RequestInterface $request
+     * @param ResponseInterface $response
+     * @return ResponseInterface
      */
-    public function dispatch(Stdlib\RequestInterface $request, Stdlib\ResponseInterface $response = null)
+    public function dispatch(RequestInterface $request, ResponseInterface $response = null)
     {
-        $response = $this->send($request);
-        return $response;
+        return $this->send($request);
     }
 
     /**
      * Send HTTP request
      *
-     * @param  Request $request
+     * @param  Request|null $request
      * @return Response
      * @throws Exception\RuntimeException
      * @throws Client\Exception\RuntimeException
@@ -1040,7 +1046,7 @@ class Client implements Stdlib\DispatchableInterface
     /**
      * Fully reset the HTTP client (auth, cookies, request, response, etc.)
      *
-     * @return Client
+     * @return $this
      */
     public function reset()
     {
@@ -1068,7 +1074,7 @@ class Client implements Stdlib\DispatchableInterface
      * @param  string $data Data to send (if null, $filename is read and sent)
      * @param  string $ctype Content type to use (if $data is set and $ctype is
      *                null, will be application/octet-stream)
-     * @return Client
+     * @return $this
      * @throws Exception\RuntimeException
      */
     public function setFileUpload($filename, $formname, $data = null, $ctype = null)
@@ -1151,8 +1157,8 @@ class Client implements Stdlib\DispatchableInterface
      *
      * @param resource|string $body
      * @param Http $uri
-     * @throws Exception\RuntimeException
      * @return array
+     * @throws Exception\RuntimeException
      */
     protected function prepareHeaders($body, $uri)
     {
@@ -1181,7 +1187,7 @@ class Client implements Stdlib\DispatchableInterface
         // Set the Accept-encoding header if not set - depending on whether
         // zlib is available or not.
         if (! $this->getRequest()->getHeaders()->has('Accept-Encoding')) {
-            if (function_exists('gzinflate')) {
+            if (empty($this->config['outputstream']) && function_exists('gzinflate')) {
                 $headers['Accept-Encoding'] = 'gzip, deflate';
             } else {
                 $headers['Accept-Encoding'] = 'identity';
@@ -1496,7 +1502,5 @@ class Client implements Stdlib\DispatchableInterface
                     $type
                 ));
         }
-
-        return;
     }
 }

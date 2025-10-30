@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\File;
 
 use Laminas\Filter\Exception;
@@ -25,14 +19,14 @@ class UpperCase extends StringToUpper
      */
     public function filter($value)
     {
-        if (!is_scalar($value) && !is_array($value)) {
+        if (! is_scalar($value) && ! is_array($value)) {
             return $value;
         }
 
         // An uploaded file? Retrieve the 'tmp_name'
         $isFileUpload = false;
         if (is_array($value)) {
-            if (!isset($value['tmp_name'])) {
+            if (! isset($value['tmp_name'])) {
                 return $value;
             }
 
@@ -41,23 +35,23 @@ class UpperCase extends StringToUpper
             $value      = $value['tmp_name'];
         }
 
-        if (!file_exists($value)) {
+        if (! file_exists($value)) {
             throw new Exception\InvalidArgumentException("File '$value' not found");
         }
 
-        if (!is_writable($value)) {
+        if (! is_writable($value)) {
             throw new Exception\InvalidArgumentException("File '$value' is not writable");
         }
 
         $content = file_get_contents($value);
-        if (!$content) {
+        if (! $content) {
             throw new Exception\RuntimeException("Problem while reading file '$value'");
         }
 
         $content = parent::filter($content);
         $result  = file_put_contents($value, $content);
 
-        if (!$result) {
+        if (! $result) {
             throw new Exception\RuntimeException("Problem while writing file '$value'");
         }
 

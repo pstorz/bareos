@@ -21,10 +21,12 @@ use Laminas\View\Resolver\ResolverInterface;
  */
 class ConsoleRenderer implements RendererInterface, TreeRendererInterface
 {
+    // @codingStandardsIgnoreStart
     /**
      * @var FilterChain
      */
     protected $__filterChain;
+    // @codingStandardsIgnoreEnd
 
     /**
      * Constructor.
@@ -105,7 +107,7 @@ class ConsoleRenderer implements RendererInterface, TreeRendererInterface
      */
     public function render($model, $values = null)
     {
-        if (!$model instanceof ModelInterface) {
+        if (! $model instanceof ModelInterface) {
             return '';
         }
 

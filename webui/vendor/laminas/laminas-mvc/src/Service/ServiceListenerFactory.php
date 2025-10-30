@@ -8,12 +8,17 @@
 
 namespace Laminas\Mvc\Service;
 
+use Interop\Container\ContainerInterface;
+use Laminas\Config\Config;
 use Laminas\ModuleManager\Listener\ServiceListener;
 use Laminas\ModuleManager\Listener\ServiceListenerInterface;
-use Laminas\Mvc\Exception\InvalidArgumentException;
-use Laminas\Mvc\Exception\RuntimeException;
+use Laminas\Mvc\Application;
+use Laminas\Mvc\View;
+use Laminas\ServiceManager\Exception\ServiceNotCreatedException;
+use Laminas\ServiceManager\Factory\InvokableFactory;
 use Laminas\ServiceManager\FactoryInterface;
 use Laminas\ServiceManager\ServiceLocatorInterface;
+use ReflectionClass;
 
 class ServiceListenerFactory implements FactoryInterface
 {
@@ -33,46 +38,44 @@ class ServiceListenerFactory implements FactoryInterface
      * @var array
      */
     protected $defaultServiceConfig = [
-        'invokables' => [
-            'DispatchListener'     => 'Laminas\Mvc\DispatchListener',
-            'RouteListener'        => 'Laminas\Mvc\RouteListener',
-            'SendResponseListener' => 'Laminas\Mvc\SendResponseListener',
-            'ViewJsonRenderer'     => 'Laminas\View\Renderer\JsonRenderer',
-            'ViewFeedRenderer'     => 'Laminas\View\Renderer\FeedRenderer',
+        'aliases' => [
+            'configuration'                              => 'config',
+            'Configuration'                              => 'config',
+            'HttpDefaultRenderingStrategy'               => View\Http\DefaultRenderingStrategy::class,
+            'MiddlewareListener'                         => 'Laminas\Mvc\MiddlewareListener',
+            'RouteListener'                              => 'Laminas\Mvc\RouteListener',
+            'SendResponseListener'                       => 'Laminas\Mvc\SendResponseListener',
+            'View'                                       => 'Laminas\View\View',
+            'ViewFeedRenderer'                           => 'Laminas\View\Renderer\FeedRenderer',
+            'ViewJsonRenderer'                           => 'Laminas\View\Renderer\JsonRenderer',
+            'ViewPhpRendererStrategy'                    => 'Laminas\View\Strategy\PhpRendererStrategy',
+            'ViewPhpRenderer'                            => 'Laminas\View\Renderer\PhpRenderer',
+            'ViewRenderer'                               => 'Laminas\View\Renderer\PhpRenderer',
+            'Laminas\Mvc\Controller\PluginManager'          => 'ControllerPluginManager',
+            'Laminas\Mvc\View\Http\InjectTemplateListener'  => 'InjectTemplateListener',
+            'Laminas\View\Renderer\RendererInterface'       => 'Laminas\View\Renderer\PhpRenderer',
+            'Laminas\View\Resolver\TemplateMapResolver'     => 'ViewTemplateMapResolver',
+            'Laminas\View\Resolver\TemplatePathStack'       => 'ViewTemplatePathStack',
+            'Laminas\View\Resolver\AggregateResolver'       => 'ViewResolver',
+            'Laminas\View\Resolver\ResolverInterface'       => 'ViewResolver',
         ],
-        'factories' => [
-            'Application'                    => 'Laminas\Mvc\Service\ApplicationFactory',
-            'Config'                         => 'Laminas\Mvc\Service\ConfigFactory',
-            'ControllerLoader'               => 'Laminas\Mvc\Service\ControllerLoaderFactory',
+        'invokables' => [],
+        'factories'  => [
+            'Application'                    => ApplicationFactory::class,
+            'config'                         => 'Laminas\Mvc\Service\ConfigFactory',
+            'ControllerManager'              => 'Laminas\Mvc\Service\ControllerManagerFactory',
             'ControllerPluginManager'        => 'Laminas\Mvc\Service\ControllerPluginManagerFactory',
-            'ConsoleAdapter'                 => 'Laminas\Mvc\Service\ConsoleAdapterFactory',
-            'ConsoleRouter'                  => 'Laminas\Mvc\Service\RouterFactory',
-            'ConsoleViewManager'             => 'Laminas\Mvc\Service\ConsoleViewManagerFactory',
-            'DependencyInjector'             => 'Laminas\Mvc\Service\DiFactory',
-            'DiAbstractServiceFactory'       => 'Laminas\Mvc\Service\DiAbstractServiceFactoryFactory',
-            'DiServiceInitializer'           => 'Laminas\Mvc\Service\DiServiceInitializerFactory',
-            'DiStrictAbstractServiceFactory' => 'Laminas\Mvc\Service\DiStrictAbstractServiceFactoryFactory',
-            'FilterManager'                  => 'Laminas\Mvc\Service\FilterManagerFactory',
-            'FormAnnotationBuilder'          => 'Laminas\Mvc\Service\FormAnnotationBuilderFactory',
-            'FormElementManager'             => 'Laminas\Mvc\Service\FormElementManagerFactory',
-            'HttpRouter'                     => 'Laminas\Mvc\Service\RouterFactory',
+            'DispatchListener'               => 'Laminas\Mvc\Service\DispatchListenerFactory',
+            'HttpExceptionStrategy'          => HttpExceptionStrategyFactory::class,
             'HttpMethodListener'             => 'Laminas\Mvc\Service\HttpMethodListenerFactory',
+            'HttpRouteNotFoundStrategy'      => HttpRouteNotFoundStrategyFactory::class,
             'HttpViewManager'                => 'Laminas\Mvc\Service\HttpViewManagerFactory',
-            'HydratorManager'                => 'Laminas\Mvc\Service\HydratorManagerFactory',
             'InjectTemplateListener'         => 'Laminas\Mvc\Service\InjectTemplateListenerFactory',
-            'InputFilterManager'             => 'Laminas\Mvc\Service\InputFilterManagerFactory',
-            'LogProcessorManager'            => 'Laminas\Mvc\Service\LogProcessorManagerFactory',
-            'LogWriterManager'               => 'Laminas\Mvc\Service\LogWriterManagerFactory',
-            'MvcTranslator'                  => 'Laminas\Mvc\Service\TranslatorServiceFactory',
             'PaginatorPluginManager'         => 'Laminas\Mvc\Service\PaginatorPluginManagerFactory',
             'Request'                        => 'Laminas\Mvc\Service\RequestFactory',
             'Response'                       => 'Laminas\Mvc\Service\ResponseFactory',
-            'Router'                         => 'Laminas\Mvc\Service\RouterFactory',
-            'RoutePluginManager'             => 'Laminas\Mvc\Service\RoutePluginManagerFactory',
-            'SerializerAdapterManager'       => 'Laminas\Mvc\Service\SerializerAdapterPluginManagerFactory',
-            'TranslatorPluginManager'        => 'Laminas\Mvc\Service\TranslatorPluginManagerFactory',
-            'ValidatorManager'               => 'Laminas\Mvc\Service\ValidatorManagerFactory',
             'ViewHelperManager'              => 'Laminas\Mvc\Service\ViewHelperManagerFactory',
+            View\Http\DefaultRenderingStrategy::class => HttpDefaultRenderingStrategyFactory::class,
             'ViewFeedStrategy'               => 'Laminas\Mvc\Service\ViewFeedStrategyFactory',
             'ViewJsonStrategy'               => 'Laminas\Mvc\Service\ViewJsonStrategyFactory',
             'ViewManager'                    => 'Laminas\Mvc\Service\ViewManagerFactory',
@@ -80,122 +83,201 @@ class ServiceListenerFactory implements FactoryInterface
             'ViewTemplateMapResolver'        => 'Laminas\Mvc\Service\ViewTemplateMapResolverFactory',
             'ViewTemplatePathStack'          => 'Laminas\Mvc\Service\ViewTemplatePathStackFactory',
             'ViewPrefixPathStackResolver'    => 'Laminas\Mvc\Service\ViewPrefixPathStackResolverFactory',
-        ],
-        'aliases' => [
-            'Configuration'                              => 'Config',
-            'Console'                                    => 'ConsoleAdapter',
-            'Di'                                         => 'DependencyInjector',
-            'Laminas\Di\LocatorInterface'                   => 'DependencyInjector',
-            'Laminas\Form\Annotation\FormAnnotationBuilder' => 'FormAnnotationBuilder',
-            'Laminas\Mvc\Controller\PluginManager'          => 'ControllerPluginManager',
-            'Laminas\Mvc\View\Http\InjectTemplateListener'  => 'InjectTemplateListener',
-            'Laminas\View\Resolver\TemplateMapResolver'     => 'ViewTemplateMapResolver',
-            'Laminas\View\Resolver\TemplatePathStack'       => 'ViewTemplatePathStack',
-            'Laminas\View\Resolver\AggregateResolver'       => 'ViewResolver',
-            'Laminas\View\Resolver\ResolverInterface'       => 'ViewResolver',
-            'ControllerManager'                          => 'ControllerLoader',
-        ],
-        'abstract_factories' => [
-            'Laminas\Form\FormAbstractServiceFactory',
+            'Laminas\Mvc\MiddlewareListener'    => InvokableFactory::class,
+            'Laminas\Mvc\RouteListener'         => InvokableFactory::class,
+            'Laminas\Mvc\SendResponseListener'  => SendResponseListenerFactory::class,
+            'Laminas\View\Renderer\FeedRenderer' => InvokableFactory::class,
+            'Laminas\View\Renderer\JsonRenderer' => InvokableFactory::class,
+            'Laminas\View\Renderer\PhpRenderer' => ViewPhpRendererFactory::class,
+            'Laminas\View\Strategy\PhpRendererStrategy' => ViewPhpRendererStrategyFactory::class,
+            'Laminas\View\View'                 => ViewFactory::class,
         ],
     ];
+
+    /**
+     * Constructor
+     *
+     * When executed under laminas-servicemanager v3, injects additional aliases
+     * to ensure backwards compatibility.
+     */
+    public function __construct()
+    {
+        $r = new ReflectionClass(ServiceLocatorInterface::class);
+        if ($r->hasMethod('build')) {
+            $this->injectV3Aliases();
+        }
+    }
 
     /**
      * Create the service listener service
      *
      * Tries to get a service named ServiceListenerInterface from the service
-     * locator, otherwise creates a Laminas\ModuleManager\Listener\ServiceListener
-     * service, passing it the service locator instance and the default service
-     * configuration, which can be overridden by modules.
+     * locator, otherwise creates a ServiceListener instance, passing it the
+     * container instance and the default service configuration, which can be
+     * overridden by modules.
      *
      * It looks for the 'service_listener_options' key in the application
-     * config and tries to add service manager as configured. The value of
-     * 'service_listener_options' must be a list (array) which contains the
+     * config and tries to add service/plugin managers as configured. The value
+     * of 'service_listener_options' must be a list (array) which contains the
      * following keys:
-     *   - service_manager: the name of the service manage to create as string
-     *   - config_key: the name of the configuration key to search for as string
-     *   - interface: the name of the interface that modules can implement as string
-     *   - method: the name of the method that modules have to implement as string
+     *
+     * - service_manager: the name of the service manage to create as string
+     * - config_key: the name of the configuration key to search for as string
+     * - interface: the name of the interface that modules can implement as string
+     * - method: the name of the method that modules have to implement as string
      *
      * @param  ServiceLocatorInterface  $serviceLocator
-     * @return ServiceListener
-     * @throws InvalidArgumentException For invalid configurations.
-     * @throws RuntimeException
+     * @return ServiceListenerInterface
+     * @throws ServiceNotCreatedException for invalid ServiceListener service
+     * @throws ServiceNotCreatedException For invalid configurations.
      */
-    public function createService(ServiceLocatorInterface $serviceLocator)
+    public function __invoke(ContainerInterface $container, $requestedName, array $options = null)
     {
-        $configuration   = $serviceLocator->get('ApplicationConfig');
+        $configuration   = $container->get('ApplicationConfig');
 
-        if ($serviceLocator->has('ServiceListenerInterface')) {
-            $serviceListener = $serviceLocator->get('ServiceListenerInterface');
+        $serviceListener = $container->has('ServiceListenerInterface')
+            ? $container->get('ServiceListenerInterface')
+            : new ServiceListener($container);
 
-            if (!$serviceListener instanceof ServiceListenerInterface) {
-                throw new RuntimeException(
-                    'The service named ServiceListenerInterface must implement ' .
-                    'Laminas\ModuleManager\Listener\ServiceListenerInterface'
-                );
-            }
-
-            $serviceListener->setDefaultServiceConfig($this->defaultServiceConfig);
-        } else {
-            $serviceListener = new ServiceListener($serviceLocator, $this->defaultServiceConfig);
+        if (! $serviceListener instanceof ServiceListenerInterface) {
+            throw new ServiceNotCreatedException(
+                'The service named ServiceListenerInterface must implement '
+                .  ServiceListenerInterface::class
+            );
         }
 
+        $serviceListener->setDefaultServiceConfig($this->defaultServiceConfig);
+
         if (isset($configuration['service_listener_options'])) {
-            if (!is_array($configuration['service_listener_options'])) {
-                throw new InvalidArgumentException(sprintf(
-                    'The value of service_listener_options must be an array, %s given.',
-                    gettype($configuration['service_listener_options'])
-                ));
-            }
-
-            foreach ($configuration['service_listener_options'] as $key => $newServiceManager) {
-                if (!isset($newServiceManager['service_manager'])) {
-                    throw new InvalidArgumentException(sprintf(self::MISSING_KEY_ERROR, $key, 'service_manager'));
-                } elseif (!is_string($newServiceManager['service_manager'])) {
-                    throw new InvalidArgumentException(sprintf(
-                        self::VALUE_TYPE_ERROR,
-                        'service_manager',
-                        gettype($newServiceManager['service_manager'])
-                    ));
-                }
-                if (!isset($newServiceManager['config_key'])) {
-                    throw new InvalidArgumentException(sprintf(self::MISSING_KEY_ERROR, $key, 'config_key'));
-                } elseif (!is_string($newServiceManager['config_key'])) {
-                    throw new InvalidArgumentException(sprintf(
-                        self::VALUE_TYPE_ERROR,
-                        'config_key',
-                        gettype($newServiceManager['config_key'])
-                    ));
-                }
-                if (!isset($newServiceManager['interface'])) {
-                    throw new InvalidArgumentException(sprintf(self::MISSING_KEY_ERROR, $key, 'interface'));
-                } elseif (!is_string($newServiceManager['interface'])) {
-                    throw new InvalidArgumentException(sprintf(
-                        self::VALUE_TYPE_ERROR,
-                        'interface',
-                        gettype($newServiceManager['interface'])
-                    ));
-                }
-                if (!isset($newServiceManager['method'])) {
-                    throw new InvalidArgumentException(sprintf(self::MISSING_KEY_ERROR, $key, 'method'));
-                } elseif (!is_string($newServiceManager['method'])) {
-                    throw new InvalidArgumentException(sprintf(
-                        self::VALUE_TYPE_ERROR,
-                        'method',
-                        gettype($newServiceManager['method'])
-                    ));
-                }
-
-                $serviceListener->addServiceManager(
-                    $newServiceManager['service_manager'],
-                    $newServiceManager['config_key'],
-                    $newServiceManager['interface'],
-                    $newServiceManager['method']
-                );
-            }
+            $this->injectServiceListenerOptions($configuration['service_listener_options'], $serviceListener);
         }
 
         return $serviceListener;
+    }
+
+    /**
+     * Create and return the ServiceListener (v2)
+     *
+     * @param ServiceLocatorInterface $container
+     * @return ServiceListenerInterface
+     */
+    public function createService(ServiceLocatorInterface $container)
+    {
+        return $this($container, ServiceListener::class);
+    }
+
+    /**
+     * Validate and inject plugin manager options into the service listener.
+     *
+     * @param array $options
+     * @param ServiceListenerInterface $serviceListener
+     * @throws ServiceListenerInterface for invalid $options types
+     */
+    private function injectServiceListenerOptions($options, ServiceListenerInterface $serviceListener)
+    {
+        if (! is_array($options)) {
+            throw new ServiceNotCreatedException(sprintf(
+                'The value of service_listener_options must be an array, %s given.',
+                (is_object($options) ? get_class($options) : gettype($options))
+            ));
+        }
+
+        foreach ($options as $key => $newServiceManager) {
+            $this->validatePluginManagerOptions($newServiceManager, $key);
+
+            $serviceListener->addServiceManager(
+                $newServiceManager['service_manager'],
+                $newServiceManager['config_key'],
+                $newServiceManager['interface'],
+                $newServiceManager['method']
+            );
+        }
+    }
+
+    /**
+     * Validate the structure and types for plugin manager configuration options.
+     *
+     * Ensures all required keys are present in the expected types.
+     *
+     * @param array $options
+     * @param string $name Plugin manager service name; used for exception messages
+     * @throws ServiceNotCreatedException for any missing configuration options.
+     * @throws ServiceNotCreatedException for configuration options of invalid types.
+     */
+    private function validatePluginManagerOptions($options, $name)
+    {
+        if (! is_array($options)) {
+            throw new ServiceNotCreatedException(sprintf(
+                'Plugin manager configuration for "%s" is invalid; must be an array, received "%s"',
+                $name,
+                (is_object($options) ? get_class($options) : gettype($options))
+            ));
+        }
+
+        if (! isset($options['service_manager'])) {
+            throw new ServiceNotCreatedException(sprintf(self::MISSING_KEY_ERROR, $name, 'service_manager'));
+        }
+
+        if (! is_string($options['service_manager'])) {
+            throw new ServiceNotCreatedException(sprintf(
+                self::VALUE_TYPE_ERROR,
+                'service_manager',
+                gettype($options['service_manager'])
+            ));
+        }
+
+        if (! isset($options['config_key'])) {
+            throw new ServiceNotCreatedException(sprintf(self::MISSING_KEY_ERROR, $name, 'config_key'));
+        }
+
+        if (! is_string($options['config_key'])) {
+            throw new ServiceNotCreatedException(sprintf(
+                self::VALUE_TYPE_ERROR,
+                'config_key',
+                gettype($options['config_key'])
+            ));
+        }
+
+        if (! isset($options['interface'])) {
+            throw new ServiceNotCreatedException(sprintf(self::MISSING_KEY_ERROR, $name, 'interface'));
+        }
+
+        if (! is_string($options['interface'])) {
+            throw new ServiceNotCreatedException(sprintf(
+                self::VALUE_TYPE_ERROR,
+                'interface',
+                gettype($options['interface'])
+            ));
+        }
+
+        if (! isset($options['method'])) {
+            throw new ServiceNotCreatedException(sprintf(self::MISSING_KEY_ERROR, $name, 'method'));
+        }
+
+        if (! is_string($options['method'])) {
+            throw new ServiceNotCreatedException(sprintf(
+                self::VALUE_TYPE_ERROR,
+                'method',
+                gettype($options['method'])
+            ));
+        }
+    }
+
+    /**
+     * Inject additional aliases for laminas-servicemanager v3 usage
+     *
+     * If the constructor detects that we're operating under laminas-servicemanager v3,
+     * this method injects additional aliases to ensure that common services
+     * can be retrieved using both Titlecase and lowercase, and will get the
+     * same instances.
+     *
+     * @return void
+     */
+    private function injectV3Aliases()
+    {
+        $this->defaultServiceConfig['aliases']['application'] = 'Application';
+        $this->defaultServiceConfig['aliases']['Config']      = 'config';
+        $this->defaultServiceConfig['aliases']['request']     = 'Request';
+        $this->defaultServiceConfig['aliases']['response']    = 'Response';
     }
 }

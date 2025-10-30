@@ -12,6 +12,7 @@ use Laminas\Config\Config;
 use Laminas\Config\Factory as ConfigFactory;
 use Laminas\EventManager\EventManagerInterface;
 use Laminas\EventManager\ListenerAggregateInterface;
+use Laminas\EventManager\ListenerAggregateTrait;
 use Laminas\ModuleManager\Feature\ConfigProviderInterface;
 use Laminas\ModuleManager\ModuleEvent;
 use Laminas\Stdlib\ArrayUtils;
@@ -25,13 +26,10 @@ class ConfigListener extends AbstractListener implements
     ConfigMergerInterface,
     ListenerAggregateInterface
 {
+    use ListenerAggregateTrait;
+
     const STATIC_PATH = 'static_path';
     const GLOB_PATH   = 'glob_path';
-
-    /**
-     * @var array
-     */
-    protected $callbacks = [];
 
     /**
      * @var array
@@ -78,18 +76,18 @@ class ConfigListener extends AbstractListener implements
     /**
      * {@inheritDoc}
      */
-    public function attach(EventManagerInterface $events)
+    public function attach(EventManagerInterface $events, $priority = 1)
     {
-        $this->callbacks[] = $events->attach(ModuleEvent::EVENT_LOAD_MODULES, [$this, 'onloadModulesPre'], 1000);
+        $this->listeners[] = $events->attach(ModuleEvent::EVENT_LOAD_MODULES, [$this, 'onloadModulesPre'], 1000);
 
         if ($this->skipConfig) {
             // We already have the config from cache, no need to collect or merge.
             return $this;
         }
 
-        $this->callbacks[] = $events->attach(ModuleEvent::EVENT_LOAD_MODULE, [$this, 'onLoadModule']);
-        $this->callbacks[] = $events->attach(ModuleEvent::EVENT_LOAD_MODULES, [$this, 'onLoadModules'], -1000);
-        $this->callbacks[] = $events->attach(ModuleEvent::EVENT_MERGE_CONFIG, [$this, 'onMergeConfig'], 1000);
+        $this->listeners[] = $events->attach(ModuleEvent::EVENT_LOAD_MODULE, [$this, 'onLoadModule']);
+        $this->listeners[] = $events->attach(ModuleEvent::EVENT_LOAD_MODULES, [$this, 'onLoadModules'], -1000);
+        $this->listeners[] = $events->attach(ModuleEvent::EVENT_MERGE_CONFIG, [$this, 'onMergeConfig'], 1000);
         return $this;
     }
 
@@ -116,8 +114,8 @@ class ConfigListener extends AbstractListener implements
     {
         $module = $e->getModule();
 
-        if (!$module instanceof ConfigProviderInterface
-            && !is_callable([$module, 'getConfig'])
+        if (! $module instanceof ConfigProviderInterface
+            && ! is_callable([$module, 'getConfig'])
         ) {
             return $this;
         }
@@ -164,11 +162,15 @@ class ConfigListener extends AbstractListener implements
     {
         // Trigger MERGE_CONFIG event. This is a hook to allow the merged application config to be
         // modified before it is cached (In particular, allows the removal of config keys)
-        $e->getTarget()->getEventManager()->trigger(ModuleEvent::EVENT_MERGE_CONFIG, $e);
+        $originalEventName = $e->getName();
+        $e->setName(ModuleEvent::EVENT_MERGE_CONFIG);
+        $e->getTarget()->getEventManager()->triggerEvent($e);
+
+        // Reset event name
+        $e->setName($originalEventName);
 
         // If enabled, update the config cache
-        if (
-            $this->getOptions()->getConfigCacheEnabled()
+        if ($this->getOptions()->getConfigCacheEnabled()
             && false === $this->skipConfig
         ) {
             $configFile = $this->getOptions()->getConfigCacheFile();
@@ -176,18 +178,6 @@ class ConfigListener extends AbstractListener implements
         }
 
         return $this;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function detach(EventManagerInterface $events)
-    {
-        foreach ($this->callbacks as $index => $callback) {
-            if ($events->detach($callback)) {
-                unset($this->callbacks[$index]);
-            }
-        }
     }
 
     /**
@@ -283,7 +273,7 @@ class ConfigListener extends AbstractListener implements
             $paths = ArrayUtils::iteratorToArray($paths);
         }
 
-        if (!is_array($paths)) {
+        if (! is_array($paths)) {
             throw new Exception\InvalidArgumentException(
                 sprintf(
                     'Argument passed to %::%s() must be an array, '
@@ -311,7 +301,7 @@ class ConfigListener extends AbstractListener implements
      */
     protected function addConfigPath($path, $type)
     {
-        if (!is_string($path)) {
+        if (! is_string($path)) {
             throw new Exception\InvalidArgumentException(
                 sprintf(
                     'Parameter to %s::%s() must be a string; %s given.',
@@ -337,7 +327,7 @@ class ConfigListener extends AbstractListener implements
             $config = ArrayUtils::iteratorToArray($config);
         }
 
-        if (!is_array($config)) {
+        if (! is_array($config)) {
             throw new Exception\InvalidArgumentException(
                 sprintf(
                     'Config being merged must be an array, '

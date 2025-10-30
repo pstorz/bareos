@@ -49,7 +49,7 @@ class RouteNotFoundStrategy extends AbstractListenerAggregate
     /**
      * {@inheritDoc}
      */
-    public function attach(EventManagerInterface $events)
+    public function attach(EventManagerInterface $events, $priority = 1)
     {
         $this->listeners[] = $events->attach(MvcEvent::EVENT_DISPATCH, [$this, 'prepareNotFoundViewModel'], -90);
         $this->listeners[] = $events->attach(MvcEvent::EVENT_DISPATCH_ERROR, [$this, 'detectNotFoundError']);
@@ -249,7 +249,9 @@ class RouteNotFoundStrategy extends AbstractListenerAggregate
         $model->setVariable('display_exceptions', true);
 
         $exception = $e->getParam('exception', false);
-        if (!$exception instanceof \Exception) {
+
+        // @TODO clean up once PHP 7 requirement is enforced
+        if (!$exception instanceof \Exception && !$exception instanceof \Throwable) {
             return;
         }
 

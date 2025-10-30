@@ -8,8 +8,7 @@
 
 namespace Laminas\Mvc\Service;
 
-use Laminas\Console\Console;
-use Laminas\Console\Request as ConsoleRequest;
+use Interop\Container\ContainerInterface;
 use Laminas\Http\PhpEnvironment\Request as HttpRequest;
 use Laminas\ServiceManager\FactoryInterface;
 use Laminas\ServiceManager\ServiceLocatorInterface;
@@ -17,17 +16,28 @@ use Laminas\ServiceManager\ServiceLocatorInterface;
 class RequestFactory implements FactoryInterface
 {
     /**
-     * Create and return a request instance, according to current environment.
+     * Create and return a request instance.
      *
-     * @param  ServiceLocatorInterface $serviceLocator
-     * @return ConsoleRequest|HttpRequest
+     * @param  ContainerInterface $container
+     * @param  string $name
+     * @param  null|array $options
+     * @return HttpRequest
      */
-    public function createService(ServiceLocatorInterface $serviceLocator)
+    public function __invoke(ContainerInterface $container, $name, array $options = null)
     {
-        if (Console::isConsole()) {
-            return new ConsoleRequest();
-        }
-
         return new HttpRequest();
+    }
+
+    /**
+     * Create and return HttpRequest.
+     *
+     * For use with laminas-servicemanager v2; proxies to __invoke().
+     *
+     * @param ServiceLocatorInterface $container
+     * @return HttpRequest
+     */
+    public function createService(ServiceLocatorInterface $container)
+    {
+        return $this($container, 'Request');
     }
 }

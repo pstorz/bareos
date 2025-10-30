@@ -9,6 +9,8 @@
 namespace Laminas\View\Helper\Service;
 
 use Interop\Container\ContainerInterface;
+use Laminas\Authentication\AuthenticationService;
+use Laminas\Authentication\AuthenticationServiceInterface;
 use Laminas\ServiceManager\FactoryInterface;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Helper\Identity;
@@ -29,10 +31,13 @@ class IdentityFactory implements FactoryInterface
         if (! method_exists($container, 'configure')) {
             $container = $container->getServiceLocator();
         }
+
         $helper = new Identity();
-        if ($container->has('Laminas\Authentication\AuthenticationService')) {
-            $helper->setAuthenticationService($container->get('Laminas\Authentication\AuthenticationService'));
+
+        if (null !== ($authenticationService = $this->discoverAuthenticationService($container))) {
+            $helper->setAuthenticationService($authenticationService);
         }
+
         return $helper;
     }
 
@@ -45,5 +50,25 @@ class IdentityFactory implements FactoryInterface
     public function createService(ServiceLocatorInterface $serviceLocator, $rName = null, $cName = null)
     {
         return $this($serviceLocator, $cName);
+    }
+
+    /**
+     * @return null|AuthenticationServiceInterface
+     */
+    private function discoverAuthenticationService(ContainerInterface $container)
+    {
+        if ($container->has(AuthenticationService::class)) {
+            return $container->get(AuthenticationService::class);
+        }
+
+        if ($container->has(\Zend\Authentication\AuthenticationService::class)) {
+            return $container->get(\Zend\Authentication\AuthenticationService::class);
+        }
+
+        return $container->has(AuthenticationServiceInterface::class)
+            ? $container->get(AuthenticationServiceInterface::class)
+            : ($container->has(\Zend\Authentication\AuthenticationServiceInterface::class)
+                ? $container->get(\Zend\Authentication\AuthenticationServiceInterface::class)
+                : null);
     }
 }

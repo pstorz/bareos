@@ -2,7 +2,272 @@
 
 All notable changes to this project will be documented in this file, in reverse chronological order by release.
 
-## 2.8.4 - 2019-02-07
+## 2.14.2 - 2021-01-05
+
+
+-----
+
+### Release Notes for [2.14.2](https://github.com/laminas/laminas-http/milestone/7)
+
+2.14.x bugfix release (patch)
+
+### 2.14.2
+
+- Total issues resolved: **0**
+- Total pull requests resolved: **1**
+- Total contributors: **1**
+
+#### Bug,Enhancement
+
+ - [48: Security tightening: verify a stream file name is a string before unlinking](https://github.com/laminas/laminas-http/pull/48) thanks to @weierophinney
+
+## 2.14.1 - 2020-12-31
+
+
+-----
+
+### Release Notes for [2.14.1](https://github.com/laminas/laminas-http/milestone/4)
+
+2.14.x bugfix release (patch)
+
+### 2.14.1
+
+- Total issues resolved: **0**
+- Total pull requests resolved: **1**
+- Total contributors: **1**
+
+#### Bug
+
+ - [46: fix Curl error &quot;transfer closed with ... bytes remaining to read&quot; with HEAD HTTP method](https://github.com/laminas/laminas-http/pull/46) thanks to @karneds
+
+## 2.14.0 - 2020-12-29
+
+
+-----
+
+### Release Notes for [2.14.0](https://github.com/laminas/laminas-http/milestone/2)
+
+
+
+### 2.14.0
+
+- Total issues resolved: **0**
+- Total pull requests resolved: **2**
+- Total contributors: **2**
+
+#### Enhancement,hacktoberfest-accepted
+
+ - [45: PHP 8 support](https://github.com/laminas/laminas-http/pull/45) thanks to @ocean
+
+#### Enhancement
+
+ - [33: Add Content-Security-Policy-Report-Only header](https://github.com/laminas/laminas-http/pull/33) thanks to @xmorave2
+
+## 2.13.0 - 2020-08-18
+
+### Added
+
+- [#41](https://github.com/laminas/laminas-http/pull/41) adds a new method to `Laminas\Http\PhpEnvironment\Response`, `setHeadersSentHandler(callable $handler): void`. When a handler is injected, `sendHeaders()` will call it with the current response instance if it detects headers have already been sent (e.g., by the SAPI due to emitting content). Prior to this change, the class would silently ignore the fact, and simply not emit headers from the response instance. Now it is possible to log those headers, or raise an exception.
+
+### Changed
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- Nothing.
+
+## 2.12.0 - 2020-06-23
+
+### Added
+
+- [#33](https://github.com/laminas/laminas-http/pull/33) adds a new header type, `Laminas\Http\Header\ContentSecurityPolicyReportOnly`, mapping to Content-Security-Policy-Report-Only headers, which can be used for experimenting with policies without impacting your application.
+
+### Changed
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- Nothing.
+
+## 2.11.3 - 2020-06-23
+
+### Added
+
+- Nothing.
+
+### Changed
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [#39](https://github.com/laminas/laminas-http/pull/39) fixes the default user-agent header to replace escape characters with underscores, ensuring it works with all clients and servers.
+
+- [#31](https://github.com/laminas/laminas-http/pull/31) updates the socket and proxy adapters to retain the previous TLS defaults, which had broken with PHP 5.6.7+ due to a change in the meaning of the STREAM_CRYPTO_METHOD_TLS_CLIENT constant.
+
+## 2.11.2 - 2019-12-30
+
+### Added
+
+- Nothing.
+
+### Changed
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-http#207](https://github.com/zendframework/zend-http/pull/207) fixes case sensitivity for SameSite directive.
+
+## 2.11.1 - 2019-12-04
+
+### Added
+
+- Nothing.
+
+### Changed
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-http#204](https://github.com/zendframework/zend-http/pull/204) fixes numerous header classes to cast field value to string (since `HeaderInterface::getFieldValue()` specifies a return value of a string).
+
+- [zendframework/zend-http#182](https://github.com/zendframework/zend-http/pull/182) fixes detecting base uri in Request. Now `argv` is used only for CLI request as a fallback to detect script filename.
+
+## 2.11.0 - 2019-12-03
+
+### Added
+
+- [zendframework/zend-http#175](https://github.com/zendframework/zend-http/pull/175) adds support for Content Security Policy Level 3 Header directives.
+
+- [zendframework/zend-http#200](https://github.com/zendframework/zend-http/pull/200) adds support for additional directives in Content Security Policy header:
+  - `block-all-mixed-content`,
+  - `require-sri-for`,
+  - `trusted-types`,
+  - `upgrade-insecure-requests`.
+
+- [zendframework/zend-http#177](https://github.com/zendframework/zend-http/pull/177) adds support for Feature Policy header.
+
+- [zendframework/zend-http#186](https://github.com/zendframework/zend-http/pull/186) adds support for SameSite directive in Set-Cookie header.
+
+### Changed
+
+- [zendframework/zend-http#194](https://github.com/zendframework/zend-http/pull/194) changes range of valid HTTP status codes to 100-599 (inclusive).
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-http#200](https://github.com/zendframework/zend-http/pull/200) fixes support for directives without value in Content Security Policy header.
+
+## 2.10.1 - 2019-12-02
+
+### Added
+
+- Nothing.
+
+### Changed
+
+- [zendframework/zend-http#190](https://github.com/zendframework/zend-http/pull/190) changes `ContentSecurityPolicy` to allow multiple values. Before it was not possible to provide multiple headers of that type.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-http#184](https://github.com/zendframework/zend-http/pull/184) fixes responses for request through the proxy with `HTTP/1.1 200 Connection established` header. 
+
+- [zendframework/zend-http#187](https://github.com/zendframework/zend-http/pull/187) fixes infinite recursion on invalid header. Now `InvalidArgumentException` exception is thrown. 
+
+- [zendframework/zend-http#188](https://github.com/zendframework/zend-http/pull/188) fixes `Client::setCookies` method to properly handle array of `SetCookie` objects. Per [documentation](https://docs.laminas.dev/laminas-http/client/cookies/#usage) it should be allowed. 
+
+- [zendframework/zend-http#189](https://github.com/zendframework/zend-http/pull/189) fixes `Headers::toArray` method to properly handle headers of the same type. Behaviour was different depends how header has been attached (`addHeader` or `addHeaderLine` broken before). 
+
+- [zendframework/zend-http#198](https://github.com/zendframework/zend-http/pull/198) fixes merging options in Curl adapter. It was not possible to override integer-key options (constants) set via constructor with method `setOptions`. 
+
+- [zendframework/zend-http#198](https://github.com/zendframework/zend-http/pull/198) fixes allowed options type in `Proxy::setOptions`. `Traversable`, `array` or `Laminas\Config` object is expected.
+
+- [zendframework/zend-http#198](https://github.com/zendframework/zend-http/pull/198) fixes various issues with `Proxy` adapter.
+
+- [zendframework/zend-http#199](https://github.com/zendframework/zend-http/pull/199) fixes saving resource to the file when streaming while client supports compression. Before, incorrectly, compressed resource was saved into the file.
+
+## 2.10.0 - 2019-02-19
+
+### Added
+
+- [zendframework/zend-http#173](https://github.com/zendframework/zend-http/pull/173) adds support for HTTP/2 requests and responses.
+
+### Changed
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- Nothing.
+
+## 2.9.1 - 2019-01-22
 
 ### Added
 
@@ -25,6 +290,44 @@ All notable changes to this project will be documented in this file, in reverse 
 - [zendframework/zend-http#168](https://github.com/zendframework/zend-http/pull/168) fixes a problem when validating the connection timeout for the `Curl` and
   `Socket` client adapters; it now correctly identifies both integer and string
   integer values.
+
+## 2.9.0 - 2019-01-08
+
+### Added
+
+- [zendframework/zend-http#154](https://github.com/zendframework/zend-http/pull/154) adds the method `SetCookie::setEncodeValue()`. By default, Set-Cookie
+  values are passed through `urlencode()`; when a boolean `false` is provided to
+  this new method, the raw value will be used instead.
+
+- [zendframework/zend-http#166](https://github.com/zendframework/zend-http/pull/166) adds support for PHP 7.3.
+
+### Changed
+
+- [zendframework/zend-http#154](https://github.com/zendframework/zend-http/pull/154) changes the behavior of `SetCookie::fromString()` slightly: if the parsed
+  cookie value is the same as the one passed through `urldecode()`, the
+  `SetCookie` header's `$encodeValue` property will be toggled off to ensure the
+  value is not encoded in subsequent serializations, thus retaining the
+  integrity of the value between usages.
+
+- [zendframework/zend-http#161](https://github.com/zendframework/zend-http/pull/161) changes how the Socket and Test adapters aggregate headers. Previously,
+  they would `ucfirst()` the header name; now, they correctly leave the header
+  names untouched, as header names should be considered case-insensitive.
+
+- [zendframework/zend-http#156](https://github.com/zendframework/zend-http/pull/156) changes how gzip and deflate decompression occur in responses, ensuring
+  that if the Content-Length header reports 0, no decompression is attempted,
+  and an empty string is returned.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- [zendframework/zend-http#166](https://github.com/zendframework/zend-http/pull/166) removes support for laminas-stdlib v2 releases.
+
+### Fixed
+
+- Nothing.
 
 ## 2.8.3 - 2019-01-08
 

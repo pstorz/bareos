@@ -1,17 +1,16 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Element;
 
 use DateInterval;
-use DateTimezone;
-use Laminas\Form\Element\DateTime as DateTimeElement;
+use DateTimeZone;
+use Laminas\Form\Element\AbstractDateTime as DateTimeElement;
 use Laminas\Validator\DateStep as DateStepValidator;
+use Laminas\Validator\ValidatorInterface;
+
+use function date;
 
 class Date extends DateTimeElement
 {
@@ -34,22 +33,18 @@ class Date extends DateTimeElement
 
     /**
      * Retrieves a DateStep Validator configured for a Date Input type
-     *
-     * @return \Laminas\Validator\ValidatorInterface
      */
-    protected function getStepValidator()
+    protected function getStepValidator(): ValidatorInterface
     {
         $format    = $this->getFormat();
-        $stepValue = (isset($this->attributes['step']))
-                     ? $this->attributes['step'] : 1; // Days
+        $stepValue = $this->attributes['step'] ?? 1; // Days
 
-        $baseValue = (isset($this->attributes['min']))
-                     ? $this->attributes['min'] : date($format, 0);
+        $baseValue = $this->attributes['min'] ?? date($format, 0);
 
         return new DateStepValidator([
             'format'    => $format,
             'baseValue' => $baseValue,
-            'timezone'  => new DateTimezone('UTC'),
+            'timezone'  => new DateTimeZone('UTC'),
             'step'      => new DateInterval("P{$stepValue}D"),
         ]);
     }

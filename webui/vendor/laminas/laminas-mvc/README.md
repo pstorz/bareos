@@ -21,4 +21,4 @@ The MVC layer is built on top of the following components:
 
 
 - File issues at https://github.com/laminas/laminas-mvc/issues
-- Documentation is at https://docs.laminas.dev/laminas-mvc
+- Documentation is at https://docs.laminas.dev/laminas-mvc/

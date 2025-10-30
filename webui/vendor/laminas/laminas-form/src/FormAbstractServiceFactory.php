@@ -1,90 +1,85 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form;
 
+use Interop\Container\ContainerInterface;
 use Laminas\InputFilter\InputFilterInterface;
-use Laminas\ServiceManager\AbstractFactoryInterface;
-use Laminas\ServiceManager\ServiceLocatorInterface;
+use Laminas\ServiceManager\Factory\AbstractFactoryInterface;
 
-class FormAbstractServiceFactory implements AbstractFactoryInterface
+use function is_array;
+use function is_string;
+
+final class FormAbstractServiceFactory implements AbstractFactoryInterface
 {
-    /**
-     * @var array
-     */
+    /** @var null|array */
     protected $config;
 
-    /**
-     * @var string Top-level configuration key indicating forms configuration
-     */
-    protected $configKey     = 'forms';
+    /** @var string Top-level configuration key indicating forms configuration */
+    protected $configKey = 'forms';
 
-    /**
-     * @var Factory Form factory used to create forms
-     */
+    /** @var null|Factory Form factory used to create forms */
     protected $factory;
 
     /**
-     * Can we create the requested service?
+     * Create a form (v3)
      *
-     * @param  ServiceLocatorInterface $serviceLocator
-     * @param  string $name Service name (as resolved by ServiceManager)
-     * @param  string $requestedName Name by which service was requested
-     * @return bool
+     * @param string $requestedName
+     * @param array|null $options
      */
-    public function canCreateServiceWithName(ServiceLocatorInterface $serviceLocator, $name, $requestedName)
+    public function __invoke(ContainerInterface $container, $requestedName, ?array $options = null): FormInterface
     {
-        $config = $this->getConfig($serviceLocator);
+        $config  = $this->getConfig($container);
+        $config  = $config[$requestedName];
+        $factory = $this->getFormFactory($container);
+
+        $this->marshalInputFilter($config, $container, $factory);
+        return $factory->createForm($config);
+    }
+
+    /**
+     * Can we create the requested service? (v3)
+     *
+     * @param  string             $requestedName
+     */
+    public function canCreate(ContainerInterface $container, $requestedName): bool
+    {
+        // avoid infinite loops when looking up config
+        if ($requestedName === 'config') {
+            return false;
+        }
+
+        $config = $this->getConfig($container);
         if (empty($config)) {
             return false;
         }
 
-        return (isset($config[$requestedName]) && is_array($config[$requestedName]) && !empty($config[$requestedName]));
-    }
-
-    /**
-     * Create a form
-     *
-     * @param  ServiceLocatorInterface $serviceLocator
-     * @param  string $name Service name (as resolved by ServiceManager)
-     * @param  string $requestedName Name by which service was requested
-     * @return Form
-     */
-    public function createServiceWithName(ServiceLocatorInterface $serviceLocator, $name, $requestedName)
-    {
-        $config  = $this->getConfig($serviceLocator);
-        $config  = $config[$requestedName];
-        $factory = $this->getFormFactory($serviceLocator);
-
-        $this->marshalInputFilter($config, $serviceLocator, $factory);
-        return $factory->createForm($config);
+        return isset($config[$requestedName])
+            && is_array($config[$requestedName])
+            && ! empty($config[$requestedName]);
     }
 
     /**
      * Get forms configuration, if any
      *
-     * @param  ServiceLocatorInterface $services
      * @return array
      */
-    protected function getConfig(ServiceLocatorInterface $services)
+    protected function getConfig(ContainerInterface $container): array
     {
         if ($this->config !== null) {
             return $this->config;
         }
 
-        if (!$services->has('Config')) {
+        if (! $container->has('config')) {
             $this->config = [];
             return $this->config;
         }
 
-        $config = $services->get('Config');
-        if (!isset($config[$this->configKey])
-            || !is_array($config[$this->configKey])
+        $config = $container->get('config');
+        if (
+            ! isset($config[$this->configKey])
+            || ! is_array($config[$this->configKey])
         ) {
             $this->config = [];
             return $this->config;
@@ -97,18 +92,17 @@ class FormAbstractServiceFactory implements AbstractFactoryInterface
     /**
      * Retrieve the form factory, creating it if necessary
      *
-     * @param  ServiceLocatorInterface $services
-     * @return Factory
+     * @param  ContainerInterface $services
      */
-    protected function getFormFactory(ServiceLocatorInterface $services)
+    protected function getFormFactory(ContainerInterface $container): Factory
     {
         if ($this->factory instanceof Factory) {
             return $this->factory;
         }
 
         $elements = null;
-        if ($services->has('FormElementManager')) {
-            $elements = $services->get('FormElementManager');
+        if ($container->has('FormElementManager')) {
+            $elements = $container->get('FormElementManager');
         }
 
         $this->factory = new Factory($elements);
@@ -125,12 +119,10 @@ class FormAbstractServiceFactory implements AbstractFactoryInterface
      *   attaches the FilterManager and ValidatorManager to it.
      *
      * @param array $config
-     * @param ServiceLocatorInterface $services
-     * @param Factory $formFactory
      */
-    protected function marshalInputFilter(array &$config, ServiceLocatorInterface $services, Factory $formFactory)
+    protected function marshalInputFilter(array &$config, ContainerInterface $container, Factory $formFactory): void
     {
-        if (!isset($config['input_filter'])) {
+        if (! isset($config['input_filter'])) {
             return;
         }
 
@@ -138,10 +130,11 @@ class FormAbstractServiceFactory implements AbstractFactoryInterface
             return;
         }
 
-        if (is_string($config['input_filter'])
-            && $services->has('InputFilterManager')
+        if (
+            is_string($config['input_filter'])
+            && $container->has('InputFilterManager')
         ) {
-            $inputFilters = $services->get('InputFilterManager');
+            $inputFilters = $container->get('InputFilterManager');
             if ($inputFilters->has($config['input_filter'])) {
                 $config['input_filter'] = $inputFilters->get($config['input_filter']);
                 return;
@@ -149,7 +142,7 @@ class FormAbstractServiceFactory implements AbstractFactoryInterface
         }
 
         $inputFilterFactory = $formFactory->getInputFilterFactory();
-        $inputFilterFactory->getDefaultFilterChain()->setPluginManager($services->get('FilterManager'));
-        $inputFilterFactory->getDefaultValidatorChain()->setPluginManager($services->get('ValidatorManager'));
+        $inputFilterFactory->getDefaultFilterChain()->setPluginManager($container->get('FilterManager'));
+        $inputFilterFactory->getDefaultValidatorChain()->setPluginManager($container->get('ValidatorManager'));
     }
 }

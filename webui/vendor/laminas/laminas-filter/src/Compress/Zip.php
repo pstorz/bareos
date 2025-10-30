@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\Compress;
 
 use Laminas\Filter\Exception;
@@ -39,7 +33,7 @@ class Zip extends AbstractCompressionAlgorithm
      */
     public function __construct($options = null)
     {
-        if (!extension_loaded('zip')) {
+        if (! extension_loaded('zip')) {
             throw new Exception\ExtensionNotLoadedException('This filter needs the zip extension');
         }
         parent::__construct($options);
@@ -88,7 +82,7 @@ class Zip extends AbstractCompressionAlgorithm
      */
     public function setTarget($target)
     {
-        if (!file_exists(dirname($target))) {
+        if (! file_exists(dirname($target))) {
             throw new Exception\InvalidArgumentException("The directory '$target' does not exist");
         }
 
@@ -120,18 +114,18 @@ class Zip extends AbstractCompressionAlgorithm
                 $index    = strrpos($content, DIRECTORY_SEPARATOR) + 1;
                 $content .= DIRECTORY_SEPARATOR;
                 $stack    = [$content];
-                while (!empty($stack)) {
+                while (! empty($stack)) {
                     $current = array_pop($stack);
                     $files   = [];
 
                     $dir = dir($current);
                     while (false !== ($node = $dir->read())) {
-                        if (($node == '.') || ($node == '..')) {
+                        if ($node === '.' || $node === '..') {
                             continue;
                         }
 
                         if (is_dir($current . $node)) {
-                            array_push($stack, $current . $node . DIRECTORY_SEPARATOR);
+                            $stack[] = $current . $node . DIRECTORY_SEPARATOR;
                         }
 
                         if (is_file($current . $node)) {
@@ -157,10 +151,10 @@ class Zip extends AbstractCompressionAlgorithm
             }
         } else {
             $file = $this->getTarget();
-            if (!is_dir($file)) {
+            if (! is_dir($file)) {
                 $file = basename($file);
             } else {
-                $file = "zip.tmp";
+                $file = 'zip.tmp';
             }
 
             $res = $zip->addFromString($file, $content);
@@ -185,7 +179,7 @@ class Zip extends AbstractCompressionAlgorithm
     {
         $archive = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, realpath($content));
 
-        if (empty($archive) || !file_exists($archive)) {
+        if (empty($archive) || ! file_exists($archive)) {
             throw new Exception\RuntimeException('ZIP Archive not found');
         }
 
@@ -193,15 +187,15 @@ class Zip extends AbstractCompressionAlgorithm
         $res     = $zip->open($archive);
 
         $target = $this->getTarget();
-        if (!empty($target) && !is_dir($target)) {
+        if (! empty($target) && ! is_dir($target)) {
             $target = dirname($target);
         }
 
-        if (!empty($target)) {
+        if (! empty($target)) {
             $target = rtrim($target, '/\\') . DIRECTORY_SEPARATOR;
         }
 
-        if (empty($target) || !is_dir($target)) {
+        if (empty($target) || ! is_dir($target)) {
             throw new Exception\RuntimeException('No target for ZIP decompression set');
         }
 

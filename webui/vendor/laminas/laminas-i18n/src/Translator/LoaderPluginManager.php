@@ -57,8 +57,12 @@ class LoaderPluginManager extends AbstractPluginManager
 {
     protected $aliases = [
         'gettext'  => Loader\Gettext::class,
+        'getText'  => Loader\Gettext::class,
+        'GetText'  => Loader\Gettext::class,
         'ini'      => Loader\Ini::class,
         'phparray' => Loader\PhpArray::class,
+        'phpArray' => Loader\PhpArray::class,
+        'PhpArray' => Loader\PhpArray::class,
 
         // Legacy Zend Framework aliases
         \Zend\I18n\Translator\Loader\Gettext::class => Loader\Gettext::class,
@@ -101,7 +105,8 @@ class LoaderPluginManager extends AbstractPluginManager
         }
 
         throw new InvalidServiceException(sprintf(
-            'Plugin of type %s is invalid; must implement %s\Loader\FileLoaderInterface or %s\Loader\RemoteLoaderInterface',
+            'Plugin of type %s is invalid; must implement %s\Loader\FileLoaderInterface '
+            . 'or %s\Loader\RemoteLoaderInterface',
             (is_object($plugin) ? get_class($plugin) : gettype($plugin)),
             __NAMESPACE__,
             __NAMESPACE__
@@ -122,7 +127,8 @@ class LoaderPluginManager extends AbstractPluginManager
             $this->validate($plugin);
         } catch (InvalidServiceException $e) {
             throw new Exception\RuntimeException(sprintf(
-                'Plugin of type %s is invalid; must implement %s\Loader\FileLoaderInterface or %s\Loader\RemoteLoaderInterface',
+                'Plugin of type %s is invalid; must implement %s\Loader\FileLoaderInterface '
+                . 'or %s\Loader\RemoteLoaderInterface',
                 (is_object($plugin) ? get_class($plugin) : gettype($plugin)),
                 __NAMESPACE__,
                 __NAMESPACE__

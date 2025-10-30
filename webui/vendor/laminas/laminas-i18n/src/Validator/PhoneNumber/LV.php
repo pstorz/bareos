@@ -16,7 +16,7 @@ return [
             'tollfree' => '/^80\\d{6}$/',
             'premium' => '/^90\\d{6}$/',
             'shared' => '/^81\\d{6}$/',
-            'emergency' => '/^0[123]|112$/',
+            'emergency' => '/^(?:0[123]|112)$/',
         ],
         'possible' => [
             'general' => '/^\\d{8}$/',

@@ -44,7 +44,7 @@ class HtmlTag extends AbstractHtmlElement
      */
     public function __invoke(array $attribs = [])
     {
-        if (!empty($attribs)) {
+        if (! empty($attribs)) {
             $this->setAttributes($attribs);
         }
 
@@ -118,7 +118,7 @@ class HtmlTag extends AbstractHtmlElement
 
     protected function handleNamespaceAttributes()
     {
-        if ($this->useNamespaces && !$this->handledNamespaces) {
+        if ($this->useNamespaces && ! $this->handledNamespaces) {
             if (method_exists($this->view, 'plugin')) {
                 $doctypeAttributes = [];
 
@@ -126,7 +126,7 @@ class HtmlTag extends AbstractHtmlElement
                     $doctypeAttributes = ['xmlns' => 'http://www.w3.org/1999/xhtml'];
                 }
 
-                if (!empty($doctypeAttributes)) {
+                if (! empty($doctypeAttributes)) {
                     $this->attributes = array_merge($doctypeAttributes, $this->attributes);
                 }
             }

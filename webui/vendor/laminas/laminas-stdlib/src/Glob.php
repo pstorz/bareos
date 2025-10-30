@@ -8,6 +8,22 @@
 
 namespace Laminas\Stdlib;
 
+use function array_merge;
+use function array_unique;
+use function defined;
+use function glob;
+use function strlen;
+use function strpos;
+use function substr;
+
+use const GLOB_BRACE;
+use const GLOB_ERR;
+use const GLOB_MARK;
+use const GLOB_NOCHECK;
+use const GLOB_NOESCAPE;
+use const GLOB_NOSORT;
+use const GLOB_ONLYDIR;
+
 /**
  * Wrapper for glob with fallback if GLOB_BRACE is not available.
  */
@@ -37,7 +53,7 @@ abstract class Glob
      */
     public static function glob($pattern, $flags = 0, $forceFallback = false)
     {
-        if (!defined('GLOB_BRACE') || $forceFallback) {
+        if (! defined('GLOB_BRACE') || $forceFallback) {
             return static::fallbackGlob($pattern, $flags);
         }
 
@@ -95,7 +111,7 @@ abstract class Glob
      */
     protected static function fallbackGlob($pattern, $flags)
     {
-        if (!$flags & self::GLOB_BRACE) {
+        if (! $flags & self::GLOB_BRACE) {
             return static::systemGlob($pattern, $flags);
         }
 
@@ -181,7 +197,7 @@ abstract class Glob
         $current = $begin;
 
         while ($current < $length) {
-            if (!$flags & self::GLOB_NOESCAPE && $pattern[$current] === '\\') {
+            if (! $flags & self::GLOB_NOESCAPE && $pattern[$current] === '\\') {
                 if (++$current === $length) {
                     break;
                 }

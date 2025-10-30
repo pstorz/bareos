@@ -15,13 +15,6 @@ namespace Laminas\View\Helper;
 class InlineScript extends HeadScript
 {
     /**
-     * Registry key for placeholder
-     *
-     * @var string
-     */
-    protected $regKey = 'Laminas_View_Helper_InlineScript';
-
-    /**
      * Return InlineScript object
      *
      * Returns InlineScript helper object; optionally, allows specifying a
@@ -39,7 +32,7 @@ class InlineScript extends HeadScript
         $spec = null,
         $placement = 'APPEND',
         array $attrs = [],
-        $type = 'text/javascript'
+        $type = self::DEFAULT_SCRIPT_TYPE
     ) {
         return parent::__invoke($mode, $spec, $placement, $attrs, $type);
     }

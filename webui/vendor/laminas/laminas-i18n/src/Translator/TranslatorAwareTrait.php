@@ -11,9 +11,9 @@ namespace Laminas\I18n\Translator;
 trait TranslatorAwareTrait
 {
     /**
-     * @var TranslatorInterface
+     * @var TranslatorInterface|null
      */
-    protected $translator = null;
+    protected $translator;
 
     /**
      * @var bool
@@ -28,9 +28,9 @@ trait TranslatorAwareTrait
     /**
      * Sets translator to use in helper
      *
-     * @param TranslatorInterface $translator
-     * @param string              $textDomain
-     * @return mixed
+     * @param TranslatorInterface|null $translator
+     * @param string|null              $textDomain
+     * @return $this
      */
     public function setTranslator(TranslatorInterface $translator = null, $textDomain = null)
     {
@@ -46,7 +46,7 @@ trait TranslatorAwareTrait
     /**
      * Returns translator used in object
      *
-     * @return TranslatorInterface
+     * @return TranslatorInterface|null
      */
     public function getTranslator()
     {
@@ -67,7 +67,7 @@ trait TranslatorAwareTrait
      * Sets whether translator is enabled and should be used
      *
      * @param bool $enabled
-     * @return mixed
+     * @return $this
      */
     public function setTranslatorEnabled($enabled = true)
     {
@@ -90,7 +90,7 @@ trait TranslatorAwareTrait
      * Set translation text domain
      *
      * @param string $textDomain
-     * @return mixed
+     * @return $this
      */
     public function setTranslatorTextDomain($textDomain = 'default')
     {

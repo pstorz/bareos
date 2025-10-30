@@ -10,6 +10,11 @@ namespace Laminas\Stdlib\StringWrapper;
 
 use Laminas\Stdlib\Exception;
 
+use function extension_loaded;
+use function grapheme_strlen;
+use function grapheme_strpos;
+use function grapheme_substr;
+
 class Intl extends AbstractStringWrapper
 {
     /**
@@ -36,7 +41,7 @@ class Intl extends AbstractStringWrapper
      */
     public function __construct()
     {
-        if (!extension_loaded('intl')) {
+        if (! extension_loaded('intl')) {
             throw new Exception\ExtensionNotLoadedException(
                 'PHP extension "intl" is required for this wrapper'
             );

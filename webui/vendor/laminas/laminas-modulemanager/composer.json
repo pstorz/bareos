@@ -20,28 +20,27 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-master": "2.6-dev",
-            "dev-develop": "2.7-dev"
+            "dev-master": "2.7-dev",
+            "dev-develop": "2.8-dev"
         }
     },
     "require": {
-        "php": ">=5.5",
-        "laminas/laminas-eventmanager": "~2.5",
-        "laminas/laminas-stdlib": "~2.7",
+        "php": "^5.5 || ^7.0",
+        "laminas/laminas-config": "^2.6 || ^3.1",
+        "laminas/laminas-eventmanager": "^2.6.2 || ^3.0",
+        "laminas/laminas-stdlib": "^2.7 || ^3.0",
         "laminas/laminas-zendframework-bridge": "^1.0"
     },
     "require-dev": {
-        "fabpot/php-cs-fixer": "1.7.*",
-        "laminas/laminas-config": "~2.5",
-        "laminas/laminas-console": "~2.5",
-        "laminas/laminas-di": "~2.5",
-        "laminas/laminas-loader": "~2.5",
-        "laminas/laminas-mvc": "~2.5",
-        "laminas/laminas-servicemanager": "~2.5",
+        "laminas/laminas-coding-standard": "~1.0.0",
+        "laminas/laminas-console": "^2.6",
+        "laminas/laminas-di": "^2.6",
+        "laminas/laminas-loader": "^2.5",
+        "laminas/laminas-mvc": "^2.7",
+        "laminas/laminas-servicemanager": "^2.7.5 || ^3.0.3",
         "phpunit/phpunit": "~4.0"
     },
     "suggest": {
-        "laminas/laminas-config": "Laminas\\Config component",
         "laminas/laminas-console": "Laminas\\Console component",
         "laminas/laminas-loader": "Laminas\\Loader component",
         "laminas/laminas-mvc": "Laminas\\Mvc component",
@@ -56,6 +55,17 @@
         "psr-4": {
             "LaminasTest\\ModuleManager\\": "test/"
         }
+    },
+    "scripts": {
+        "check": [
+            "@cs-check",
+            "@test"
+        ],
+        "cs-check": "phpcs",
+        "cs-fix": "phpcbf",
+        "test": "phpunit --colors=always",
+        "test-coverage": "phpunit --colors=always --coverage-clover clover.xml",
+        "upload-coverage": "coveralls -v"
     },
     "replace": {
         "zendframework/zend-modulemanager": "self.version"

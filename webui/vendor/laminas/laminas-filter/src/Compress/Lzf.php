@@ -1,20 +1,11 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\Compress;
 
 use Laminas\Filter\Exception;
 
 /**
  * Compression adapter for Lzf
- *
- * @category   Laminas
- * @package    Laminas_Filter
  */
 class Lzf implements CompressionAlgorithmInterface
 {
@@ -26,7 +17,7 @@ class Lzf implements CompressionAlgorithmInterface
      */
     public function __construct($options = null)
     {
-        if (!extension_loaded('lzf')) {
+        if (! extension_loaded('lzf')) {
             throw new Exception\ExtensionNotLoadedException('This filter needs the lzf extension');
         }
     }
@@ -41,7 +32,7 @@ class Lzf implements CompressionAlgorithmInterface
     public function compress($content)
     {
         $compressed = lzf_compress($content);
-        if (!$compressed) {
+        if (! $compressed) {
             throw new Exception\RuntimeException('Error during compression');
         }
 
@@ -58,7 +49,7 @@ class Lzf implements CompressionAlgorithmInterface
     public function decompress($content)
     {
         $compressed = lzf_decompress($content);
-        if (!$compressed) {
+        if (! $compressed) {
             throw new Exception\RuntimeException('Error during decompression');
         }
 

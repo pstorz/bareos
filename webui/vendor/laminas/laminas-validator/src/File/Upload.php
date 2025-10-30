@@ -11,6 +11,7 @@ namespace Laminas\Validator\File;
 use Countable;
 use Laminas\Validator\AbstractValidator;
 use Laminas\Validator\Exception;
+use Psr\Http\Message\UploadedFileInterface;
 
 /**
  * Validator for the maximum size of a file up to a max of 2GB
@@ -36,13 +37,14 @@ class Upload extends AbstractValidator
      * @var array Error message templates
      */
     protected $messageTemplates = [
-        self::INI_SIZE       => "File '%value%' exceeds the defined ini size",
-        self::FORM_SIZE      => "File '%value%' exceeds the defined form size",
+        self::INI_SIZE       => "File '%value%' exceeds upload_max_filesize directive in php.ini",
+        self::FORM_SIZE      => "File '%value%' exceeds the MAX_FILE_SIZE directive that was "
+            . 'specified in the HTML form',
         self::PARTIAL        => "File '%value%' was only partially uploaded",
         self::NO_FILE        => "File '%value%' was not uploaded",
-        self::NO_TMP_DIR     => "No temporary directory was found for file '%value%'",
-        self::CANT_WRITE     => "File '%value%' can't be written",
-        self::EXTENSION      => "A PHP extension returned an error while uploading the file '%value%'",
+        self::NO_TMP_DIR     => "Missing a temporary folder to store '%value%'",
+        self::CANT_WRITE     => "Failed to write file '%value%' to disk",
+        self::EXTENSION      => "A PHP extension stopped uploading the file '%value%'",
         self::ATTACK         => "File '%value%' was illegally uploaded. This could be a possible attack",
         self::FILE_NOT_FOUND => "File '%value%' was not found",
         self::UNKNOWN        => "Unknown error while uploading file '%value%'"
@@ -86,12 +88,16 @@ class Upload extends AbstractValidator
                     $return[$file] = $this->options['files'][$name];
                 }
 
-                if ($content['name'] === $file) {
+                if ($content instanceof UploadedFileInterface) {
+                    if ($content->getClientFilename() === $file) {
+                        $return[$name] = $this->options['files'][$name];
+                    }
+                } elseif ($content['name'] === $file) {
                     $return[$name] = $this->options['files'][$name];
                 }
             }
 
-            if (count($return) === 0) {
+            if (! $return) {
                 throw new Exception\InvalidArgumentException("The file '$file' was not found");
             }
 
@@ -123,7 +129,9 @@ class Upload extends AbstractValidator
         }
 
         foreach ($this->options['files'] as $file => $content) {
-            if (! isset($content['error'])) {
+            if (! $content instanceof UploadedFileInterface
+                && ! isset($content['error'])
+            ) {
                 unset($this->options['files'][$file]);
             }
         }
@@ -147,6 +155,18 @@ class Upload extends AbstractValidator
             $files = array_merge($files, $this->getFiles($value));
         } else {
             foreach ($this->getFiles() as $file => $content) {
+                if ($content instanceof UploadedFileInterface) {
+                    if ($content->getClientFilename() === $value) {
+                        $files = array_merge($files, $this->getFiles($file));
+                    }
+
+                    // PSR cannot search by tmp_name because it does not have
+                    // a public interface to get it, only user defined name
+                    // from form field.
+                    continue;
+                }
+
+
                 if (isset($content['name']) && ($content['name'] === $value)) {
                     $files = array_merge($files, $this->getFiles($file));
                 }
@@ -163,8 +183,19 @@ class Upload extends AbstractValidator
 
         foreach ($files as $file => $content) {
             $this->value = $file;
-            switch ($content['error']) {
+            $error = $content instanceof UploadedFileInterface
+                ? $content->getError()
+                : $content['error'];
+
+            switch ($error) {
                 case 0:
+                    if ($content instanceof UploadedFileInterface) {
+                        // done!
+                        break;
+                    }
+
+                    // For standard SAPI environments, check that the upload
+                    // was valid
                     if (! is_uploaded_file($content['tmp_name'])) {
                         $this->throwError($content, self::ATTACK);
                     }
@@ -204,7 +235,7 @@ class Upload extends AbstractValidator
             }
         }
 
-        if (count($this->getMessages()) > 0) {
+        if ($this->getMessages()) {
             return false;
         }
 
@@ -214,7 +245,7 @@ class Upload extends AbstractValidator
     /**
      * Throws an error of the given type
      *
-     * @param  string $file
+     * @param  array|string|UploadedFileInterface $file
      * @param  string $errorType
      * @return false
      */
@@ -227,6 +258,8 @@ class Upload extends AbstractValidator
                 }
             } elseif (is_string($file)) {
                 $this->value = $file;
+            } elseif ($file instanceof UploadedFileInterface) {
+                $this->value = $file->getClientFilename();
             }
         }
 

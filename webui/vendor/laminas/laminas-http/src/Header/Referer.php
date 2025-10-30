@@ -22,7 +22,7 @@ class Referer extends AbstractLocation
      * according to RFC Referer URI should not have fragment
      *
      * @param  string|HttpUri $uri
-     * @return Referer
+     * @return $this
      */
     public function setUri($uri)
     {

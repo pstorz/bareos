@@ -1,6 +1,6 @@
 {
     "name": "laminas/laminas-i18n",
-    "description": " ",
+    "description": "Provide translations for your application, and filter and validate internationalized values",
     "license": "BSD-3-Clause",
     "keywords": [
         "laminas",
@@ -19,35 +19,38 @@
         "sort-packages": true
     },
     "extra": {
-        "branch-alias": {
-            "dev-master": "2.6-dev",
-            "dev-develop": "2.7-dev"
+        "laminas": {
+            "component": "Laminas\\I18n",
+            "config-provider": "Laminas\\I18n\\ConfigProvider"
         }
     },
     "require": {
-        "php": "^5.5 || ^7.0",
+        "php": "^7.3 || ~8.0.0",
+        "ext-intl": "*",
         "laminas/laminas-stdlib": "^2.7 || ^3.0",
         "laminas/laminas-zendframework-bridge": "^1.0"
     },
     "require-dev": {
-        "fabpot/php-cs-fixer": "1.7.*",
-        "laminas/laminas-cache": "^2.5",
+        "laminas/laminas-cache": "^2.6.1",
+        "laminas/laminas-coding-standard": "~1.0.0",
         "laminas/laminas-config": "^2.6",
         "laminas/laminas-eventmanager": "^2.6.2 || ^3.0",
         "laminas/laminas-filter": "^2.6.1",
-        "laminas/laminas-servicemanager": "^2.7.5 || ^3.0.3",
-        "laminas/laminas-validator": "^2.5",
-        "laminas/laminas-view": "^2.5",
-        "phpunit/phpunit": "~4.0"
+        "laminas/laminas-servicemanager": "^3.2.1",
+        "laminas/laminas-validator": "^2.6",
+        "laminas/laminas-view": "^2.6.3",
+        "phpunit/phpunit": "^9.3"
+    },
+    "conflict": {
+        "phpspec/prophecy": "<1.9.0"
     },
     "suggest": {
-        "ext-intl": "Required for most features of Laminas\\I18n; included in default builds of PHP",
-        "laminas/laminas-cache": "Laminas\\Cache component",
-        "laminas/laminas-config": "Laminas\\Config component",
+        "laminas/laminas-cache": "You should install this package to cache the translations",
+        "laminas/laminas-config": "You should install this package to use the INI translation format",
         "laminas/laminas-eventmanager": "You should install this package to use the events in the translator",
         "laminas/laminas-filter": "You should install this package to use the provided filters",
-        "laminas/laminas-i18n-resources": "Translation resources",
-        "laminas/laminas-servicemanager": "Laminas\\ServiceManager component",
+        "laminas/laminas-i18n-resources": "This package provides validator and captcha translations",
+        "laminas/laminas-servicemanager": "You should install this package to use the translator",
         "laminas/laminas-validator": "You should install this package to use the provided validators",
         "laminas/laminas-view": "You should install this package to use the provided view helpers"
     },
@@ -61,7 +64,17 @@
             "LaminasTest\\I18n\\": "test/"
         }
     },
+    "scripts": {
+        "check": [
+            "@cs-check",
+            "@test"
+        ],
+        "cs-check": "phpcs",
+        "cs-fix": "phpcbf",
+        "test": "phpunit --colors=always",
+        "test-coverage": "phpunit --colors=always --coverage-clover clover.xml"
+    },
     "replace": {
-        "zendframework/zend-i18n": "self.version"
+        "zendframework/zend-i18n": "^2.10.1"
     }
 }

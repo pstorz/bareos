@@ -8,7 +8,6 @@ class ComposerStaticInit6d6fccca6c6e2f153a672acb51f82941
 {
     public static $files = array (
         '7e9bd612cc444b3eed788ebbe46263a0' => __DIR__ . '/..' . '/laminas/laminas-zendframework-bridge/src/autoload.php',
-        '0d59ee240a4cd96ddbb4ff164fccea4d' => __DIR__ . '/..' . '/symfony/polyfill-php73/bootstrap.php',
     );
 
     public static $prefixLengthsPsr4 = array (
@@ -16,9 +15,9 @@ class ComposerStaticInit6d6fccca6c6e2f153a672acb51f82941
         array (
             'Zend\\Version\\' => 13,
         ),
-        'S' => 
+        'W' => 
         array (
-            'Symfony\\Polyfill\\Php73\\' => 23,
+            'Webmozart\\Assert\\' => 17,
         ),
         'P' => 
         array (
@@ -35,6 +34,7 @@ class ComposerStaticInit6d6fccca6c6e2f153a672acb51f82941
             'Laminas\\Session\\' => 16,
             'Laminas\\ServiceManager\\' => 23,
             'Laminas\\Serializer\\' => 19,
+            'Laminas\\Router\\' => 15,
             'Laminas\\Navigation\\' => 19,
             'Laminas\\Mvc\\' => 12,
             'Laminas\\ModuleManager\\' => 22,
@@ -66,9 +66,9 @@ class ComposerStaticInit6d6fccca6c6e2f153a672acb51f82941
         array (
             0 => __DIR__ . '/..' . '/zendframework/zend-version/src',
         ),
-        'Symfony\\Polyfill\\Php73\\' => 
+        'Webmozart\\Assert\\' => 
         array (
-            0 => __DIR__ . '/..' . '/symfony/polyfill-php73',
+            0 => __DIR__ . '/..' . '/webmozart/assert/src',
         ),
         'Psr\\Log\\' => 
         array (
@@ -109,6 +109,10 @@ class ComposerStaticInit6d6fccca6c6e2f153a672acb51f82941
         'Laminas\\Serializer\\' => 
         array (
             0 => __DIR__ . '/..' . '/laminas/laminas-serializer/src',
+        ),
+        'Laminas\\Router\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/laminas/laminas-router/src',
         ),
         'Laminas\\Navigation\\' => 
         array (
@@ -194,7 +198,6 @@ class ComposerStaticInit6d6fccca6c6e2f153a672acb51f82941
 
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
-        'JsonException' => __DIR__ . '/..' . '/symfony/polyfill-php73/Resources/stubs/JsonException.php',
     );
 
     public static function getInitializer(ClassLoader $loader)

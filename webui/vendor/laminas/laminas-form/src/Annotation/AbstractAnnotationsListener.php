@@ -1,15 +1,14 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Annotation;
 
 use Laminas\EventManager\AbstractListenerAggregate;
+use Laminas\EventManager\EventInterface;
 use ReflectionClass;
+
+use function assert;
 
 /**
  * Base annotations listener.
@@ -26,19 +25,19 @@ abstract class AbstractAnnotationsListener extends AbstractListenerAggregate
     /**
      * Attempt to discover a name set via annotation
      *
-     * @param  \Laminas\EventManager\EventInterface $e
      * @return false|string
      */
-    public function handleNameAnnotation($e)
+    public function handleNameAnnotation(EventInterface $e)
     {
         $annotations = $e->getParam('annotations');
+        assert($annotations instanceof AnnotationCollection);
 
-        if (!$annotations->hasAnnotation('Laminas\Form\Annotation\Name')) {
+        if (! $annotations->hasAnnotation(Name::class)) {
             return false;
         }
 
         foreach ($annotations as $annotation) {
-            if (!$annotation instanceof Name) {
+            if (! $annotation instanceof Name) {
                 continue;
             }
             return $annotation->getName();
@@ -49,11 +48,8 @@ abstract class AbstractAnnotationsListener extends AbstractListenerAggregate
 
     /**
      * Discover the fallback name via reflection
-     *
-     * @param  \Laminas\EventManager\EventInterface $e
-     * @return string
      */
-    public function discoverFallbackName($e)
+    public function discoverFallbackName(EventInterface $e): string
     {
         $reflection = $e->getParam('reflection');
         if ($reflection instanceof ReflectionClass) {

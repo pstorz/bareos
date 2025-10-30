@@ -66,7 +66,7 @@ class TemplatePathStack implements ResolverInterface
     {
         $this->useViewStream = (bool) ini_get('short_open_tag');
         if ($this->useViewStream) {
-            if (!in_array('laminas.view', stream_get_wrappers())) {
+            if (! in_array('laminas.view', stream_get_wrappers())) {
                 stream_wrapper_register('laminas.view', 'Laminas\View\Stream');
             }
         }
@@ -86,7 +86,7 @@ class TemplatePathStack implements ResolverInterface
      */
     public function setOptions($options)
     {
-        if (!is_array($options) && !$options instanceof Traversable) {
+        if (! is_array($options) && ! $options instanceof Traversable) {
             throw new Exception\InvalidArgumentException(sprintf(
                 'Expected array or Traversable object; received "%s"',
                 (is_object($options) ? get_class($options) : gettype($options))
@@ -196,7 +196,7 @@ class TemplatePathStack implements ResolverInterface
      */
     public function addPath($path)
     {
-        if (!is_string($path)) {
+        if (! is_string($path)) {
             throw new Exception\InvalidArgumentException(sprintf(
                 'Invalid path provided; must be a string, received %s',
                 gettype($path)
@@ -291,7 +291,7 @@ class TemplatePathStack implements ResolverInterface
             );
         }
 
-        if (!count($this->paths)) {
+        if (! count($this->paths)) {
             $this->lastLookupFailure = static::FAILURE_NO_PATHS;
             return false;
         }
@@ -306,10 +306,10 @@ class TemplatePathStack implements ResolverInterface
             $file = new SplFileInfo($path . $name);
             if ($file->isReadable()) {
                 // Found! Return it.
-                if (($filePath = $file->getRealPath()) === false && substr($path, 0, 7) === 'phar://') {
+                if (($filePath = $file->getRealPath()) === false && 0 === strpos($path, 'phar://')) {
                     // Do not try to expand phar paths (realpath + phars == fail)
                     $filePath = $path . $name;
-                    if (!file_exists($filePath)) {
+                    if (! file_exists($filePath)) {
                         break;
                     }
                 }

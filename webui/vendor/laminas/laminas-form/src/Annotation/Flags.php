@@ -1,12 +1,12 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Annotation;
+
+use Attribute;
+use Doctrine\Common\Annotations\Annotation;
+use Doctrine\Common\Annotations\Annotation\NamedArgumentConstructor;
 
 /**
  * Flags annotation
@@ -18,16 +18,31 @@ namespace Laminas\Form\Annotation;
  * The value should be an associative array.
  *
  * @Annotation
+ * @NamedArgumentConstructor
  */
-class Flags extends AbstractArrayAnnotation
+#[Attribute]
+final class Flags
 {
+    /** @var array */
+    protected $flags;
+
+    /**
+     * Receive and process the contents of an annotation
+     *
+     * @param array $flags
+     */
+    public function __construct(array $flags)
+    {
+        $this->flags = $flags;
+    }
+
     /**
      * Retrieve the flags
      *
-     * @return null|array
+     * @return array
      */
-    public function getFlags()
+    public function getFlags(): array
     {
-        return $this->value;
+        return $this->flags;
     }
 }

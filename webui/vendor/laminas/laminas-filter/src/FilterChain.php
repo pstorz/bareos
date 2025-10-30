@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter;
 
 use Countable;
@@ -53,7 +47,7 @@ class FilterChain extends AbstractFilter implements Countable
      */
     public function setOptions($options)
     {
-        if (!is_array($options) && !$options instanceof Traversable) {
+        if (! is_array($options) && ! $options instanceof Traversable) {
             throw new Exception\InvalidArgumentException(sprintf(
                 'Expected array or Traversable; received "%s"',
                 (is_object($options) ? get_class($options) : gettype($options))
@@ -73,8 +67,8 @@ class FilterChain extends AbstractFilter implements Countable
                     break;
                 case 'filters':
                     foreach ($value as $spec) {
-                        $name     = isset($spec['name'])     ? $spec['name']     : false;
-                        $options  = isset($spec['options'])  ? $spec['options']  : [];
+                        $name     = isset($spec['name']) ? $spec['name'] : false;
+                        $options  = isset($spec['options']) ? $spec['options'] : [];
                         $priority = isset($spec['priority']) ? $spec['priority'] : static::DEFAULT_PRIORITY;
                         if ($name) {
                             $this->attachByName($name, $options, $priority);
@@ -107,7 +101,7 @@ class FilterChain extends AbstractFilter implements Countable
      */
     public function getPluginManager()
     {
-        if (!$this->plugins) {
+        if (! $this->plugins) {
             $this->setPluginManager(new FilterPluginManager(new ServiceManager()));
         }
         return $this->plugins;
@@ -148,8 +142,8 @@ class FilterChain extends AbstractFilter implements Countable
      */
     public function attach($callback, $priority = self::DEFAULT_PRIORITY)
     {
-        if (!is_callable($callback)) {
-            if (!$callback instanceof FilterInterface) {
+        if (! is_callable($callback)) {
+            if (! $callback instanceof FilterInterface) {
                 throw new Exception\InvalidArgumentException(sprintf(
                     'Expected a valid PHP callback; received "%s"',
                     (is_object($callback) ? get_class($callback) : gettype($callback))
@@ -174,7 +168,7 @@ class FilterChain extends AbstractFilter implements Countable
      */
     public function attachByName($name, $options = [], $priority = self::DEFAULT_PRIORITY)
     {
-        if (!is_array($options)) {
+        if (! is_array($options)) {
             $options = (array) $options;
         } elseif (empty($options)) {
             $options = null;

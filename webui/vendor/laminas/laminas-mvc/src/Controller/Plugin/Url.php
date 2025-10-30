@@ -13,7 +13,7 @@ use Laminas\Mvc\Exception;
 use Laminas\Mvc\InjectApplicationEventInterface;
 use Laminas\Mvc\ModuleRouteListener;
 use Laminas\Mvc\MvcEvent;
-use Laminas\Mvc\Router\RouteStackInterface;
+use Laminas\Router\RouteStackInterface;
 use Traversable;
 
 class Url extends AbstractPlugin

@@ -24,8 +24,8 @@ class AutoloaderListener extends AbstractListener
     public function __invoke(ModuleEvent $e)
     {
         $module = $e->getModule();
-        if (!$module instanceof AutoloaderProviderInterface
-            && !method_exists($module, 'getAutoloaderConfig')
+        if (! $module instanceof AutoloaderProviderInterface
+            && ! method_exists($module, 'getAutoloaderConfig')
         ) {
             return;
         }

@@ -76,7 +76,7 @@ class ServerUrl extends AbstractHelper
             return;
         }
 
-        if (isset($_SERVER['HTTP_HOST']) && !empty($_SERVER['HTTP_HOST'])) {
+        if (isset($_SERVER['HTTP_HOST']) && ! empty($_SERVER['HTTP_HOST'])) {
             // Detect if the port is set in SERVER_PORT and included in HTTP_HOST
             if (isset($_SERVER['SERVER_PORT'])
                 && preg_match('/^(?P<host>.*?):(?P<port>\d+)$/', $_SERVER['HTTP_HOST'], $matches)
@@ -102,7 +102,7 @@ class ServerUrl extends AbstractHelper
             return;
         }
 
-        if (!isset($_SERVER['SERVER_NAME']) || !isset($_SERVER['SERVER_PORT'])) {
+        if (! isset($_SERVER['SERVER_NAME']) || ! isset($_SERVER['SERVER_PORT'])) {
             return;
         }
 
@@ -169,11 +169,11 @@ class ServerUrl extends AbstractHelper
      */
     protected function setHostFromProxy()
     {
-        if (!$this->useProxy) {
+        if (! $this->useProxy) {
             return false;
         }
 
-        if (!isset($_SERVER['HTTP_X_FORWARDED_HOST']) || empty($_SERVER['HTTP_X_FORWARDED_HOST'])) {
+        if (! isset($_SERVER['HTTP_X_FORWARDED_HOST']) || empty($_SERVER['HTTP_X_FORWARDED_HOST'])) {
             return false;
         }
 
@@ -197,11 +197,11 @@ class ServerUrl extends AbstractHelper
      */
     protected function setPortFromProxy()
     {
-        if (!$this->useProxy) {
+        if (! $this->useProxy) {
             return false;
         }
 
-        if (!isset($_SERVER['HTTP_X_FORWARDED_PORT']) || empty($_SERVER['HTTP_X_FORWARDED_PORT'])) {
+        if (! isset($_SERVER['HTTP_X_FORWARDED_PORT']) || empty($_SERVER['HTTP_X_FORWARDED_PORT'])) {
             return false;
         }
 
@@ -218,7 +218,7 @@ class ServerUrl extends AbstractHelper
      */
     protected function setSchemeFromProxy()
     {
-        if (!$this->useProxy) {
+        if (! $this->useProxy) {
             return false;
         }
 
@@ -230,7 +230,7 @@ class ServerUrl extends AbstractHelper
             }
         }
 
-        if (!isset($_SERVER['HTTP_X_FORWARDED_PROTO']) || empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
+        if (! isset($_SERVER['HTTP_X_FORWARDED_PROTO']) || empty($_SERVER['HTTP_X_FORWARDED_PROTO'])) {
             return false;
         }
 

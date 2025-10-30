@@ -1,17 +1,17 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\View\Helper\Captcha;
 
 use Laminas\Captcha\ReCaptcha as CaptchaAdapter;
+use Laminas\Form\Element\Captcha;
 use Laminas\Form\ElementInterface;
 use Laminas\Form\Exception;
 use Laminas\Form\View\Helper\FormInput;
+
+use function assert;
+use function sprintf;
 
 class ReCaptcha extends FormInput
 {
@@ -20,12 +20,14 @@ class ReCaptcha extends FormInput
      *
      * Proxies to {@link render()}.
      *
-     * @param  ElementInterface $element
-     * @return string
+     * @template T as null|ElementInterface
+     * @psalm-param T $element
+     * @psalm-return (T is null ? self : string)
+     * @return string|self
      */
-    public function __invoke(ElementInterface $element = null)
+    public function __invoke(?ElementInterface $element = null)
     {
-        if (!$element) {
+        if (! $element) {
             return $this;
         }
 
@@ -35,107 +37,47 @@ class ReCaptcha extends FormInput
     /**
      * Render ReCaptcha form elements
      *
-     * @param  ElementInterface $element
      * @throws Exception\DomainException
-     * @return string
      */
-    public function render(ElementInterface $element)
+    public function render(ElementInterface $element): string
     {
-        $attributes = $element->getAttributes();
+        assert($element instanceof Captcha);
         $captcha = $element->getCaptcha();
 
-        if ($captcha === null || !$captcha instanceof CaptchaAdapter) {
+        if ($captcha === null || ! $captcha instanceof CaptchaAdapter) {
             throw new Exception\DomainException(sprintf(
-                '%s requires that the element has a "captcha" attribute implementing Laminas\Captcha\AdapterInterface; none found',
+                '%s requires that the element has a "captcha" attribute implementing Laminas\Captcha\AdapterInterface; '
+                . 'none found',
                 __METHOD__
             ));
         }
 
-        $name          = $element->getName();
-        $id            = isset($attributes['id']) ? $attributes['id'] : $name;
-        $challengeName = empty($name) ? 'recaptcha_challenge_field' : $name . '[recaptcha_challenge_field]';
-        $responseName  = empty($name) ? 'recaptcha_response_field'  : $name . '[recaptcha_response_field]';
-        $challengeId   = $id . '-challenge';
-        $responseId    = $id . '-response';
+        $name = $element->getName();
+        assert($name !== null);
 
-        $markup = $captcha->getService()->getHtml($name);
-        $hidden = $this->renderHiddenInput($challengeName, $challengeId, $responseName, $responseId);
-        $js     = $this->renderJsEvents($challengeId, $responseId);
+        $markup = $captcha->getService()->getHtml();
+        $hidden = $this->renderHiddenInput($name);
 
-        return $hidden . $markup . $js;
+        return $hidden . $markup;
     }
 
     /**
-     * Render hidden input elements for the challenge and response
-     *
-     * @param  string $challengeName
-     * @param  string $challengeId
-     * @param  string $responseName
-     * @param  string $responseId
-     * @return string
+     * Render hidden input element if the element's name is not 'g-recaptcha-response'
+     * so that required validation works
      */
-    protected function renderHiddenInput($challengeName, $challengeId, $responseName, $responseId)
+    protected function renderHiddenInput(string $name): string
     {
+        if ($name === 'g-recaptcha-response') {
+            return '';
+        }
+
         $pattern        = '<input type="hidden" %s%s';
         $closingBracket = $this->getInlineClosingBracket();
 
         $attributes = $this->createAttributesString([
-            'name' => $challengeName,
-            'id'   => $challengeId,
+            'name'  => $name,
+            'value' => 'g-recaptcha-response',
         ]);
-        $challenge = sprintf($pattern, $attributes, $closingBracket);
-
-        $attributes = $this->createAttributesString([
-            'name' => $responseName,
-            'id'   => $responseId,
-        ]);
-        $response = sprintf($pattern, $attributes, $closingBracket);
-
-        return $challenge . $response;
-    }
-
-    /**
-     * Create the JS events used to bind the challenge and response values to the submitted form.
-     *
-     * @param  string $challengeId
-     * @param  string $responseId
-     * @return string
-     */
-    protected function renderJsEvents($challengeId, $responseId)
-    {
-        $elseif = 'else if'; // php-cs-fixer bug
-        $js =<<<EOJ
-<script type="text/javascript" language="JavaScript">
-function windowOnLoad(fn)
-{
-    var old = window.onload;
-    window.onload = function () {
-        if (old) {
-            old();
-        }
-        fn();
-    };
-}
-function laminasBindEvent(el, eventName, eventHandler)
-{
-    if (el.addEventListener) {
-        el.addEventListener(eventName, eventHandler, false);
-    } $elseif (el.attachEvent) {
-        el.attachEvent('on'+eventName, eventHandler);
-    }
-}
-windowOnLoad(function () {
-    laminasBindEvent(
-        document.getElementById("$challengeId").form,
-        'submit',
-        function (e) {
-            document.getElementById("$challengeId").value = document.getElementById("recaptcha_challenge_field").value;
-            document.getElementById("$responseId").value = document.getElementById("recaptcha_response_field").value;
-        }
-    );
-});
-</script>
-EOJ;
-        return $js;
+        return sprintf($pattern, $attributes, $closingBracket);
     }
 }

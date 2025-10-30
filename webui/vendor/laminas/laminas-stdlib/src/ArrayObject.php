@@ -13,6 +13,24 @@ use Countable;
 use IteratorAggregate;
 use Serializable;
 
+use function array_keys;
+use function asort;
+use function class_exists;
+use function count;
+use function get_object_vars;
+use function in_array;
+use function is_array;
+use function is_callable;
+use function is_object;
+use function ksort;
+use function natcasesort;
+use function natsort;
+use function serialize;
+use function strpos;
+use function uasort;
+use function uksort;
+use function unserialize;
+
 /**
  * Custom framework ArrayObject implementation
  *
@@ -168,7 +186,7 @@ class ArrayObject implements IteratorAggregate, ArrayAccess, Serializable, Count
      */
     public function count()
     {
-        return is_countable($this->storage) ? count($this->storage) : 1;
+        return count($this->storage);
     }
 
     /**
@@ -179,14 +197,16 @@ class ArrayObject implements IteratorAggregate, ArrayAccess, Serializable, Count
      */
     public function exchangeArray($data)
     {
-        if (!is_array($data) && !is_object($data)) {
-            throw new Exception\InvalidArgumentException('Passed variable is not an array or object, using empty array instead');
+        if (! is_array($data) && ! is_object($data)) {
+            throw new Exception\InvalidArgumentException(
+                'Passed variable is not an array or object, using empty array instead'
+            );
         }
 
         if (is_object($data) && ($data instanceof self || $data instanceof \ArrayObject)) {
             $data = $data->getArrayCopy();
         }
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             $data = (array) $data;
         }
 
@@ -289,7 +309,7 @@ class ArrayObject implements IteratorAggregate, ArrayAccess, Serializable, Count
     public function &offsetGet($key)
     {
         $ret = null;
-        if (!$this->offsetExists($key)) {
+        if (! $this->offsetExists($key)) {
             return $ret;
         }
         $ret =& $this->storage[$key];
@@ -422,7 +442,7 @@ class ArrayObject implements IteratorAggregate, ArrayAccess, Serializable, Count
                     $this->setIteratorClass($v);
                     break;
                 case 'protectedProperties':
-                    continue 2;
+                    break;
                 default:
                     $this->__set($k, $v);
             }

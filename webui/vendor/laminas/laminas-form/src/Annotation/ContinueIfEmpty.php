@@ -1,14 +1,15 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Annotation;
 
+use Attribute;
+use Doctrine\Common\Annotations\Annotation;
+use Doctrine\Common\Annotations\Annotation\NamedArgumentConstructor;
 use Laminas\Filter\Boolean as BooleanFilter;
+
+use function is_bool;
 
 /**
  * ContinueIfEmpty annotation
@@ -16,29 +17,26 @@ use Laminas\Filter\Boolean as BooleanFilter;
  * Presence of this annotation is a hint that the associated
  * \Laminas\InputFilter\Input should enable the continueIfEmpty flag.
  *
- * @Annotation
  * @deprecated 2.4.8 Use `@Validator({"name":"NotEmpty"})` instead.
+ *
+ * @Annotation
+ * @NamedArgumentConstructor
  */
-class ContinueIfEmpty
+#[Attribute]
+final class ContinueIfEmpty
 {
-    /**
-     * @var bool
-     */
-    protected $continueIfEmpty = true;
+    /** @var bool */
+    protected $continueIfEmpty;
 
     /**
      * Receive and process the contents of an annotation
      *
-     * @param array $data
+     * @param bool|string $continueIfEmpty
      */
-    public function __construct(array $data)
+    public function __construct($continueIfEmpty = true)
     {
-        $continueIfEmpty = (isset($data['value']))
-            ? $data['value']
-            : false;
-
         if (! is_bool($continueIfEmpty)) {
-            $filter = new BooleanFilter();
+            $filter          = new BooleanFilter();
             $continueIfEmpty = $filter->filter($continueIfEmpty);
         }
 
@@ -47,10 +45,8 @@ class ContinueIfEmpty
 
     /**
      * Get value of required flag
-     *
-     * @return bool
      */
-    public function getContinueIfEmpty()
+    public function getContinueIfEmpty(): bool
     {
         return $this->continueIfEmpty;
     }

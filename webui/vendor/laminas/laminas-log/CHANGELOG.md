@@ -2,6 +2,83 @@
 
 All notable changes to this project will be documented in this file, in reverse chronological order by release.
 
+## 2.7.2 - 2016-04-06
+
+### Added
+
+- [zendframework/zend-log#30](https://github.com/zendframework/zend-log/pull/30) adds documentation
+  for each of the supported log writers.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-log#33](https://github.com/zendframework/zend-log/pull/33) fixes an issue with
+  executing `chmod` on files mounted via NFS on an NTFS partition when using the
+  stream writer.
+
+## 2.7.1 - 2016-02-18
+
+### Added
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-log#28](https://github.com/zendframework/zend-log/pull/28) restores the "share
+  by default" flag settings of all plugin managers back to boolean `false`,
+  allowing multiple instances of each plugin type. (This restores backwards
+  compatibility with versions prior to 2.7.)
+
+## 2.7.0 - 2016-02-09
+
+### Added
+
+- [zendframework/zend-log#7](https://github.com/zendframework/zend-log/pull/7) and
+  [zendframework/zend-log#15](https://github.com/zendframework/zend-log/pull/15) add a new argument
+  and option to `Laminas\Log\Writer\Stream` to allow setting the permission mode
+  for the stream. You can pass it as the optional fourth argument to the
+  constructor, or as the `chmod` option if using an options array.
+- [zendframework/zend-log#10](https://github.com/zendframework/zend-log/pull/10) adds `array` to the
+  expected return types from `Laminas\Log\Formatter\FormatterInterface::format()`,
+  codifying what we're already allowing.
+- [zendframework/zend-log#24](https://github.com/zendframework/zend-log/pull/24) prepares the
+  documentation for publication, adds a chapter on processors, and publishes it
+  to https://docs.laminas.dev/laminas-log/
+
+### Deprecated
+
+- [zendframework/zend-log#14](https://github.com/zendframework/zend-log/pull/14) deprecates the
+  following, suggesting the associated replacements:
+  - `Laminas\Log\Writer\FilterPluginManager` is deprecated; use
+    `Laminas\Log\FilterPluginManager` instead.
+  - `Laminas\Log\Writer\FormatterPluginManager` is deprecated; use
+    `Laminas\Log\FormatterPluginManager` instead.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-log#14](https://github.com/zendframework/zend-log/pull/14) and
+  [zendframework/zend-log#17](https://github.com/zendframework/zend-log/pull/17) update the component
+  to be forwards-compatible with laminas-stdlib and laminas-servicemanager v3.
+
 ## 2.6.0 - 2015-07-20
 
 ### Added

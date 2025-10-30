@@ -8,13 +8,13 @@
 
 namespace Laminas\Mvc\Controller;
 
+use Interop\Container\ContainerInterface;
 use Laminas\EventManager\EventManagerAwareInterface;
-use Laminas\EventManager\EventManagerInterface;
+use Laminas\EventManager\SharedEventManagerInterface;
 use Laminas\Mvc\Exception;
 use Laminas\ServiceManager\AbstractPluginManager;
 use Laminas\ServiceManager\ConfigInterface;
-use Laminas\ServiceManager\ServiceLocatorAwareInterface;
-use Laminas\ServiceManager\ServiceLocatorInterface;
+use Laminas\ServiceManager\Exception\InvalidServiceException;
 use Laminas\Stdlib\DispatchableInterface;
 
 /**
@@ -32,107 +32,131 @@ class ControllerManager extends AbstractPluginManager
     protected $autoAddInvokableClass = false;
 
     /**
+     * Controllers must be of this type.
+     *
+     * @var string
+     */
+    protected $instanceOf = DispatchableInterface::class;
+
+    /**
      * Constructor
      *
-     * After invoking parent constructor, add an initializer to inject the
-     * service manager, event manager, and plugin manager
+     * Injects an initializer for injecting controllers with an
+     * event manager and plugin manager.
      *
-     * @param  null|ConfigInterface $configuration
+     * @param  ConfigInterface|ContainerInterface $container
+     * @param  array $v3config
      */
-    public function __construct(ConfigInterface $configuration = null)
+    public function __construct($configOrContainerInstance, array $v3config = [])
     {
-        parent::__construct($configuration);
-        // Pushing to bottom of stack to ensure this is done last
-        $this->addInitializer([$this, 'injectControllerDependencies'], false);
+        $this->addInitializer([$this, 'injectEventManager']);
+        $this->addInitializer([$this, 'injectPluginManager']);
+        parent::__construct($configOrContainerInstance, $v3config);
     }
 
     /**
-     * Inject required dependencies into the controller.
+     * Validate a plugin (v3)
      *
-     * @param  DispatchableInterface $controller
-     * @param  ServiceLocatorInterface $serviceLocator
-     * @return void
+     * {@inheritDoc}
      */
-    public function injectControllerDependencies($controller, ServiceLocatorInterface $serviceLocator)
+    public function validate($plugin)
     {
-        if (!$controller instanceof DispatchableInterface) {
-            return;
-        }
-
-        $parentLocator = $serviceLocator->getServiceLocator();
-
-        if ($controller instanceof ServiceLocatorAwareInterface) {
-            $controller->setServiceLocator($parentLocator->get('Laminas\ServiceManager\ServiceLocatorInterface'));
-        }
-
-        if ($controller instanceof EventManagerAwareInterface) {
-            // If we have an event manager composed already, make sure it gets
-            // injected with the shared event manager.
-            // The AbstractController lazy-instantiates an EM instance, which
-            // is why the shared EM injection needs to happen; the conditional
-            // will always pass.
-            $events = $controller->getEventManager();
-            if (!$events instanceof EventManagerInterface) {
-                $controller->setEventManager($parentLocator->get('EventManager'));
-            } else {
-                $events->setSharedManager($parentLocator->get('SharedEventManager'));
-            }
-        }
-
-        if ($controller instanceof AbstractConsoleController) {
-            $controller->setConsole($parentLocator->get('Console'));
-        }
-
-        if (method_exists($controller, 'setPluginManager')) {
-            $controller->setPluginManager($parentLocator->get('ControllerPluginManager'));
+        if (! $plugin instanceof $this->instanceOf) {
+            throw new InvalidServiceException(sprintf(
+                'Plugin of type "%s" is invalid; must implement %s',
+                (is_object($plugin) ? get_class($plugin) : gettype($plugin)),
+                $this->instanceOf
+            ));
         }
     }
 
     /**
-     * Validate the plugin
+     * Validate a plugin (v2)
      *
-     * Ensure we have a dispatchable.
+     * {@inheritDoc}
      *
-     * @param  mixed $plugin
-     * @return true
      * @throws Exception\InvalidControllerException
      */
     public function validatePlugin($plugin)
     {
-        if ($plugin instanceof DispatchableInterface) {
-            // we're okay
+        try {
+            $this->validate($plugin);
+        } catch (InvalidServiceException $e) {
+            throw new Exception\InvalidControllerException(
+                $e->getMessage(),
+                $e->getCode(),
+                $e
+            );
+        }
+    }
+
+    /**
+     * Initializer: inject EventManager instance
+     *
+     * If we have an event manager composed already, make sure it gets injected
+     * with the shared event manager.
+     *
+     * The AbstractController lazy-instantiates an EM instance, which is why
+     * the shared EM injection needs to happen; the conditional will always
+     * pass.
+     *
+     * @param ContainerInterface|DispatchableInterface $first Container when
+     *     using laminas-servicemanager v3; controller under v2.
+     * @param DispatchableInterface|ContainerInterface $second Controller when
+     *     using laminas-servicemanager v3; container under v2.
+     */
+    public function injectEventManager($first, $second)
+    {
+        if ($first instanceof ContainerInterface) {
+            $container = $first;
+            $controller = $second;
+        } else {
+            $container = $second;
+            $controller = $first;
+        }
+
+        if (! $controller instanceof EventManagerAwareInterface) {
             return;
         }
 
-        throw new Exception\InvalidControllerException(sprintf(
-            'Controller of type %s is invalid; must implement Laminas\Stdlib\DispatchableInterface',
-            (is_object($plugin) ? get_class($plugin) : gettype($plugin))
-        ));
+        $events = $controller->getEventManager();
+        if (! $events || ! $events->getSharedManager() instanceof SharedEventManagerInterface) {
+            // For v2, we need to pull the parent service locator
+            if (! method_exists($container, 'configure')) {
+                $container = $container->getServiceLocator() ?: $container;
+            }
+
+            $controller->setEventManager($container->get('EventManager'));
+        }
     }
 
     /**
-     * Override: do not use peering service managers
+     * Initializer: inject plugin manager
      *
-     * @param  string|array $name
-     * @param  bool         $checkAbstractFactories
-     * @param  bool         $usePeeringServiceManagers
-     * @return bool
+     * @param ContainerInterface|DispatchableInterface $first Container when
+     *     using laminas-servicemanager v3; controller under v2.
+     * @param DispatchableInterface|ContainerInterface $second Controller when
+     *     using laminas-servicemanager v3; container under v2.
      */
-    public function has($name, $checkAbstractFactories = true, $usePeeringServiceManagers = false)
+    public function injectPluginManager($first, $second)
     {
-        return parent::has($name, $checkAbstractFactories, $usePeeringServiceManagers);
-    }
+        if ($first instanceof ContainerInterface) {
+            $container = $first;
+            $controller = $second;
+        } else {
+            $container = $second;
+            $controller = $first;
+        }
 
-    /**
-     * Override: do not use peering service managers
-     *
-     * @param  string $name
-     * @param  array $options
-     * @param  bool $usePeeringServiceManagers
-     * @return mixed
-     */
-    public function get($name, $options = [], $usePeeringServiceManagers = false)
-    {
-        return parent::get($name, $options, $usePeeringServiceManagers);
+        if (! method_exists($controller, 'setPluginManager')) {
+            return;
+        }
+
+        // For v2, we need to pull the parent service locator
+        if (! method_exists($container, 'configure')) {
+            $container = $container->getServiceLocator() ?: $container;
+        }
+
+        $controller->setPluginManager($container->get('ControllerPluginManager'));
     }
 }

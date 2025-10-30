@@ -2,6 +2,113 @@
 
 All notable changes to this project will be documented in this file, in reverse chronological order by release.
 
+## 2.7.3 - 2017-07-11
+
+### Added
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-modulemanager#39](https://github.com/zendframework/zend-modulemanager/pull/39) and
+  [zendframework/zend-modulemanager#53](https://github.com/zendframework/zend-modulemanager/pull/53) prevent
+  race conditions when writing cache files (merged configuration).
+- [zendframework/zend-modulemanager#36](https://github.com/zendframework/zend-modulemanager/pull/36) removes a
+  throw from `ServiceListener::onLoadModulesPost()` that was previously emitted
+  when a named plugin manager did not have an associated service present yet.
+  Doing so allows plugin managers to be registered after configuration is fully
+  merged, instead of requiring they be defined early. This change allows
+  components to define their plugin managers via their `Module` classes.
+- [zendframework/zend-modulemanager#58](https://github.com/zendframework/zend-modulemanager/pull/58) corrects
+  the typehint for the `ServiceListener::$listeners` property.
+
+## 2.7.2 - 2016-05-16
+
+### Added
+
+- [zendframework/zend-modulemanager#38](https://github.com/zendframework/zend-modulemanager/pull/38) prepares
+  and publishes the documentation to https://docs.laminas.dev/laminas-modulemanager/
+- [zendframework/zend-modulemanager#40](https://github.com/zendframework/zend-modulemanager/pull/40) adds a
+  requirement on laminas-config. Since the default use case centers around config
+  merging and requires the component, it should be required by
+  laminas-modulemanager.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- Nothing.
+
+## 2.7.1 - 2016-02-27
+
+### Added
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-modulemanager#31](https://github.com/zendframework/zend-modulemanager/pull/31) updates the
+  `ServiceListener:onLoadModulesPost()` workflow to override existing services
+  on a given service/plugin manager instance when configuring it. Since the
+  listener operates as part of bootstrapping, this is a requirement.
+
+## 2.7.0 - 2016-02-25
+
+### Added
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- [zendframework/zend-modulemanager#13](https://github.com/zendframework/zend-modulemanager/pull/13) and
+  [zendframework/zend-modulemanager#28](https://github.com/zendframework/zend-modulemanager/pull/28) update the
+  component to be forwards-compatible with laminas-servicemanager v3. This
+  primarily affects how configuration is aggregated within the
+  `ServiceListener` (as v3 has a dedicated method in the
+  `Laminas\ServiceManager\ConfigInterface` for retrieving it).
+
+- [zendframework/zend-modulemanager#12](https://github.com/zendframework/zend-modulemanager/pull/12),
+  [zendframework/zend-modulemanager#28](https://github.com/zendframework/zend-modulemanager/pull/28), and
+  [zendframework/zend-modulemanager#29](https://github.com/zendframework/zend-modulemanager/pull/29) update the
+  component to be forwards-compatible with laminas-eventmanager v3. Primarily, this
+  involves:
+  - Changing trigger calls to `triggerEvent()` and/or `triggerEventUntil()`, and
+    ensuring the event instance is injected with the new event name prior.
+  - Ensuring aggregates are attached using the `$aggregate->attach($events)`
+    signature instead of the `$events->attachAggregate($aggregate)` signature.
+  - Using laminas-eventmanager's `EventListenerIntrospectionTrait` to test that
+    listeners are attached at expected priorities.
+
 ## 2.6.1 - 2015-09-22
 
 ### Added

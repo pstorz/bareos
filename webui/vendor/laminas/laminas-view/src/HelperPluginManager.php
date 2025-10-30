@@ -36,6 +36,8 @@ class HelperPluginManager extends AbstractPluginManager
      * @var string[]
      */
     protected $aliases = [
+        'asset'               => Helper\Asset::class,
+        'Asset'               => Helper\Asset::class,
         'basePath'            => Helper\BasePath::class,
         'BasePath'            => Helper\BasePath::class,
         'basepath'            => Helper\BasePath::class,
@@ -136,6 +138,7 @@ class HelperPluginManager extends AbstractPluginManager
         'ViewModel'           => Helper\ViewModel::class,
 
         // Legacy Zend Framework aliases
+        \Zend\View\Helper\Asset::class => Helper\Asset::class,
         \Zend\View\Helper\FlashMessenger::class => Helper\FlashMessenger::class,
         \Zend\View\Helper\Identity::class => Helper\Identity::class,
         \Zend\View\Helper\BasePath::class => Helper\BasePath::class,
@@ -173,6 +176,7 @@ class HelperPluginManager extends AbstractPluginManager
         \Zend\View\Helper\ViewModel::class => Helper\ViewModel::class,
 
         // v2 normalized FQCNs
+        'zendviewhelperasset' => Helper\Asset::class,
         'zendviewhelperflashmessenger' => Helper\FlashMessenger::class,
         'zendviewhelperidentity' => Helper\Identity::class,
         'zendviewhelperbasepath' => Helper\BasePath::class,
@@ -210,8 +214,6 @@ class HelperPluginManager extends AbstractPluginManager
         'zendviewhelperviewmodel' => Helper\ViewModel::class,
     ];
 
-    protected $instanceOf = Helper\HelperInterface::class;
-
     /**
      * Default factories
      *
@@ -223,12 +225,14 @@ class HelperPluginManager extends AbstractPluginManager
      * @var array
      */
     protected $factories = [
+        Helper\Asset::class               => Helper\Service\AssetFactory::class,
         Helper\FlashMessenger::class      => Helper\Service\FlashMessengerFactory::class,
         Helper\Identity::class            => Helper\Service\IdentityFactory::class,
         Helper\BasePath::class            => InvokableFactory::class,
         Helper\Cycle::class               => InvokableFactory::class,
         Helper\DeclareVars::class         => InvokableFactory::class,
-        Helper\Doctype::class             => InvokableFactory::class, // overridden by a factory in ViewHelperManagerFactory
+        // overridden in ViewHelperManagerFactory
+        Helper\Doctype::class             => Helper\Service\DoctypeFactory::class,
         Helper\EscapeHtml::class          => InvokableFactory::class,
         Helper\EscapeHtmlAttr::class      => InvokableFactory::class,
         Helper\EscapeJs::class            => InvokableFactory::class,
@@ -261,6 +265,7 @@ class HelperPluginManager extends AbstractPluginManager
 
         // v2 canonical FQCNs
 
+        'laminasviewhelperasset'             => Helper\Service\AssetFactory::class,
         'laminasviewhelperflashmessenger'    => Helper\Service\FlashMessengerFactory::class,
         'laminasviewhelperidentity'          => Helper\Service\IdentityFactory::class,
         'laminasviewhelperbasepath'          => InvokableFactory::class,
@@ -362,6 +367,10 @@ class HelperPluginManager extends AbstractPluginManager
             ? $second
             : $first;
 
+        if (! $helper instanceof Helper\HelperInterface) {
+            return;
+        }
+
         $renderer = $this->getRenderer();
         if (null === $renderer) {
             return;
@@ -401,6 +410,10 @@ class HelperPluginManager extends AbstractPluginManager
             // Under laminas-navigation v2.5, the navigation PluginManager is
             // always lazy-loaded, which means it never has a parent
             // container.
+            return;
+        }
+
+        if (method_exists($helper, 'hasTranslator') && $helper->hasTranslator()) {
             return;
         }
 
@@ -466,19 +479,19 @@ class HelperPluginManager extends AbstractPluginManager
     /**
      * Validate the plugin is of the expected type (v3).
      *
-     * Validates against `$instanceOf`.
+     * Validates against callables and HelperInterface implementations.
      *
      * @param mixed $instance
      * @throws InvalidServiceException
      */
     public function validate($instance)
     {
-        if (!$instance instanceof $this->instanceOf) {
+        if (! is_callable($instance) && ! $instance instanceof Helper\HelperInterface) {
             throw new InvalidServiceException(
                 sprintf(
-                    '%s can only create instances of %s; %s is invalid',
+                    '%s can only create instances of %s and/or callables; %s is invalid',
                     get_class($this),
-                    $this->instanceOf,
+                    Helper\HelperInterface::class,
                     (is_object($instance) ? get_class($instance) : gettype($instance))
                 )
             );

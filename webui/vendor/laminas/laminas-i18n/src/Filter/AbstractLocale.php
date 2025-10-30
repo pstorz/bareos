@@ -19,7 +19,7 @@ abstract class AbstractLocale extends AbstractFilter
      */
     public function __construct()
     {
-        if (!extension_loaded('intl')) {
+        if (! extension_loaded('intl')) {
             throw new Exception\ExtensionNotLoadedException(sprintf(
                 '%s component requires the intl PHP extension',
                 __NAMESPACE__
@@ -31,7 +31,7 @@ abstract class AbstractLocale extends AbstractFilter
      * Sets the locale option
      *
      * @param  string|null $locale
-     * @return AbstractLocale
+     * @return $this
      */
     public function setLocale($locale = null)
     {
@@ -46,7 +46,7 @@ abstract class AbstractLocale extends AbstractFilter
      */
     public function getLocale()
     {
-        if (!isset($this->options['locale'])) {
+        if (! isset($this->options['locale'])) {
             $this->options['locale'] = Locale::getDefault();
         }
         return $this->options['locale'];

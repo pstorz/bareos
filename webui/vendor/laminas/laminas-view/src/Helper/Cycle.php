@@ -27,7 +27,7 @@ class Cycle extends AbstractHelper implements Iterator
      *
      * @var array
      */
-    protected $data = [self::DEFAULT_NAME=>[]];
+    protected $data = [self::DEFAULT_NAME => []];
 
     /**
      * Actual name of cycle
@@ -41,7 +41,7 @@ class Cycle extends AbstractHelper implements Iterator
      *
      * @var array
      */
-    protected $pointers = [self::DEFAULT_NAME =>-1];
+    protected $pointers = [self::DEFAULT_NAME => -1];
 
     /**
      * Add elements to alternate
@@ -52,7 +52,7 @@ class Cycle extends AbstractHelper implements Iterator
      */
     public function __invoke(array $data = [], $name = self::DEFAULT_NAME)
     {
-        if (!empty($data)) {
+        if (! empty($data)) {
             $this->data[$name] = $data;
         }
 
@@ -105,11 +105,11 @@ class Cycle extends AbstractHelper implements Iterator
     {
         $this->name = $name;
 
-        if (!isset($this->data[$this->name])) {
+        if (! isset($this->data[$this->name])) {
             $this->data[$this->name] = [];
         }
 
-        if (!isset($this->pointers[$this->name])) {
+        if (! isset($this->pointers[$this->name])) {
             $this->rewind();
         }
 

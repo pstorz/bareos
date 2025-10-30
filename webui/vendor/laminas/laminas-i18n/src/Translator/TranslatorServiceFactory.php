@@ -28,9 +28,12 @@ class TranslatorServiceFactory implements FactoryInterface
     public function __invoke(ContainerInterface $container, $requestedName, array $options = null)
     {
         // Configure the translator
-        $config = $container->get('config');
-        $trConfig = isset($config['translator']) ? $config['translator'] : [];
+        $config     = $container->get('config');
+        $trConfig   = isset($config['translator']) ? $config['translator'] : [];
         $translator = Translator::factory($trConfig);
+        if ($container->has('TranslatorPluginManager')) {
+            $translator->setPluginManager($container->get('TranslatorPluginManager'));
+        }
         return $translator;
     }
 
@@ -40,7 +43,7 @@ class TranslatorServiceFactory implements FactoryInterface
      * Proxies to `__invoke()`.
      *
      * @param ServiceLocatorInterface $serviceLocator
-     * @returns Translator
+     * @return Translator
      */
     public function createService(ServiceLocatorInterface $serviceLocator)
     {

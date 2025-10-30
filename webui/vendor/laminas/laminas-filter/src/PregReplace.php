@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter;
 
 use Traversable;
@@ -31,7 +25,7 @@ class PregReplace extends AbstractFilter
             $options = iterator_to_array($options);
         }
 
-        if (!is_array($options) || (!isset($options['pattern']) && !isset($options['replacement']))) {
+        if (! is_array($options) || (! isset($options['pattern']) && ! isset($options['replacement']))) {
             $args = func_get_args();
             if (isset($args[0])) {
                 $this->setPattern($args[0]);
@@ -54,7 +48,7 @@ class PregReplace extends AbstractFilter
      */
     public function setPattern($pattern)
     {
-        if (!is_array($pattern) && !is_string($pattern)) {
+        if (! is_array($pattern) && ! is_string($pattern)) {
             throw new Exception\InvalidArgumentException(sprintf(
                 '%s expects pattern to be array or string; received "%s"',
                 __METHOD__,
@@ -96,7 +90,7 @@ class PregReplace extends AbstractFilter
      */
     public function setReplacement($replacement)
     {
-        if (!is_array($replacement) && !is_string($replacement)) {
+        if (! is_array($replacement) && ! is_string($replacement)) {
             throw new Exception\InvalidArgumentException(sprintf(
                 '%s expects replacement to be array or string; received "%s"',
                 __METHOD__,
@@ -126,7 +120,7 @@ class PregReplace extends AbstractFilter
      */
     public function filter($value)
     {
-        if (!is_scalar($value) && !is_array($value)) {
+        if (! is_scalar($value) && ! is_array($value)) {
             return $value;
         }
 
@@ -149,11 +143,11 @@ class PregReplace extends AbstractFilter
      */
     protected function validatePattern($pattern)
     {
-        if (!preg_match('/(?<modifier>[imsxeADSUXJu]+)$/', $pattern, $matches)) {
+        if (! preg_match('/(?<modifier>[imsxeADSUXJu]+)$/', $pattern, $matches)) {
             return true;
         }
 
-        if (false !== strstr($matches['modifier'], 'e')) {
+        if (false !== strpos($matches['modifier'], 'e')) {
             throw new Exception\InvalidArgumentException(sprintf(
                 'Pattern for a PregReplace filter may not contain the "e" pattern modifier; received "%s"',
                 $pattern

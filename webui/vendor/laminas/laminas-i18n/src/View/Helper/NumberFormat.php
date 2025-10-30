@@ -65,7 +65,7 @@ class NumberFormat extends AbstractHelper
      */
     public function __construct()
     {
-        if (!extension_loaded('intl')) {
+        if (! extension_loaded('intl')) {
             throw new Exception\ExtensionNotLoadedException(sprintf(
                 '%s component requires the intl PHP extension',
                 __NAMESPACE__
@@ -76,12 +76,12 @@ class NumberFormat extends AbstractHelper
     /**
      * Format a number
      *
-     * @param  int|float $number
-     * @param  int       $formatStyle
-     * @param  int       $formatType
-     * @param  string    $locale
-     * @param  int       $decimals
-     * @param  array|null $textAttributes
+     * @param  int|float   $number
+     * @param  int|null    $formatStyle
+     * @param  int|null    $formatType
+     * @param  string|null $locale
+     * @param  int|null    $decimals
+     * @param  array|null  $textAttributes
      * @return string
      */
     public function __invoke(
@@ -101,10 +101,10 @@ class NumberFormat extends AbstractHelper
         if (null === $formatType) {
             $formatType = $this->getFormatType();
         }
-        if (!is_int($decimals) || $decimals < 0) {
+        if (! is_int($decimals) || $decimals < 0) {
             $decimals = $this->getDecimals();
         }
-        if (!is_array($textAttributes)) {
+        if (! is_array($textAttributes)) {
             $textAttributes = $this->getTextAttributes();
         }
 
@@ -137,7 +137,7 @@ class NumberFormat extends AbstractHelper
      * Set format style to use instead of the default
      *
      * @param  int $formatStyle
-     * @return NumberFormat
+     * @return $this
      */
     public function setFormatStyle($formatStyle)
     {
@@ -163,7 +163,7 @@ class NumberFormat extends AbstractHelper
      * Set format type to use instead of the default
      *
      * @param  int $formatType
-     * @return NumberFormat
+     * @return $this
      */
     public function setFormatType($formatType)
     {
@@ -188,7 +188,7 @@ class NumberFormat extends AbstractHelper
      * Set number of decimals to use instead of the default.
      *
      * @param  int $decimals
-     * @return NumberFormat
+     * @return $this
      */
     public function setDecimals($decimals)
     {
@@ -210,7 +210,7 @@ class NumberFormat extends AbstractHelper
      * Set locale to use instead of the default.
      *
      * @param  string $locale
-     * @return NumberFormat
+     * @return $this
      */
     public function setLocale($locale)
     {
@@ -221,7 +221,7 @@ class NumberFormat extends AbstractHelper
     /**
      * Get the locale to use
      *
-     * @return string|null
+     * @return string
      */
     public function getLocale()
     {
@@ -242,7 +242,7 @@ class NumberFormat extends AbstractHelper
 
     /**
      * @param array $textAttributes
-     * @return NumberFormat
+     * @return $this
      */
     public function setTextAttributes(array $textAttributes)
     {

@@ -40,7 +40,7 @@ class Allow implements HeaderInterface
      * Create Allow header from header line
      *
      * @param string $headerLine
-     * @return Allow
+     * @return static
      * @throws Exception\InvalidArgumentException
      */
     public static function fromString($headerLine)
@@ -103,7 +103,7 @@ class Allow implements HeaderInterface
      * Allow methods or list of methods
      *
      * @param array|string $allowedMethods
-     * @return Allow
+     * @return $this
      */
     public function allowMethods($allowedMethods)
     {
@@ -125,7 +125,7 @@ class Allow implements HeaderInterface
      * Disallow methods or list of methods
      *
      * @param array|string $disallowedMethods
-     * @return Allow
+     * @return $this
      */
     public function disallowMethods($disallowedMethods)
     {
@@ -147,7 +147,7 @@ class Allow implements HeaderInterface
      * Convenience alias for @see disallowMethods()
      *
      * @param array|string $disallowedMethods
-     * @return Allow
+     * @return $this
      */
     public function denyMethods($disallowedMethods)
     {

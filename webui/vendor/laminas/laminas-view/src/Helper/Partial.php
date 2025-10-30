@@ -10,6 +10,7 @@ namespace Laminas\View\Helper;
 
 use Laminas\View\Exception;
 use Laminas\View\Model\ModelInterface;
+use Traversable;
 
 /**
  * Helper for rendering a template fragment in its own variable scope.
@@ -52,7 +53,7 @@ class Partial extends AbstractHelper
                 $values = [$objectKey => $values];
             } elseif (method_exists($values, 'toArray')) {
                 $values = $values->toArray();
-            } else {
+            } elseif (! $values instanceof Traversable) {
                 $values = get_object_vars($values);
             }
         }

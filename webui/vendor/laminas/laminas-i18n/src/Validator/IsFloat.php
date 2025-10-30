@@ -25,11 +25,13 @@ class IsFloat extends AbstractValidator
     const NOT_FLOAT = 'notFloat';
 
     /**
-     * @var array
+     * Validation failure message template definitions
+     *
+     * @var string[]
      */
     protected $messageTemplates = [
-        self::INVALID   => "Invalid type given. String, integer or float expected",
-        self::NOT_FLOAT => "The input does not appear to be a float",
+        self::INVALID   => 'Invalid type given. String, integer or float expected',
+        self::NOT_FLOAT => 'The input does not appear to be a float',
     ];
 
     /**
@@ -40,7 +42,7 @@ class IsFloat extends AbstractValidator
     protected $locale;
 
     /**
-     * UTF-8 compatable wrapper for string functions
+     * UTF-8 compatible wrapper for string functions
      *
      * @var StringWrapperInterface
      */
@@ -54,7 +56,7 @@ class IsFloat extends AbstractValidator
      */
     public function __construct($options = [])
     {
-        if (!extension_loaded('intl')) {
+        if (! extension_loaded('intl')) {
             throw new I18nException\ExtensionNotLoadedException(
                 sprintf('%s component requires the intl PHP extension', __NAMESPACE__)
             );
@@ -66,7 +68,7 @@ class IsFloat extends AbstractValidator
             $options = ArrayUtils::iteratorToArray($options);
         }
 
-        if (array_key_exists('locale', $options)) {
+        if (isset($options['locale'])) {
             $this->setLocale($options['locale']);
         }
 
@@ -90,7 +92,7 @@ class IsFloat extends AbstractValidator
      * Sets the locale to use
      *
      * @param string|null $locale
-     * @return Float
+     * @return $this
      */
     public function setLocale($locale)
     {
@@ -100,15 +102,15 @@ class IsFloat extends AbstractValidator
 
     /**
      * Returns true if and only if $value is a floating-point value. Uses the formal definition of a float as described
-     * in the PHP manual: {@link http://www.php.net/float}
+     * in the PHP manual: {@link https://www.php.net/float}
      *
-     * @param  string $value
+     * @param  float|int|string $value
      * @return bool
      * @throws Exception\InvalidArgumentException
      */
     public function isValid($value)
     {
-        if (!is_scalar($value) || is_bool($value)) {
+        if (! is_scalar($value) || is_bool($value)) {
             $this->error(self::INVALID);
             return false;
         }
@@ -138,34 +140,34 @@ class IsFloat extends AbstractValidator
             $search = '/' . $exponentialSymbols . '/';
         }
 
-        if (!preg_match($search, $value)) {
+        if (! preg_match($search, $value)) {
             $formatter = new NumberFormatter($this->getLocale(), NumberFormatter::DECIMAL);
         }
 
         /**
-         * @desc There are seperator "look-alikes" for decimal and group seperators that are more commonly used than the
-         *       official unicode chracter. We need to replace those with the real thing - or remove it.
+         * @desc There are separator "look-alikes" for decimal and group separators that are more commonly used than the
+         *       official unicode character. We need to replace those with the real thing - or remove it.
          */
         $groupSeparator = $formatter->getSymbol(NumberFormatter::GROUPING_SEPARATOR_SYMBOL);
         $decSeparator   = $formatter->getSymbol(NumberFormatter::DECIMAL_SEPARATOR_SYMBOL);
 
         //NO-BREAK SPACE and ARABIC THOUSANDS SEPARATOR
-        if ($groupSeparator == "\xC2\xA0") {
+        if ($groupSeparator === "\xC2\xA0") {
             $value = str_replace(' ', $groupSeparator, $value);
-        } elseif ($groupSeparator == "\xD9\xAC") {
+        } elseif ($groupSeparator === "\xD9\xAC") {
             //NumberFormatter doesn't have grouping at all for Arabic-Indic
             $value = str_replace(['\'', $groupSeparator], '', $value);
         }
 
         //ARABIC DECIMAL SEPARATOR
-        if ($decSeparator == "\xD9\xAB") {
+        if ($decSeparator === "\xD9\xAB") {
             $value = str_replace(',', $decSeparator, $value);
         }
 
         $groupSeparatorPosition = $this->wrapper->strpos($value, $groupSeparator);
         $decSeparatorPosition   = $this->wrapper->strpos($value, $decSeparator);
 
-        //We have seperators, and they are flipped. i.e. 2.000,000 for en-US
+        //We have separators, and they are flipped. i.e. 2.000,000 for en-US
         if ($groupSeparatorPosition && $decSeparatorPosition && $groupSeparatorPosition > $decSeparatorPosition) {
             $this->error(self::NOT_FLOAT);
 
@@ -213,7 +215,7 @@ class IsFloat extends AbstractValidator
          *       the integer and decimal notations so add that.  This also checks
          *       that a grouping sperator is not in the last GROUPING_SIZE graphemes
          *       of the string - i.e. 10,6 is not valid for en-US.
-         * @see http://www.php.net/float
+         * @see https://www.php.net/float
          */
 
         $lnum    = '[' . $numberRange . ']+';
@@ -232,10 +234,10 @@ class IsFloat extends AbstractValidator
 
         // No strrpos() in wrappers yet. ICU 4.x doesn't have grouping size for
         // everything. ICU 52 has 3 for ALL locales.
-        $groupSize = ($formatter->getAttribute(NumberFormatter::GROUPING_SIZE))
-            ? $formatter->getAttribute(NumberFormatter::GROUPING_SIZE)
-            : 3;
-        $lastStringGroup = $this->wrapper->substr($value, -$groupSize);
+        $groupSize = $formatter->getAttribute(NumberFormatter::GROUPING_SIZE) ?: 3;
+        $lastStringGroup = $this->wrapper->strlen($value) > $groupSize ?
+            $this->wrapper->substr($value, -$groupSize) :
+            $value;
 
         if ((preg_match($lnumSearch, $unGroupedValue)
             || preg_match($dnumSearch, $unGroupedValue)

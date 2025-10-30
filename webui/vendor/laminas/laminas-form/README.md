@@ -1,13 +1,26 @@
 # laminas-form
 
-[![Build Status](https://travis-ci.org/laminas/laminas-form.svg?branch=master)](https://travis-ci.org/laminas/laminas-form)
-[![Coverage Status](https://coveralls.io/repos/laminas/laminas-form/badge.svg?branch=master)](https://coveralls.io/r/laminas/laminas-form?branch=master)
+[![Build Status](https://github.com/laminas/laminas-form/workflows/Continuous%20Integration/badge.svg)](https://github.com/laminas/laminas-form/actions?query=workflow%3A"Continuous+Integration")
 
-The `Laminas\Form` is intended primarily as a bridge between your domain models and
+laminas-form is intended primarily as a bridge between your domain models and
 the View Layer. It composes a thin layer of objects representing form elements,
 an InputFilter, and a small number of methods for binding data to and from the
 form and attached objects.
 
+## Installation
 
-- File issues at https://github.com/laminas/laminas-form/issues
-- Documentation is at https://docs.laminas.dev/laminas-form
+Run the following to install this library:
+
+```bash
+$ composer require laminas/laminas-form
+```
+
+## Documentation
+
+Browse the documentation online at https://docs.laminas.dev/laminas-form/
+
+## Support
+
+* [Issues](https://github.com/laminas/laminas-form/issues/)
+* [Chat](https://laminas.dev/chat/)
+* [Forum](https://discourse.laminas.dev/)

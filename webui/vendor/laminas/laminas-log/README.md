@@ -9,4 +9,4 @@ logged.
 
 
 - File issues at https://github.com/laminas/laminas-log/issues
-- Documentation is at https://docs.laminas.dev/laminas-log
+- Documentation is at https://docs.laminas.dev/laminas-log/

@@ -1,10 +1,6 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Element;
 
@@ -13,6 +9,7 @@ use Laminas\I18n\Validator\IsFloat as NumberValidator;
 use Laminas\Validator\GreaterThan as GreaterThanValidator;
 use Laminas\Validator\LessThan as LessThanValidator;
 use Laminas\Validator\Step as StepValidator;
+use Laminas\Validator\ValidatorInterface;
 
 class Range extends NumberElement
 {
@@ -28,38 +25,39 @@ class Range extends NumberElement
     /**
      * Get validator
      *
-     * @return \Laminas\Validator\ValidatorInterface[]
+     * @return ValidatorInterface[]
      */
-    protected function getValidators()
+    protected function getValidators(): array
     {
         if ($this->validators) {
             return $this->validators;
         }
 
-        $validators = [];
+        $validators   = [];
         $validators[] = new NumberValidator();
 
         $inclusive = true;
-        if (!empty($this->attributes['inclusive'])) {
+        if (! empty($this->attributes['inclusive'])) {
             $inclusive = $this->attributes['inclusive'];
         }
 
         $validators[] = new GreaterThanValidator([
-            'min'       => (isset($this->attributes['min'])) ? $this->attributes['min'] : 0,
-            'inclusive' => $inclusive
+            'min'       => $this->attributes['min'] ?? 0,
+            'inclusive' => $inclusive,
         ]);
 
         $validators[] = new LessThanValidator([
-            'max'       => (isset($this->attributes['max'])) ? $this->attributes['max'] : 100,
-            'inclusive' => $inclusive
+            'max'       => $this->attributes['max'] ?? 100,
+            'inclusive' => $inclusive,
         ]);
 
-        if (!isset($this->attributes['step'])
+        if (
+            ! isset($this->attributes['step'])
             || 'any' !== $this->attributes['step']
         ) {
             $validators[] = new StepValidator([
-                'baseValue' => (isset($this->attributes['min'])) ? $this->attributes['min'] : 0,
-                'step'      => (isset($this->attributes['step'])) ? $this->attributes['step'] : 1,
+                'baseValue' => $this->attributes['min'] ?? 0,
+                'step'      => $this->attributes['step'] ?? 1,
             ]);
         }
 

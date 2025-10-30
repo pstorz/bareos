@@ -1,15 +1,14 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\View\Helper;
 
 use Laminas\Form\ElementInterface;
 use Laminas\Form\Exception;
+
+use function sprintf;
+use function strtolower;
 
 class FormInput extends AbstractHelper
 {
@@ -88,12 +87,14 @@ class FormInput extends AbstractHelper
      *
      * Proxies to {@link render()}.
      *
-     * @param  ElementInterface|null $element
+     * @template T as null|ElementInterface
+     * @psalm-param T $element
+     * @psalm-return (T is null ? self : string)
      * @return string|FormInput
      */
-    public function __invoke(ElementInterface $element = null)
+    public function __invoke(?ElementInterface $element = null)
     {
-        if (!$element) {
+        if (! $element) {
             return $this;
         }
 
@@ -103,11 +104,9 @@ class FormInput extends AbstractHelper
     /**
      * Render a form <input> element from the provided $element
      *
-     * @param  ElementInterface $element
      * @throws Exception\DomainException
-     * @return string
      */
-    public function render(ElementInterface $element)
+    public function render(ElementInterface $element): string
     {
         $name = $element->getName();
         if ($name === null || $name === '') {
@@ -122,7 +121,7 @@ class FormInput extends AbstractHelper
         $type                = $this->getType($element);
         $attributes['type']  = $type;
         $attributes['value'] = $element->getValue();
-        if ('password' == $type) {
+        if ('password' === $type) {
             $attributes['value'] = '';
         }
 
@@ -135,11 +134,8 @@ class FormInput extends AbstractHelper
 
     /**
      * Determine input type to use
-     *
-     * @param  ElementInterface $element
-     * @return string
      */
-    protected function getType(ElementInterface $element)
+    protected function getType(ElementInterface $element): string
     {
         $type = $element->getAttribute('type');
         if (empty($type)) {
@@ -147,7 +143,7 @@ class FormInput extends AbstractHelper
         }
 
         $type = strtolower($type);
-        if (!isset($this->validTypes[$type])) {
+        if (! isset($this->validTypes[$type])) {
             return 'text';
         }
 

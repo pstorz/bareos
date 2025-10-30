@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter;
 
 use DateTime;
@@ -79,14 +73,14 @@ class DateTimeFormatter extends AbstractFilter
             return $value;
         }
 
-        if (!is_string($value) && !is_int($value) && !$value instanceof DateTime) {
+        if (! is_string($value) && ! is_int($value) && ! $value instanceof DateTime) {
             return $value;
         }
 
         if (is_int($value)) {
             //timestamp
             $value = new DateTime('@' . $value);
-        } elseif (!$value instanceof DateTime) {
+        } elseif (! $value instanceof DateTime) {
             $value = new DateTime($value);
         }
 

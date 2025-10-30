@@ -1,10 +1,6 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Element;
 
@@ -12,10 +8,12 @@ use DateTime as PhpDateTime;
 use Exception;
 use Laminas\Form\Exception\InvalidArgumentException;
 use Laminas\Form\FormInterface;
-use Laminas\Stdlib\ArrayUtils;
 use Laminas\Validator\Date as DateValidator;
 use Laminas\Validator\ValidatorInterface;
-use Traversable;
+
+use function is_array;
+use function is_string;
+use function sprintf;
 
 class DateTimeSelect extends DateSelect
 {
@@ -53,7 +51,7 @@ class DateTimeSelect extends DateSelect
      * @param  null|int|string  $name    Optional name for the element
      * @param  array            $options Optional options for the element
      */
-    public function __construct($name = null, $options = [])
+    public function __construct($name = null, array $options = [])
     {
         parent::__construct($name, $options);
 
@@ -72,56 +70,42 @@ class DateTimeSelect extends DateSelect
      * - second_attributes: HTML attributes to be rendered with the second element
      * - should_show_seconds: if set to true, the seconds select is shown
      *
-     * @param array|Traversable $options
-     * @return self
+     * @return $this
      */
-    public function setOptions($options)
+    public function setOptions(iterable $options)
     {
         parent::setOptions($options);
 
-        if ($options instanceof Traversable) {
-            $options = ArrayUtils::iteratorToArray($options);
+        if (isset($this->options['hour_attributes'])) {
+            $this->setHourAttributes($this->options['hour_attributes']);
         }
 
-        if (isset($options['hour_attributes'])) {
-            $this->setHourAttributes($options['hour_attributes']);
+        if (isset($this->options['minute_attributes'])) {
+            $this->setMinuteAttributes($this->options['minute_attributes']);
         }
 
-        if (isset($options['minute_attributes'])) {
-            $this->setMinuteAttributes($options['minute_attributes']);
+        if (isset($this->options['second_attributes'])) {
+            $this->setSecondAttributes($this->options['second_attributes']);
         }
 
-        if (isset($options['second_attributes'])) {
-            $this->setSecondAttributes($options['second_attributes']);
-        }
-
-        if (isset($options['should_show_seconds'])) {
-            $this->setShouldShowSeconds($options['should_show_seconds']);
+        if (isset($this->options['should_show_seconds'])) {
+            $this->setShouldShowSeconds($this->options['should_show_seconds']);
         }
 
         return $this;
     }
 
-    /**
-     * @return Select
-     */
-    public function getHourElement()
+    public function getHourElement(): Select
     {
         return $this->hourElement;
     }
 
-    /**
-     * @return Select
-     */
-    public function getMinuteElement()
+    public function getMinuteElement(): Select
     {
         return $this->minuteElement;
     }
 
-    /**
-     * @return Select
-     */
-    public function getSecondElement()
+    public function getSecondElement(): Select
     {
         return $this->secondElement;
     }
@@ -130,7 +114,7 @@ class DateTimeSelect extends DateSelect
      * Set the hour attributes
      *
      * @param  array $hourAttributes
-     * @return self
+     * @return $this
      */
     public function setHourAttributes(array $hourAttributes)
     {
@@ -143,7 +127,7 @@ class DateTimeSelect extends DateSelect
      *
      * @return array
      */
-    public function getHourAttributes()
+    public function getHourAttributes(): array
     {
         return $this->hourElement->getAttributes();
     }
@@ -152,7 +136,7 @@ class DateTimeSelect extends DateSelect
      * Set the minute attributes
      *
      * @param  array $minuteAttributes
-     * @return self
+     * @return $this
      */
     public function setMinuteAttributes(array $minuteAttributes)
     {
@@ -165,7 +149,7 @@ class DateTimeSelect extends DateSelect
      *
      * @return array
      */
-    public function getMinuteAttributes()
+    public function getMinuteAttributes(): array
     {
         return $this->minuteElement->getAttributes();
     }
@@ -174,7 +158,7 @@ class DateTimeSelect extends DateSelect
      * Set the second attributes
      *
      * @param  array $secondAttributes
-     * @return self
+     * @return $this
      */
     public function setSecondAttributes(array $secondAttributes)
     {
@@ -187,7 +171,7 @@ class DateTimeSelect extends DateSelect
      *
      * @return array
      */
-    public function getSecondAttributes()
+    public function getSecondAttributes(): array
     {
         return $this->secondElement->getAttributes();
     }
@@ -196,26 +180,22 @@ class DateTimeSelect extends DateSelect
      * If set to true, this indicate that the second select is shown. If set to true, the seconds will be
      * assumed to always be 00
      *
-     * @param  bool $shouldShowSeconds
-     * @return self
+     * @return $this
      */
-    public function setShouldShowSeconds($shouldShowSeconds)
+    public function setShouldShowSeconds(bool $shouldShowSeconds)
     {
-        $this->shouldShowSeconds = (bool) $shouldShowSeconds;
+        $this->shouldShowSeconds = $shouldShowSeconds;
         return $this;
     }
 
-    /**
-     * @return bool
-     */
-    public function shouldShowSeconds()
+    public function shouldShowSeconds(): bool
     {
         return $this->shouldShowSeconds;
     }
 
     /**
-     * @param mixed $value
-     * @return self
+     * @param  PhpDateTime|iterable|string|null|mixed $value
+     * @return $this
      * @throws InvalidArgumentException
      */
     public function setValue($value)
@@ -228,7 +208,7 @@ class DateTimeSelect extends DateSelect
             }
         }
 
-        if (null === $value) {
+        if (null === $value && ! $this->shouldCreateEmptyOption()) {
             $value = new PhpDateTime();
         }
 
@@ -239,47 +219,83 @@ class DateTimeSelect extends DateSelect
                 'day'    => $value->format('d'),
                 'hour'   => $value->format('H'),
                 'minute' => $value->format('i'),
-                'second' => $value->format('s')
+                'second' => $value->format('s'),
             ];
         }
 
-        if (! isset($value['second'])) {
-            $value['second'] = '00';
+        if (is_array($value)) {
+            $this->yearElement->setValue($value['year']);
+            $this->monthElement->setValue($value['month']);
+            $this->dayElement->setValue($value['day']);
+            $this->hourElement->setValue($value['hour']);
+            $this->minuteElement->setValue($value['minute']);
+            $this->secondElement->setValue($value['second'] ?? '00');
+        } else {
+            $this->yearElement->setValue(null);
+            $this->monthElement->setValue(null);
+            $this->dayElement->setValue(null);
+            $this->hourElement->setValue(null);
+            $this->minuteElement->setValue(null);
+            $this->secondElement->setValue(null);
         }
-
-        $this->yearElement->setValue($value['year']);
-        $this->monthElement->setValue($value['month']);
-        $this->dayElement->setValue($value['day']);
-        $this->hourElement->setValue($value['hour']);
-        $this->minuteElement->setValue($value['minute']);
-        $this->secondElement->setValue($value['second']);
 
         return $this;
     }
 
-    /**
-     * @return string
-     */
-    public function getValue()
+    public function getValue(): ?string
     {
+        $year   = $this->getYearElement()->getValue();
+        $month  = $this->getMonthElement()->getValue();
+        $day    = $this->getDayElement()->getValue();
+        $hour   = $this->getHourElement()->getValue();
+        $minute = $this->getMinuteElement()->getValue();
+        $second = $this->getSecondElement()->getValue();
+
+        // if everything is null, return null
+        if (
+            $this->shouldCreateEmptyOption()
+            && null === $year && null === $month && null === $day
+            && null === $hour && null === $minute && (null === $second || '00' === $second)
+        ) {
+            return null;
+        }
+
+        // if time is given, but date is null, use current date
+        if (
+            $this->shouldCreateEmptyOption()
+            && null === $year && null === $month && null === $day
+        ) {
+            $now   = new PhpDateTime();
+            $year  = $now->format('Y');
+            $month = $now->format('m');
+            $day   = $now->format('d');
+        }
+
+        // if date is given, but time is null, use 00:00:00 instead
+        if (
+            $this->shouldCreateEmptyOption()
+            && null === $hour && null === $minute && (null === $second || '00' === $second)
+        ) {
+            $hour   = '00';
+            $minute = '00';
+            $second = '00';
+        }
+
         return sprintf(
-            '%s-%s-%s %s:%s:%s',
-            $this->getYearElement()->getValue(),
-            $this->getMonthElement()->getValue(),
-            $this->getDayElement()->getValue(),
-            $this->getHourElement()->getValue(),
-            $this->getMinuteElement()->getValue(),
-            $this->getSecondElement()->getValue()
+            '%04d-%02d-%02d %02d:%02d:%02d',
+            $year,
+            $month,
+            $day,
+            $hour,
+            $minute,
+            $second
         );
     }
 
     /**
      * Prepare the form element (mostly used for rendering purposes)
-     *
-     * @param  FormInterface $form
-     * @return void
      */
-    public function prepareElement(FormInterface $form)
+    public function prepareElement(FormInterface $form): void
     {
         parent::prepareElement($form);
 
@@ -291,10 +307,8 @@ class DateTimeSelect extends DateSelect
 
     /**
      * Get validator
-     *
-     * @return ValidatorInterface
      */
-    protected function getValidator()
+    protected function getValidator(): ValidatorInterface
     {
         if (null === $this->validator) {
             $this->validator = new DateValidator(['format' => 'Y-m-d H:i:s']);
@@ -309,13 +323,13 @@ class DateTimeSelect extends DateSelect
      *
      * @return array
      */
-    public function getInputSpecification()
+    public function getInputSpecification(): array
     {
         return [
-            'name' => $this->getName(),
-            'required' => false,
-            'filters' => [
-                ['name' => 'DateTimeSelect']
+            'name'       => $this->getName(),
+            'required'   => false,
+            'filters'    => [
+                ['name' => 'DateTimeSelect'],
             ],
             'validators' => [
                 $this->getValidator(),

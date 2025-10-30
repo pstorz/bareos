@@ -12,7 +12,6 @@ use Laminas\EventManager\AbstractListenerAggregate;
 use Laminas\EventManager\EventManager;
 use Laminas\EventManager\EventManagerAwareInterface;
 use Laminas\EventManager\EventManagerInterface;
-use Laminas\Mvc\ResponseSender\ConsoleResponseSender;
 use Laminas\Mvc\ResponseSender\HttpResponseSender;
 use Laminas\Mvc\ResponseSender\PhpEnvironmentResponseSender;
 use Laminas\Mvc\ResponseSender\SendResponseEvent;
@@ -68,9 +67,10 @@ class SendResponseListener extends AbstractListenerAggregate implements
      * Attach the aggregate to the specified event manager
      *
      * @param  EventManagerInterface $events
+     * @param  int $priority
      * @return void
      */
-    public function attach(EventManagerInterface $events)
+    public function attach(EventManagerInterface $events, $priority = 1)
     {
         $this->listeners[] = $events->attach(MvcEvent::EVENT_FINISH, [$this, 'sendResponse'], -10000);
     }
@@ -90,7 +90,7 @@ class SendResponseListener extends AbstractListenerAggregate implements
         $event = $this->getEvent();
         $event->setResponse($response);
         $event->setTarget($this);
-        $this->getEventManager()->trigger($event);
+        $this->getEventManager()->triggerEvent($event);
     }
 
     /**
@@ -123,7 +123,7 @@ class SendResponseListener extends AbstractListenerAggregate implements
      *
      * The order in which the response sender are listed here, is by their usage:
      * PhpEnvironmentResponseSender has highest priority, because it's used most often.
-     * ConsoleResponseSender and SimpleStreamResponseSender are not used that often, yo they have a lower priority.
+     * SimpleStreamResponseSender is not used that often, so has a lower priority.
      * You can attach your response sender before or after every default response sender implementation.
      * All default response sender implementation have negative priority.
      * You are able to attach listeners without giving a priority and your response sender would be first to try.
@@ -134,7 +134,6 @@ class SendResponseListener extends AbstractListenerAggregate implements
     {
         $events = $this->getEventManager();
         $events->attach(SendResponseEvent::EVENT_SEND_RESPONSE, new PhpEnvironmentResponseSender(), -1000);
-        $events->attach(SendResponseEvent::EVENT_SEND_RESPONSE, new ConsoleResponseSender(), -2000);
         $events->attach(SendResponseEvent::EVENT_SEND_RESPONSE, new SimpleStreamResponseSender(), -3000);
         $events->attach(SendResponseEvent::EVENT_SEND_RESPONSE, new HttpResponseSender(), -4000);
     }

@@ -21,6 +21,7 @@ use Laminas\View\Resolver\TemplatePathStack;
 use Laminas\View\Variables;
 use Traversable;
 
+// @codingStandardsIgnoreStart
 /**
  * Class for Laminas\View\Strategy\PhpRendererStrategy to help enforce private constructs.
  *
@@ -30,6 +31,7 @@ use Traversable;
  *
  * Convenience methods for build in helpers (@see __call):
  *
+ * @method string asset($asset)
  * @method string|null basePath($file = null)
  * @method \Laminas\View\Helper\Cycle cycle(array $data = array(), $name = \Laminas\View\Helper\Cycle::DEFAULT_NAME)
  * @method \Laminas\View\Helper\DeclareVars declareVars()
@@ -59,7 +61,7 @@ use Traversable;
  * @method string paginationControl(\Laminas\Paginator\Paginator $paginator = null, $scrollingStyle = null, $partial = null, $params = null)
  * @method string|\Laminas\View\Helper\Partial partial($name = null, $values = null)
  * @method string partialLoop($name = null, $values = null)
- * @method \Laminas\View\Helper\Placeholder\Container\AbstractContainer placeHolder($name = null)
+ * @method \Laminas\View\Helper\Placeholder\Container\AbstractContainer placeholder($name = null)
  * @method string renderChildModel($child)
  * @method void renderToPlaceholder($script, $placeholder)
  * @method string serverUrl($requestUri = null)
@@ -130,6 +132,7 @@ class PhpRenderer implements Renderer, TreeRendererInterface
      * @var array Temporary variable stack; used when variables passed to render()
      */
     private $__varsCache = [];
+    // @codingStandardsIgnoreEnd
 
     /**
      * Constructor.
@@ -212,7 +215,7 @@ class PhpRenderer implements Renderer, TreeRendererInterface
      */
     public function setVars($variables)
     {
-        if (!is_array($variables) && !$variables instanceof ArrayAccess) {
+        if (! is_array($variables) && ! $variables instanceof ArrayAccess) {
             throw new Exception\InvalidArgumentException(sprintf(
                 'Expected array or ArrayAccess object; received "%s"',
                 (is_object($variables) ? get_class($variables) : gettype($variables))
@@ -220,7 +223,7 @@ class PhpRenderer implements Renderer, TreeRendererInterface
         }
 
         // Enforce a Variables container
-        if (!$variables instanceof Variables) {
+        if (! $variables instanceof Variables) {
             $variablesAsArray = [];
             foreach ($variables as $key => $value) {
                 $variablesAsArray[$key] = $value;
@@ -311,7 +314,7 @@ class PhpRenderer implements Renderer, TreeRendererInterface
     public function __unset($name)
     {
         $vars = $this->vars();
-        if (!isset($vars[$name])) {
+        if (! isset($vars[$name])) {
             return;
         }
         unset($vars[$name]);
@@ -327,7 +330,7 @@ class PhpRenderer implements Renderer, TreeRendererInterface
     public function setHelperPluginManager($helpers)
     {
         if (is_string($helpers)) {
-            if (!class_exists($helpers)) {
+            if (! class_exists($helpers)) {
                 throw new Exception\InvalidArgumentException(sprintf(
                     'Invalid helper helpers class provided (%s)',
                     $helpers
@@ -335,7 +338,7 @@ class PhpRenderer implements Renderer, TreeRendererInterface
             }
             $helpers = new $helpers(new ServiceManager());
         }
-        if (!$helpers instanceof HelperPluginManager) {
+        if (! $helpers instanceof HelperPluginManager) {
             throw new Exception\InvalidArgumentException(sprintf(
                 'Helper helpers must extend Laminas\View\HelperPluginManager; got type "%s" instead',
                 (is_object($helpers) ? get_class($helpers) : gettype($helpers))
@@ -487,9 +490,10 @@ class PhpRenderer implements Renderer, TreeRendererInterface
         extract($__vars);
         unset($__vars); // remove $__vars from local scope
 
+        $this->__content = '';
         while ($this->__template = array_pop($this->__templates)) {
             $this->__file = $this->resolver($this->__template);
-            if (!$this->__file) {
+            if (! $this->__file) {
                 throw new Exception\RuntimeException(sprintf(
                     '%s: Unable to render template "%s"; resolver could not resolve to a file',
                     __METHOD__,
@@ -500,7 +504,10 @@ class PhpRenderer implements Renderer, TreeRendererInterface
                 ob_start();
                 $includeReturn = include $this->__file;
                 $this->__content = ob_get_clean();
-            } catch (\Exception $ex) {
+            } catch (\Throwable $ex) {
+                ob_end_clean();
+                throw $ex;
+            } catch (\Exception $ex) { // @TODO clean up once PHP 7 requirement is enforced
                 ob_end_clean();
                 throw $ex;
             }

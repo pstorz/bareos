@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\Word;
 
 use Laminas\Stdlib\StringUtils;
@@ -20,7 +14,7 @@ class SeparatorToCamelCase extends AbstractSeparator
      */
     public function filter($value)
     {
-        if (!is_scalar($value) && !is_array($value)) {
+        if (! is_scalar($value) && ! is_array($value)) {
             return $value;
         }
 
@@ -32,23 +26,27 @@ class SeparatorToCamelCase extends AbstractSeparator
                 '#(' . $pregQuotedSeparator.')(\P{Z}{1})#u',
                 '#(^\P{Z}{1})#u',
             ];
-            if (!extension_loaded('mbstring')) {
+            if (! extension_loaded('mbstring')) {
                 $replacements = [
-                    function ($matches) {
+                    // @codingStandardsIgnoreStart
+                    static function ($matches) {
                         return strtoupper($matches[2]);
                     },
-                    function ($matches) {
+                    static function ($matches) {
                         return strtoupper($matches[1]);
                     },
+                    // @codingStandardsIgnoreEnd
                 ];
             } else {
                 $replacements = [
-                    function ($matches) {
+                    // @codingStandardsIgnoreStart
+                    static function ($matches) {
                         return mb_strtoupper($matches[2], 'UTF-8');
                     },
-                    function ($matches) {
+                    static function ($matches) {
                         return mb_strtoupper($matches[1], 'UTF-8');
                     },
+                    // @codingStandardsIgnoreEnd
                 ];
             }
         } else {
@@ -57,12 +55,14 @@ class SeparatorToCamelCase extends AbstractSeparator
                 '#(^[\S]{1})#',
             ];
             $replacements = [
-                function ($matches) {
+                // @codingStandardsIgnoreStart
+                static function ($matches) {
                     return strtoupper($matches[2]);
                 },
-                function ($matches) {
+                static function ($matches) {
                     return strtoupper($matches[1]);
                 },
+                // @codingStandardsIgnoreEnd
             ];
         }
 

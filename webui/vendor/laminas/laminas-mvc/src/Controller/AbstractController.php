@@ -16,8 +16,7 @@ use Laminas\Http\PhpEnvironment\Response as HttpResponse;
 use Laminas\Http\Request as HttpRequest;
 use Laminas\Mvc\InjectApplicationEventInterface;
 use Laminas\Mvc\MvcEvent;
-use Laminas\ServiceManager\ServiceLocatorAwareInterface;
-use Laminas\ServiceManager\ServiceLocatorInterface;
+use Laminas\ServiceManager\ServiceManager;
 use Laminas\Stdlib\DispatchableInterface as Dispatchable;
 use Laminas\Stdlib\RequestInterface as Request;
 use Laminas\Stdlib\ResponseInterface as Response;
@@ -28,25 +27,17 @@ use Laminas\Stdlib\ResponseInterface as Response;
  * Convenience methods for pre-built plugins (@see __call):
  *
  * @method \Laminas\View\Model\ModelInterface acceptableViewModelSelector(array $matchAgainst = null, bool $returnDefault = true, \Laminas\Http\Header\Accept\FieldValuePart\AbstractFieldValuePart $resultReference = null)
- * @method bool|array|\Laminas\Http\Response fileprg(\Laminas\Form\FormInterface $form, $redirect = null, $redirectToUrl = false)
- * @method bool|array|\Laminas\Http\Response filePostRedirectGet(\Laminas\Form\FormInterface $form, $redirect = null, $redirectToUrl = false)
- * @method \Laminas\Mvc\Controller\Plugin\FlashMessenger flashMessenger()
  * @method \Laminas\Mvc\Controller\Plugin\Forward forward()
- * @method mixed|null identity()
  * @method \Laminas\Mvc\Controller\Plugin\Layout|\Laminas\View\Model\ModelInterface layout(string $template = null)
  * @method \Laminas\Mvc\Controller\Plugin\Params|mixed params(string $param = null, mixed $default = null)
- * @method \Laminas\Http\Response|array prg(string $redirect = null, bool $redirectToUrl = false)
- * @method \Laminas\Http\Response|array postRedirectGet(string $redirect = null, bool $redirectToUrl = false)
  * @method \Laminas\Mvc\Controller\Plugin\Redirect redirect()
  * @method \Laminas\Mvc\Controller\Plugin\Url url()
- * @method \Laminas\View\Model\ConsoleModel createConsoleNotFoundModel()
  * @method \Laminas\View\Model\ViewModel createHttpNotFoundModel(Response $response)
  */
 abstract class AbstractController implements
     Dispatchable,
     EventManagerAwareInterface,
-    InjectApplicationEventInterface,
-    ServiceLocatorAwareInterface
+    InjectApplicationEventInterface
 {
     /**
      * @var PluginManager
@@ -72,11 +63,6 @@ abstract class AbstractController implements
      * @var EventManagerInterface
      */
     protected $events;
-
-    /**
-     * @var ServiceLocatorInterface
-     */
-    protected $serviceLocator;
 
     /**
      * @var null|string|string[]
@@ -108,13 +94,14 @@ abstract class AbstractController implements
         $this->response = $response;
 
         $e = $this->getEvent();
-        $e->setRequest($request)
-          ->setResponse($response)
-          ->setTarget($this);
+        $e->setName(MvcEvent::EVENT_DISPATCH);
+        $e->setRequest($request);
+        $e->setResponse($response);
+        $e->setTarget($this);
 
-        $result = $this->getEventManager()->trigger(MvcEvent::EVENT_DISPATCH, $e, function ($test) {
+        $result = $this->getEventManager()->triggerEventUntil(function ($test) {
             return ($test instanceof Response);
-        });
+        }, $e);
 
         if ($result->stopped()) {
             return $result->last();
@@ -230,27 +217,6 @@ abstract class AbstractController implements
     }
 
     /**
-     * Set serviceManager instance
-     *
-     * @param  ServiceLocatorInterface $serviceLocator
-     * @return void
-     */
-    public function setServiceLocator(ServiceLocatorInterface $serviceLocator)
-    {
-        $this->serviceLocator = $serviceLocator;
-    }
-
-    /**
-     * Retrieve serviceManager instance
-     *
-     * @return ServiceLocatorInterface
-     */
-    public function getServiceLocator()
-    {
-        return $this->serviceLocator;
-    }
-
-    /**
      * Get plugin manager
      *
      * @return PluginManager
@@ -258,7 +224,7 @@ abstract class AbstractController implements
     public function getPluginManager()
     {
         if (!$this->plugins) {
-            $this->setPluginManager(new PluginManager());
+            $this->setPluginManager(new PluginManager(new ServiceManager()));
         }
 
         $this->plugins->setController($this);

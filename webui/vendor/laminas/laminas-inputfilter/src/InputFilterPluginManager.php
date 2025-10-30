@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-inputfilter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-inputfilter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-inputfilter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\InputFilter;
 
 use Interop\Container\ContainerInterface;
@@ -27,19 +21,24 @@ class InputFilterPluginManager extends AbstractPluginManager
      * @var string[]
      */
     protected $aliases = [
-        'inputfilter' => InputFilter::class,
-        'inputFilter' => InputFilter::class,
-        'InputFilter' => InputFilter::class,
-        'collection'  => CollectionInputFilter::class,
-        'Collection'  => CollectionInputFilter::class,
+        'inputfilter'         => InputFilter::class,
+        'inputFilter'         => InputFilter::class,
+        'InputFilter'         => InputFilter::class,
+        'collection'          => CollectionInputFilter::class,
+        'Collection'          => CollectionInputFilter::class,
+        'optionalinputfilter' => OptionalInputFilter::class,
+        'optionalInputFilter' => OptionalInputFilter::class,
+        'OptionalInputFilter' => OptionalInputFilter::class,
 
         // Legacy Zend Framework aliases
         \Zend\InputFilter\InputFilter::class => InputFilter::class,
         \Zend\InputFilter\CollectionInputFilter::class => CollectionInputFilter::class,
+        \Zend\InputFilter\OptionalInputFilter::class => OptionalInputFilter::class,
 
         // v2 normalized FQCNs
         'zendinputfilterinputfilter' => InputFilter::class,
         'zendinputfiltercollectioninputfilter' => CollectionInputFilter::class,
+        'zendinputfilteroptionalinputfilter' => OptionalInputFilter::class,
     ];
 
     /**
@@ -50,9 +49,11 @@ class InputFilterPluginManager extends AbstractPluginManager
     protected $factories = [
         InputFilter::class                      => InvokableFactory::class,
         CollectionInputFilter::class            => InvokableFactory::class,
+        OptionalInputFilter::class              => InvokableFactory::class,
         // v2 canonical FQCN
         'laminasinputfilterinputfilter'            => InvokableFactory::class,
         'laminasinputfiltercollectioninputfilter'  => InvokableFactory::class,
+        'laminasinputfilteroptionalinputfilter'    => InvokableFactory::class,
     ];
 
     /**
@@ -84,23 +85,20 @@ class InputFilterPluginManager extends AbstractPluginManager
     /**
      * Inject this and populate the factory with filter chain and validator chain
      *
-     * @param mixed $first
-     * @param mixed $second
+     * @param ContainerInterface|InputFilter $containerOrInputFilter    When using ServiceManager v3
+     *                                                                  this will be the plugin manager instance
+     * @param InputFilter                    $inputFilter               This is only used with ServiceManager v3
      */
-    public function populateFactory($first, $second)
+    public function populateFactory($containerOrInputFilter, $inputFilter = null)
     {
-        if ($first instanceof ContainerInterface) {
-            $container = $first;
-            $inputFilter = $second;
-        } else {
-            $container = $second;
-            $inputFilter = $first;
-        }
-        if ($inputFilter instanceof InputFilter) {
-            $factory = $inputFilter->getFactory();
+        $inputFilter = $containerOrInputFilter instanceof ContainerInterface ? $inputFilter : $containerOrInputFilter;
 
-            $factory->setInputFilterManager($this);
+        if (! $inputFilter instanceof InputFilter) {
+            return;
         }
+
+        $factory = $inputFilter->getFactory();
+        $factory->setInputFilterManager($this);
     }
 
     /**

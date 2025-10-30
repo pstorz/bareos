@@ -8,8 +8,7 @@
 
 namespace Laminas\Mvc\Service;
 
-use Laminas\Console\Console;
-use Laminas\Console\Response as ConsoleResponse;
+use Interop\Container\ContainerInterface;
 use Laminas\Http\PhpEnvironment\Response as HttpResponse;
 use Laminas\ServiceManager\FactoryInterface;
 use Laminas\ServiceManager\ServiceLocatorInterface;
@@ -17,17 +16,28 @@ use Laminas\ServiceManager\ServiceLocatorInterface;
 class ResponseFactory implements FactoryInterface
 {
     /**
-     * Create and return a response instance, according to current environment.
+     * Create and return a response instance.
      *
-     * @param  ServiceLocatorInterface $serviceLocator
-     * @return \Laminas\Stdlib\Message
+     * @param  ContainerInterface $container
+     * @param  string $name
+     * @param  null|array $options
+     * @return HttpResponse
      */
-    public function createService(ServiceLocatorInterface $serviceLocator)
+    public function __invoke(ContainerInterface $container, $name, array $options = null)
     {
-        if (Console::isConsole()) {
-            return new ConsoleResponse();
-        }
-
         return new HttpResponse();
+    }
+
+    /**
+     * Create and return response instance.
+     *
+     * For use with laminas-servicemanager v2; proxies to __invoke().
+     *
+     * @param ServiceLocatorInterface $container
+     * @return HttpResponse
+     */
+    public function createService(ServiceLocatorInterface $container)
+    {
+        return $this($container, 'Response');
     }
 }

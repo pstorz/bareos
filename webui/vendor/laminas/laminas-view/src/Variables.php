@@ -104,7 +104,7 @@ class Variables extends ArrayObject
                 $spec = (array) $spec;
             }
         }
-        if (!is_array($spec)) {
+        if (! is_array($spec)) {
             throw new Exception\InvalidArgumentException(sprintf(
                 'assign() expects either an array or an object as an argument; received "%s"',
                 gettype($spec)
@@ -130,7 +130,7 @@ class Variables extends ArrayObject
      */
     public function offsetGet($key)
     {
-        if (!$this->offsetExists($key)) {
+        if (! $this->offsetExists($key)) {
             if ($this->isStrict()) {
                 trigger_error(sprintf(
                     'View variable "%s" does not exist',

@@ -1,135 +1,311 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form;
 
+use Interop\Container\ContainerInterface;
+use Laminas\Form\Exception;
 use Laminas\ServiceManager\AbstractPluginManager;
-use Laminas\ServiceManager\ConfigInterface;
-use Laminas\ServiceManager\Exception\ServiceNotCreatedException;
-use Laminas\ServiceManager\ServiceLocatorInterface;
+use Laminas\ServiceManager\Exception\InvalidServiceException;
 use Laminas\Stdlib\InitializableInterface;
 
+use function array_push;
+use function array_search;
+use function array_unshift;
+use function class_exists;
+use function get_class;
+use function gettype;
+use function is_object;
+use function sprintf;
+
 /**
- * Plugin manager implementation for form elements.
+ * laminas-servicemanager v3-compatible plugin manager implementation for form elements.
  *
  * Enforces that elements retrieved are instances of ElementInterface.
  */
 class FormElementManager extends AbstractPluginManager
 {
     /**
-     * Default set of helpers
+     * Aliases for default set of helpers
      *
      * @var array
      */
-    protected $invokableClasses = [
-        'button'        => 'Laminas\Form\Element\Button',
-        'captcha'       => 'Laminas\Form\Element\Captcha',
-        'checkbox'      => 'Laminas\Form\Element\Checkbox',
-        'collection'    => 'Laminas\Form\Element\Collection',
-        'color'         => 'Laminas\Form\Element\Color',
-        'csrf'          => 'Laminas\Form\Element\Csrf',
-        'date'          => 'Laminas\Form\Element\Date',
-        'dateselect'    => 'Laminas\Form\Element\DateSelect',
-        'datetime'      => 'Laminas\Form\Element\DateTime',
-        'datetimelocal' => 'Laminas\Form\Element\DateTimeLocal',
-        'datetimeselect' => 'Laminas\Form\Element\DateTimeSelect',
-        'element'       => 'Laminas\Form\Element',
-        'email'         => 'Laminas\Form\Element\Email',
-        'fieldset'      => 'Laminas\Form\Fieldset',
-        'file'          => 'Laminas\Form\Element\File',
-        'form'          => 'Laminas\Form\Form',
-        'hidden'        => 'Laminas\Form\Element\Hidden',
-        'image'         => 'Laminas\Form\Element\Image',
-        'month'         => 'Laminas\Form\Element\Month',
-        'monthselect'   => 'Laminas\Form\Element\MonthSelect',
-        'multicheckbox' => 'Laminas\Form\Element\MultiCheckbox',
-        'number'        => 'Laminas\Form\Element\Number',
-        'password'      => 'Laminas\Form\Element\Password',
-        'radio'         => 'Laminas\Form\Element\Radio',
-        'range'         => 'Laminas\Form\Element\Range',
-        'select'        => 'Laminas\Form\Element\Select',
-        'submit'        => 'Laminas\Form\Element\Submit',
-        'text'          => 'Laminas\Form\Element\Text',
-        'textarea'      => 'Laminas\Form\Element\Textarea',
-        'time'          => 'Laminas\Form\Element\Time',
-        'url'           => 'Laminas\Form\Element\Url',
-        'week'          => 'Laminas\Form\Element\Week',
+    protected $aliases = [
+        'button'         => Element\Button::class,
+        'Button'         => Element\Button::class,
+        'captcha'        => Element\Captcha::class,
+        'Captcha'        => Element\Captcha::class,
+        'checkbox'       => Element\Checkbox::class,
+        'Checkbox'       => Element\Checkbox::class,
+        'collection'     => Element\Collection::class,
+        'Collection'     => Element\Collection::class,
+        'color'          => Element\Color::class,
+        'Color'          => Element\Color::class,
+        'csrf'           => Element\Csrf::class,
+        'Csrf'           => Element\Csrf::class,
+        'date'           => Element\Date::class,
+        'Date'           => Element\Date::class,
+        'dateselect'     => Element\DateSelect::class,
+        'dateSelect'     => Element\DateSelect::class,
+        'DateSelect'     => Element\DateSelect::class,
+        'datetime'       => Element\DateTime::class,
+        'dateTime'       => Element\DateTime::class,
+        'DateTime'       => Element\DateTime::class,
+        'datetimelocal'  => Element\DateTimeLocal::class,
+        'dateTimeLocal'  => Element\DateTimeLocal::class,
+        'DateTimeLocal'  => Element\DateTimeLocal::class,
+        'datetimeselect' => Element\DateTimeSelect::class,
+        'dateTimeSelect' => Element\DateTimeSelect::class,
+        'DateTimeSelect' => Element\DateTimeSelect::class,
+        'element'        => Element::class,
+        'Element'        => Element::class,
+        'email'          => Element\Email::class,
+        'Email'          => Element\Email::class,
+        'fieldset'       => Fieldset::class,
+        'Fieldset'       => Fieldset::class,
+        'file'           => Element\File::class,
+        'File'           => Element\File::class,
+        'form'           => Form::class,
+        'Form'           => Form::class,
+        'hidden'         => Element\Hidden::class,
+        'Hidden'         => Element\Hidden::class,
+        'image'          => Element\Image::class,
+        'Image'          => Element\Image::class,
+        'month'          => Element\Month::class,
+        'Month'          => Element\Month::class,
+        'monthselect'    => Element\MonthSelect::class,
+        'monthSelect'    => Element\MonthSelect::class,
+        'MonthSelect'    => Element\MonthSelect::class,
+        'multicheckbox'  => Element\MultiCheckbox::class,
+        'multiCheckbox'  => Element\MultiCheckbox::class,
+        'MultiCheckbox'  => Element\MultiCheckbox::class,
+        'multiCheckBox'  => Element\MultiCheckbox::class,
+        'MultiCheckBox'  => Element\MultiCheckbox::class,
+        'number'         => Element\Number::class,
+        'Number'         => Element\Number::class,
+        'password'       => Element\Password::class,
+        'Password'       => Element\Password::class,
+        'radio'          => Element\Radio::class,
+        'Radio'          => Element\Radio::class,
+        'range'          => Element\Range::class,
+        'Range'          => Element\Range::class,
+        'search'         => Element\Search::class,
+        'Search'         => Element\Search::class,
+        'select'         => Element\Select::class,
+        'Select'         => Element\Select::class,
+        'submit'         => Element\Submit::class,
+        'Submit'         => Element\Submit::class,
+        'tel'            => Element\Tel::class,
+        'Tel'            => Element\Tel::class,
+        'text'           => Element\Text::class,
+        'Text'           => Element\Text::class,
+        'textarea'       => Element\Textarea::class,
+        'Textarea'       => Element\Textarea::class,
+        'time'           => Element\Time::class,
+        'Time'           => Element\Time::class,
+        'url'            => Element\Url::class,
+        'Url'            => Element\Url::class,
+        'week'           => Element\Week::class,
+        'Week'           => Element\Week::class,
     ];
 
     /**
-     * Don't share form elements by default
+     * Factories for default set of helpers
+     *
+     * @var array
+     */
+    protected $factories = [
+        Element\Button::class         => ElementFactory::class,
+        Element\Captcha::class        => ElementFactory::class,
+        Element\Checkbox::class       => ElementFactory::class,
+        Element\Collection::class     => ElementFactory::class,
+        Element\Color::class          => ElementFactory::class,
+        Element\Csrf::class           => ElementFactory::class,
+        Element\Date::class           => ElementFactory::class,
+        Element\DateSelect::class     => ElementFactory::class,
+        Element\DateTime::class       => ElementFactory::class,
+        Element\DateTimeLocal::class  => ElementFactory::class,
+        Element\DateTimeSelect::class => ElementFactory::class,
+        Element::class                => ElementFactory::class,
+        Element\Email::class          => ElementFactory::class,
+        Fieldset::class               => ElementFactory::class,
+        Element\File::class           => ElementFactory::class,
+        Form::class                   => ElementFactory::class,
+        Element\Hidden::class         => ElementFactory::class,
+        Element\Image::class          => ElementFactory::class,
+        Element\Month::class          => ElementFactory::class,
+        Element\MonthSelect::class    => ElementFactory::class,
+        Element\MultiCheckbox::class  => ElementFactory::class,
+        Element\Number::class         => ElementFactory::class,
+        Element\Password::class       => ElementFactory::class,
+        Element\Radio::class          => ElementFactory::class,
+        Element\Range::class          => ElementFactory::class,
+        Element\Search::class         => ElementFactory::class,
+        Element\Select::class         => ElementFactory::class,
+        Element\Submit::class         => ElementFactory::class,
+        Element\Tel::class            => ElementFactory::class,
+        Element\Text::class           => ElementFactory::class,
+        Element\Textarea::class       => ElementFactory::class,
+        Element\Time::class           => ElementFactory::class,
+        Element\Url::class            => ElementFactory::class,
+        Element\Week::class           => ElementFactory::class,
+
+        // v2 normalized variants
+        'laminasformelementbutton'         => ElementFactory::class,
+        'laminasformelementcaptcha'        => ElementFactory::class,
+        'laminasformelementcheckbox'       => ElementFactory::class,
+        'laminasformelementcollection'     => ElementFactory::class,
+        'laminasformelementcolor'          => ElementFactory::class,
+        'laminasformelementcsrf'           => ElementFactory::class,
+        'laminasformelementdate'           => ElementFactory::class,
+        'laminasformelementdateselect'     => ElementFactory::class,
+        'laminasformelementdatetime'       => ElementFactory::class,
+        'laminasformelementdatetimelocal'  => ElementFactory::class,
+        'laminasformelementdatetimeselect' => ElementFactory::class,
+        'laminasformelement'               => ElementFactory::class,
+        'laminasformelementemail'          => ElementFactory::class,
+        'laminasformfieldset'              => ElementFactory::class,
+        'laminasformelementfile'           => ElementFactory::class,
+        'laminasformform'                  => ElementFactory::class,
+        'laminasformelementhidden'         => ElementFactory::class,
+        'laminasformelementimage'          => ElementFactory::class,
+        'laminasformelementmonth'          => ElementFactory::class,
+        'laminasformelementmonthselect'    => ElementFactory::class,
+        'laminasformelementmulticheckbox'  => ElementFactory::class,
+        'laminasformelementnumber'         => ElementFactory::class,
+        'laminasformelementpassword'       => ElementFactory::class,
+        'laminasformelementradio'          => ElementFactory::class,
+        'laminasformelementrange'          => ElementFactory::class,
+        'laminasformelementsearch'         => ElementFactory::class,
+        'laminasformelementselect'         => ElementFactory::class,
+        'laminasformelementsubmit'         => ElementFactory::class,
+        'laminasformelementtel'            => ElementFactory::class,
+        'laminasformelementtext'           => ElementFactory::class,
+        'laminasformelementtextarea'       => ElementFactory::class,
+        'laminasformelementtime'           => ElementFactory::class,
+        'laminasformelementurl'            => ElementFactory::class,
+        'laminasformelementweek'           => ElementFactory::class,
+    ];
+
+    /**
+     * Don't share form elements by default (v3)
      *
      * @var bool
      */
-    protected $shareByDefault = false;
+    protected $sharedByDefault = false;
 
     /**
-     * @param ConfigInterface $configuration
+     * Interface all plugins managed by this class must implement.
+     *
+     * @var class-string
      */
-    public function __construct(ConfigInterface $configuration = null)
-    {
-        parent::__construct($configuration);
-
-        $this->addInitializer([$this, 'injectFactory']);
-        $this->addInitializer([$this, 'callElementInit'], false);
-    }
+    protected $instanceOf = ElementInterface::class;
 
     /**
      * Inject the factory to any element that implements FormFactoryAwareInterface
      *
-     * @param $element
+     * @param mixed $instance Instance to inspect and optionally inject.
      */
-    public function injectFactory($element)
+    public function injectFactory(ContainerInterface $container, $instance): void
     {
-        if ($element instanceof FormFactoryAwareInterface) {
-            $factory = $element->getFormFactory();
-            $factory->setFormElementManager($this);
+        if (! $instance instanceof Fieldset) {
+            return;
+        }
 
-            if ($this->serviceLocator instanceof ServiceLocatorInterface
-                && $this->serviceLocator->has('InputFilterManager')
-            ) {
-                $inputFilters = $this->serviceLocator->get('InputFilterManager');
-                $factory->getInputFilterFactory()->setInputFilterManager($inputFilters);
-            }
+        $factory = $instance->getFormFactory();
+        $factory->setFormElementManager($this);
+
+        if ($container->has('InputFilterManager')) {
+            $inputFilters = $container->get('InputFilterManager');
+            $factory->getInputFilterFactory()->setInputFilterManager($inputFilters);
         }
     }
 
     /**
      * Call init() on any element that implements InitializableInterface
      *
-     * @internal param $element
+     * @param mixed $instance Instance to inspect and optionally initialize.
      */
-    public function callElementInit($element)
+    public function callElementInit(ContainerInterface $container, $instance): void
     {
-        if ($element instanceof InitializableInterface) {
-            $element->init();
+        if ($instance instanceof InitializableInterface) {
+            $instance->init();
         }
     }
 
     /**
-     * Validate the plugin
+     * Override setInvokableClass
      *
-     * Checks that the element is an instance of ElementInterface
+     * Overrides setInvokableClass to:
      *
-     * @param  mixed $plugin
-     * @throws Exception\InvalidElementException
-     * @return void
+     * - add a factory mapping $invokableClass to ElementFactory::class
+     * - alias $name to $invokableClass
+     *
+     * @param string $name
+     * @param null|string $class
      */
-    public function validatePlugin($plugin)
+    public function setInvokableClass($name, $class = null): void
     {
-        if ($plugin instanceof ElementInterface) {
-            return; // we're okay
+        $class = $class ?: $name;
+
+        if (! $this->has($class)) {
+            $this->setFactory($class, ElementFactory::class);
         }
 
-        throw new Exception\InvalidElementException(sprintf(
-            'Plugin of type %s is invalid; must implement Laminas\Form\ElementInterface',
-            (is_object($plugin) ? get_class($plugin) : gettype($plugin))
-        ));
+        if ($class === $name) {
+            return;
+        }
+
+        $this->setAlias($name, $class);
+    }
+
+    /**
+     * Validate the plugin is of the expected type (v3).
+     *
+     * Validates against `$instanceOf`.
+     *
+     * @param  mixed $instance
+     * @throws InvalidServiceException
+     */
+    public function validate($instance): void
+    {
+        if (! $instance instanceof $this->instanceOf) {
+            throw new InvalidServiceException(sprintf(
+                '%s can only create instances of %s; %s is invalid',
+                static::class,
+                $this->instanceOf,
+                is_object($instance) ? get_class($instance) : gettype($instance)
+            ));
+        }
+    }
+
+    /**
+     * Overrides parent::configure in order to ensure default initializers are in expected positions.
+     *
+     * Always pushes `injectFactory` to top of initializer stack, and
+     * `callElementInit` to the bottom.
+     *
+     * {@inheritDoc}
+     */
+    public function configure(array $config)
+    {
+        $firstInitializer = [$this, 'injectFactory'];
+        $lastInitializer  = [$this, 'callElementInit'];
+
+        foreach ([$firstInitializer, $lastInitializer] as $default) {
+            if (false === ($index = array_search($default, $this->initializers))) {
+                continue;
+            }
+            unset($this->initializers[$index]);
+        }
+
+        parent::configure($config);
+
+        array_unshift($this->initializers, $firstInitializer);
+        array_push($this->initializers, $lastInitializer);
+
+        return $this;
     }
 
     /**
@@ -140,53 +316,78 @@ class FormElementManager extends AbstractPluginManager
      * constructor if not null and a non-empty array.
      *
      * @param  string $name
-     * @param  string|array $options
-     * @param  bool $usePeeringServiceManagers
-     * @return object
+     * @return mixed
      */
-    public function get($name, $options = [], $usePeeringServiceManagers = true)
+    public function get($name, ?array $options = null)
     {
-        if (is_string($options)) {
-            $options = ['name' => $options];
+        if (! $this->has($name)) {
+            if (! $this->autoAddInvokableClass || ! class_exists($name)) {
+                throw new Exception\InvalidElementException(
+                    sprintf(
+                        'A plugin by the name "%s" was not found in the plugin manager %s',
+                        $name,
+                        static::class
+                    )
+                );
+            }
+
+            $this->setInvokableClass($name, $name);
         }
-        return parent::get($name, $options, $usePeeringServiceManagers);
+        return parent::get($name, $options);
     }
 
     /**
-     * Attempt to create an instance via an invokable class
+     * Try to pull hydrator from the creation context, or instantiates it from its name
      *
-     * Overrides parent implementation by passing $creationOptions to the
-     * constructor, if non-null.
-     *
-     * @param  string $canonicalName
-     * @param  string $requestedName
-     * @return null|\stdClass
-     * @throws ServiceNotCreatedException If resolved class does not exist
+     * @return mixed
+     * @throws Exception\DomainException
      */
-    protected function createFromInvokable($canonicalName, $requestedName)
+    public function getHydratorFromName(string $hydratorName)
     {
-        $invokable = $this->invokableClasses[$canonicalName];
+        $services = $this->creationContext;
 
-        if (null === $this->creationOptions
-            || (is_array($this->creationOptions) && empty($this->creationOptions))
-        ) {
-            $instance = new $invokable();
-        } else {
-            if (isset($this->creationOptions['name'])) {
-                $name = $this->creationOptions['name'];
-            } else {
-                $name = $requestedName;
+        if ($services && $services->has('HydratorManager')) {
+            $hydrators = $services->get('HydratorManager');
+            if ($hydrators->has($hydratorName)) {
+                return $hydrators->get($hydratorName);
             }
-
-            if (isset($this->creationOptions['options'])) {
-                $options = $this->creationOptions['options'];
-            } else {
-                $options = $this->creationOptions;
-            }
-
-            $instance = new $invokable($name, $options);
         }
 
-        return $instance;
+        if ($services && $services->has($hydratorName)) {
+            return $services->get($hydratorName);
+        }
+
+        if (! class_exists($hydratorName)) {
+            throw new Exception\DomainException(sprintf(
+                'Expects string hydrator name to be a valid class name; received "%s"',
+                $hydratorName
+            ));
+        }
+
+        return new $hydratorName();
+    }
+
+    /**
+     * Try to pull factory from the creation context, or instantiates it from its name
+     *
+     * @return mixed
+     * @throws Exception\DomainException
+     */
+    public function getFactoryFromName(string $factoryName)
+    {
+        $services = $this->creationContext;
+
+        if ($services && $services->has($factoryName)) {
+            return $services->get($factoryName);
+        }
+
+        if (! class_exists($factoryName)) {
+            throw new Exception\DomainException(sprintf(
+                'Expects string factory name to be a valid class name; received "%s"',
+                $factoryName
+            ));
+        }
+
+        return new $factoryName();
     }
 }

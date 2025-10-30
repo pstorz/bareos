@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\Compress;
 
 use Laminas\Filter\Exception;
@@ -23,7 +17,7 @@ class Snappy implements CompressionAlgorithmInterface
      */
     public function __construct($options = null)
     {
-        if (!extension_loaded('snappy')) {
+        if (! extension_loaded('snappy')) {
             throw new Exception\ExtensionNotLoadedException('This filter needs the snappy extension');
         }
     }

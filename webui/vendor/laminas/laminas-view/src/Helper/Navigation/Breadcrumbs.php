@@ -96,7 +96,7 @@ class Breadcrumbs extends AbstractHelper
         }
 
         // find deepest active
-        if (!$active = $this->findActive($container)) {
+        if (! $active = $this->findActive($container)) {
             return '';
         }
 
@@ -144,8 +144,7 @@ class Breadcrumbs extends AbstractHelper
      *     script. Default is to use the container registered in the helper.
      * @param  null|string|array $partial [optional] partial view script to use.
      *     Default is to use the partial registered in the helper. If an array
-     *     is given, it is expected to contain two values; the partial view
-     *     script to use, and the module where the script can be found.
+     *     is given, the first value is used for the partial view script.
      * @return string
      * @throws Exception\RuntimeException         if no partial provided
      * @throws Exception\InvalidArgumentException if partial is invalid array
@@ -168,8 +167,7 @@ class Breadcrumbs extends AbstractHelper
      *     script. Default is to use the container registered in the helper.
      * @param  null|string|array $partial [optional] partial view script to use.
      *     Default is to use the partial registered in the helper. If an array
-     *     is given, it is expected to contain two values; the partial view
-     *     script to use, and the module where the script can be found.
+     *     is given, the first value is used for the partial view script.
      * @return string
      * @throws Exception\RuntimeException         if no partial provided
      * @throws Exception\InvalidArgumentException if partial is invalid array
@@ -205,8 +203,7 @@ class Breadcrumbs extends AbstractHelper
      * Sets which partial view script to use for rendering menu.
      *
      * @param  string|array $partial partial view script or null. If an array is
-     *     given, it is expected to contain two values; the partial view script
-     *     to use, and the module where the script can be found.
+     *     given, the first value is used for the partial view script.
      * @return Breadcrumbs
      */
     public function setPartial($partial)
@@ -302,8 +299,7 @@ class Breadcrumbs extends AbstractHelper
             if (count($partial) != 2) {
                 throw new Exception\InvalidArgumentException(
                     'Unable to render breadcrumbs: A view partial supplied as '
-                    . 'an array must contain two values: partial view '
-                    . 'script and module where script can be found'
+                    . 'an array must contain one value: the partial view script'
                 );
             }
 

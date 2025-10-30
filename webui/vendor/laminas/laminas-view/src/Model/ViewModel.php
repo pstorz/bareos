@@ -67,7 +67,7 @@ class ViewModel implements ModelInterface, ClearableModelInterface, RetrievableC
     /**
      * Constructor
      *
-     * @param  null|array|Traversable $variables
+     * @param  null|array|Traversable|ArrayAccess $variables
      * @param  array|Traversable $options
      */
     public function __construct($variables = null, $options = null)
@@ -104,7 +104,7 @@ class ViewModel implements ModelInterface, ClearableModelInterface, RetrievableC
      */
     public function __get($name)
     {
-        if (!$this->__isset($name)) {
+        if (! $this->__isset($name)) {
             return;
         }
 
@@ -132,11 +132,26 @@ class ViewModel implements ModelInterface, ClearableModelInterface, RetrievableC
      */
     public function __unset($name)
     {
-        if (!$this->__isset($name)) {
+        if (! $this->__isset($name)) {
             return;
         }
 
         unset($this->variables[$name]);
+    }
+
+    /**
+     * Called after this view model is cloned.
+     *
+     * Clones $variables property so changes done to variables in the new
+     * instance don't change the current one.
+     *
+     * @return void
+     */
+    public function __clone()
+    {
+        if (is_object($this->variables)) {
+            $this->variables = clone $this->variables;
+        }
     }
 
     /**
@@ -180,7 +195,7 @@ class ViewModel implements ModelInterface, ClearableModelInterface, RetrievableC
             $options = ArrayUtils::iteratorToArray($options);
         }
 
-        if (!is_array($options)) {
+        if (! is_array($options)) {
             throw new Exception\InvalidArgumentException(sprintf(
                 '%s: expects an array, or Traversable argument; received "%s"',
                 __METHOD__,
@@ -223,8 +238,13 @@ class ViewModel implements ModelInterface, ClearableModelInterface, RetrievableC
     public function getVariable($name, $default = null)
     {
         $name = (string) $name;
-        if (array_key_exists($name, $this->variables)) {
-            return $this->variables[$name];
+
+        if (is_array($this->variables)) {
+            if (array_key_exists($name, $this->variables)) {
+                return $this->variables[$name];
+            }
+        } elseif ($this->variables->offsetExists($name)) {
+            return $this->variables->offsetGet($name);
         }
 
         return $default;
@@ -255,7 +275,7 @@ class ViewModel implements ModelInterface, ClearableModelInterface, RetrievableC
      */
     public function setVariables($variables, $overwrite = false)
     {
-        if (!is_array($variables) && !$variables instanceof Traversable) {
+        if (! is_array($variables) && ! $variables instanceof Traversable) {
             throw new Exception\InvalidArgumentException(sprintf(
                 '%s: expects an array, or Traversable argument; received "%s"',
                 __METHOD__,
@@ -264,7 +284,7 @@ class ViewModel implements ModelInterface, ClearableModelInterface, RetrievableC
         }
 
         if ($overwrite) {
-            if (is_object($variables) && !$variables instanceof ArrayAccess) {
+            if (is_object($variables) && ! $variables instanceof ArrayAccess) {
                 $variables = ArrayUtils::iteratorToArray($variables);
             }
 
@@ -364,7 +384,7 @@ class ViewModel implements ModelInterface, ClearableModelInterface, RetrievableC
      */
     public function hasChildren()
     {
-        return (0 < count($this->children));
+        return (bool) $this->children;
     }
 
     /**

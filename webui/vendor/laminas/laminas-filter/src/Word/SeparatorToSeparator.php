@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter\Word;
 
 use Laminas\Filter\AbstractFilter;
@@ -13,8 +7,8 @@ use Laminas\Filter\Exception;
 
 class SeparatorToSeparator extends AbstractFilter
 {
-    protected $searchSeparator = null;
-    protected $replacementSeparator = null;
+    protected $searchSeparator;
+    protected $replacementSeparator;
 
     /**
      * Constructor
@@ -29,9 +23,9 @@ class SeparatorToSeparator extends AbstractFilter
     }
 
     /**
-     * Sets a new seperator to search for
+     * Sets a new separator to search for
      *
-     * @param  string $separator Seperator to search for
+     * @param  string $separator Separator to search for
      * @return self
      */
     public function setSearchSeparator($separator)
@@ -82,7 +76,7 @@ class SeparatorToSeparator extends AbstractFilter
      */
     public function filter($value)
     {
-        if (!is_scalar($value) && !is_array($value)) {
+        if (! is_scalar($value) && ! is_array($value)) {
             return $value;
         }
 

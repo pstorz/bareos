@@ -10,6 +10,8 @@ namespace Laminas\Mvc\Controller;
 
 use Laminas\Mvc\Exception;
 use Laminas\ServiceManager\AbstractPluginManager;
+use Laminas\ServiceManager\Exception\InvalidServiceException;
+use Laminas\ServiceManager\Factory\InvokableFactory;
 use Laminas\Stdlib\DispatchableInterface;
 
 /**
@@ -21,43 +23,73 @@ use Laminas\Stdlib\DispatchableInterface;
 class PluginManager extends AbstractPluginManager
 {
     /**
-     * Default set of plugins factories
+     * Plugins must be of this type.
      *
-     * @var array
+     * @var string
      */
-    protected $factories = [
-        'forward'  => 'Laminas\Mvc\Controller\Plugin\Service\ForwardFactory',
-        'identity' => 'Laminas\Mvc\Controller\Plugin\Service\IdentityFactory',
-    ];
+    protected $instanceOf = Plugin\PluginInterface::class;
 
     /**
-     * Default set of plugins
-     *
-     * @var array
-     */
-    protected $invokableClasses = [
-        'acceptableviewmodelselector' => 'Laminas\Mvc\Controller\Plugin\AcceptableViewModelSelector',
-        'filepostredirectget'         => 'Laminas\Mvc\Controller\Plugin\FilePostRedirectGet',
-        'flashmessenger'              => 'Laminas\Mvc\Controller\Plugin\FlashMessenger',
-        'layout'                      => 'Laminas\Mvc\Controller\Plugin\Layout',
-        'params'                      => 'Laminas\Mvc\Controller\Plugin\Params',
-        'postredirectget'             => 'Laminas\Mvc\Controller\Plugin\PostRedirectGet',
-        'redirect'                    => 'Laminas\Mvc\Controller\Plugin\Redirect',
-        'url'                         => 'Laminas\Mvc\Controller\Plugin\Url',
-        'createhttpnotfoundmodel'     => 'Laminas\Mvc\Controller\Plugin\CreateHttpNotFoundModel',
-        'createconsolenotfoundmodel'  => 'Laminas\Mvc\Controller\Plugin\CreateConsoleNotFoundModel',
-    ];
-
-    /**
-     * Default set of plugin aliases
-     *
-     * @var array
+     * @var string[] Default aliases
      */
     protected $aliases = [
-        'prg'     => 'postredirectget',
-        'fileprg' => 'filepostredirectget',
+        'AcceptableViewModelSelector' => Plugin\AcceptableViewModelSelector::class,
+        'acceptableViewModelSelector' => Plugin\AcceptableViewModelSelector::class,
+        'acceptableviewmodelselector' => Plugin\AcceptableViewModelSelector::class,
+        'Forward'                     => Plugin\Forward::class,
+        'forward'                     => Plugin\Forward::class,
+        'Layout'                      => Plugin\Layout::class,
+        'layout'                      => Plugin\Layout::class,
+        'Params'                      => Plugin\Params::class,
+        'params'                      => Plugin\Params::class,
+        'Redirect'                    => Plugin\Redirect::class,
+        'redirect'                    => Plugin\Redirect::class,
+        'Url'                         => Plugin\Url::class,
+        'url'                         => Plugin\Url::class,
+        'CreateHttpNotFoundModel'     => Plugin\CreateHttpNotFoundModel::class,
+        'createHttpNotFoundModel'     => Plugin\CreateHttpNotFoundModel::class,
+        'createhttpnotfoundmodel'     => Plugin\CreateHttpNotFoundModel::class,
 
         // Legacy Zend Framework aliases
+        \Zend\Mvc\Controller\Plugin\Forward::class => Plugin\Forward::class,
+        \Zend\Mvc\Controller\Plugin\AcceptableViewModelSelector::class => Plugin\AcceptableViewModelSelector::class,
+        \Zend\Mvc\Controller\Plugin\Layout::class => Plugin\Layout::class,
+        \Zend\Mvc\Controller\Plugin\Params::class => Plugin\Params::class,
+        \Zend\Mvc\Controller\Plugin\Redirect::class => Plugin\Redirect::class,
+        \Zend\Mvc\Controller\Plugin\Url::class => Plugin\Url::class,
+        \Zend\Mvc\Controller\Plugin\CreateHttpNotFoundModel::class => Plugin\CreateHttpNotFoundModel::class,
+
+        // v2 normalized FQCNs
+        'zendmvccontrollerpluginforward' => Plugin\Forward::class,
+        'zendmvccontrollerpluginacceptableviewmodelselector' => Plugin\AcceptableViewModelSelector::class,
+        'zendmvccontrollerpluginlayout' => Plugin\Layout::class,
+        'zendmvccontrollerpluginparams' => Plugin\Params::class,
+        'zendmvccontrollerpluginredirect' => Plugin\Redirect::class,
+        'zendmvccontrollerpluginurl' => Plugin\Url::class,
+        'zendmvccontrollerplugincreatehttpnotfoundmodel' => Plugin\CreateHttpNotFoundModel::class,
+    ];
+
+    /**
+     * @var string[]|callable[] Default factories
+     */
+    protected $factories = [
+        Plugin\Forward::class                     => Plugin\Service\ForwardFactory::class,
+        Plugin\AcceptableViewModelSelector::class => InvokableFactory::class,
+        Plugin\Layout::class                      => InvokableFactory::class,
+        Plugin\Params::class                      => InvokableFactory::class,
+        Plugin\Redirect::class                    => InvokableFactory::class,
+        Plugin\Url::class                         => InvokableFactory::class,
+        Plugin\CreateHttpNotFoundModel::class     => InvokableFactory::class,
+
+        // v2 normalized names
+
+        'laminasmvccontrollerpluginforward'                     => Plugin\Service\ForwardFactory::class,
+        'laminasmvccontrollerpluginacceptableviewmodelselector' => InvokableFactory::class,
+        'laminasmvccontrollerpluginlayout'                      => InvokableFactory::class,
+        'laminasmvccontrollerpluginparams'                      => InvokableFactory::class,
+        'laminasmvccontrollerpluginredirect'                    => InvokableFactory::class,
+        'laminasmvccontrollerpluginurl'                         => InvokableFactory::class,
+        'laminasmvccontrollerplugincreatehttpnotfoundmodel'     => InvokableFactory::class,
     ];
 
     /**
@@ -76,13 +108,11 @@ class PluginManager extends AbstractPluginManager
      * plugin is lost.
      *
      * @param  string $name
-     * @param  mixed  $options
-     * @param  bool   $usePeeringServiceManagers
-     * @return mixed
+     * @return DispatchableInterface
      */
-    public function get($name, $options = [], $usePeeringServiceManagers = true)
+    public function get($name, array $options = null)
     {
-        $plugin = parent::get($name, $options, $usePeeringServiceManagers);
+        $plugin = parent::get($name, $options);
         $this->injectController($plugin);
 
         return $plugin;
@@ -135,25 +165,38 @@ class PluginManager extends AbstractPluginManager
     }
 
     /**
-     * Validate the plugin
+     * Validate a plugin (v3)
      *
-     * Any plugin is considered valid in this context.
+     * {@inheritDoc}
+     */
+    public function validate($plugin)
+    {
+        if (! $plugin instanceof $this->instanceOf) {
+            throw new InvalidServiceException(sprintf(
+                'Plugin of type "%s" is invalid; must implement %s',
+                (is_object($plugin) ? get_class($plugin) : gettype($plugin)),
+                $this->instanceOf
+            ));
+        }
+    }
+
+    /**
+     * Validate a plugin (v2)
      *
-     * @param  mixed                            $plugin
-     * @return void
+     * {@inheritDoc}
+     *
      * @throws Exception\InvalidPluginException
      */
     public function validatePlugin($plugin)
     {
-        if ($plugin instanceof Plugin\PluginInterface) {
-            // we're okay
-            return;
+        try {
+            $this->validate($plugin);
+        } catch (InvalidServiceException $e) {
+            throw new Exception\InvalidPluginException(
+                $e->getMessage(),
+                $e->getCode(),
+                $e
+            );
         }
-
-        throw new Exception\InvalidPluginException(sprintf(
-            'Plugin of type %s is invalid; must implement %s\Plugin\PluginInterface',
-            (is_object($plugin) ? get_class($plugin) : gettype($plugin)),
-            __NAMESPACE__
-        ));
     }
 }

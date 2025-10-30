@@ -32,14 +32,12 @@ class ContentTransferEncoding implements HeaderInterface
         }
 
         // @todo implementation details
-        $header = new static(strtolower($value));
-
-        return $header;
+        return new static(strtolower($value));
     }
 
     public function __construct($value = null)
     {
-        if ($value) {
+        if ($value !== null) {
             HeaderValue::assertValid($value);
             $this->value = $value;
         }
@@ -52,7 +50,7 @@ class ContentTransferEncoding implements HeaderInterface
 
     public function getFieldValue()
     {
-        return $this->value;
+        return (string) $this->value;
     }
 
     public function toString()

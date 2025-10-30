@@ -15,17 +15,17 @@ class NumberFormat extends NumberParse
     /**
      * Defined by Laminas\Filter\FilterInterface
      *
-     * @see    Laminas\Filter\FilterInterface::filter()
+     * @see    \Laminas\Filter\FilterInterface::filter()
      * @param  mixed $value
      * @return mixed
      */
     public function filter($value)
     {
-        if (!is_scalar($value)) {
+        if (! is_scalar($value)) {
             return $value;
         }
 
-        if (!is_int($value) && !is_float($value)) {
+        if (! is_int($value) && ! is_float($value)) {
             $result = parent::filter($value);
         } else {
             ErrorHandler::start();

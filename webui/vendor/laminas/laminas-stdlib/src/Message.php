@@ -10,6 +10,14 @@ namespace Laminas\Stdlib;
 
 use Traversable;
 
+use function array_key_exists;
+use function get_class;
+use function gettype;
+use function is_array;
+use function is_object;
+use function is_scalar;
+use function sprintf;
+
 class Message implements MessageInterface
 {
     /**
@@ -18,7 +26,7 @@ class Message implements MessageInterface
     protected $metadata = [];
 
     /**
-     * @var string
+     * @var mixed
      */
     protected $content = '';
 
@@ -39,7 +47,7 @@ class Message implements MessageInterface
             $this->metadata[$spec] = $value;
             return $this;
         }
-        if (!is_array($spec) && !$spec instanceof Traversable) {
+        if (! is_array($spec) && ! $spec instanceof Traversable) {
             throw new Exception\InvalidArgumentException(sprintf(
                 'Expected a string, array, or Traversable argument in first position; received "%s"',
                 (is_object($spec) ? get_class($spec) : gettype($spec))
@@ -65,7 +73,7 @@ class Message implements MessageInterface
             return $this->metadata;
         }
 
-        if (!is_scalar($key)) {
+        if (! is_scalar($key)) {
             throw new Exception\InvalidArgumentException('Non-scalar argument provided for key');
         }
 

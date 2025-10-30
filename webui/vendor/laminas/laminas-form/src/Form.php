@@ -1,10 +1,6 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form;
 
@@ -19,6 +15,14 @@ use Laminas\InputFilter\InputProviderInterface;
 use Laminas\InputFilter\ReplaceableInputInterface;
 use Laminas\Stdlib\ArrayUtils;
 use Traversable;
+
+use function array_key_exists;
+use function array_keys;
+use function assert;
+use function in_array;
+use function is_array;
+use function is_object;
+use function sprintf;
 
 class Form extends Fieldset implements FormInterface
 {
@@ -48,20 +52,18 @@ class Form extends Fieldset implements FormInterface
     /**
      * Base fieldset to use for hydrating (if none specified, directly hydrate elements)
      *
-     * @var FieldsetInterface
+     * @var null|FieldsetInterface
      */
     protected $baseFieldset;
 
     /**
      * Data being validated
      *
-     * @var null|array|Traversable
+     * @var null|array
      */
     protected $data;
 
-    /**
-     * @var null|InputFilterInterface
-     */
+    /** @var null|InputFilterInterface */
     protected $filter;
 
     /**
@@ -132,20 +134,20 @@ class Form extends Fieldset implements FormInterface
      * Set options for a form. Accepted options are:
      * - prefer_form_input_filter: is form input filter is preferred?
      *
-     * @param  array|Traversable $options
-     * @return self
+     * @param  iterable $options
+     * @return $this
      * @throws Exception\InvalidArgumentException
      */
-    public function setOptions($options)
+    public function setOptions(iterable $options)
     {
         parent::setOptions($options);
 
-        if (isset($options['prefer_form_input_filter'])) {
-            $this->setPreferFormInputFilter($options['prefer_form_input_filter']);
+        if (isset($this->options['prefer_form_input_filter'])) {
+            $this->setPreferFormInputFilter($this->options['prefer_form_input_filter']);
         }
 
-        if (isset($options['use_input_filter_defaults'])) {
-            $this->setUseInputFilterDefaults($options['use_input_filter_defaults']);
+        if (isset($this->options['use_input_filter_defaults'])) {
+            $this->setUseInputFilterDefaults($this->options['use_input_filter_defaults']);
         }
 
         return $this;
@@ -162,16 +164,17 @@ class Form extends Fieldset implements FormInterface
      *
      * @param  array|Traversable|ElementInterface $elementOrFieldset
      * @param  array                              $flags
-     * @return self
+     * @return $this
      */
     public function add($elementOrFieldset, array $flags = [])
     {
-        // TODO: find a better solution than duplicating the factory code, the problem being that if $elementOrFieldset is an array,
-        // it is passed by value, and we don't get back the concrete ElementInterface
-        if (is_array($elementOrFieldset)
-            || ($elementOrFieldset instanceof Traversable && !$elementOrFieldset instanceof ElementInterface)
+        // TODO: find a better solution than duplicating the factory code, the problem being that if
+        // $elementOrFieldset is an array, it is passed by value, and we don't get back the concrete ElementInterface
+        if (
+            is_array($elementOrFieldset)
+            || ($elementOrFieldset instanceof Traversable && ! $elementOrFieldset instanceof ElementInterface)
         ) {
-            $factory = $this->getFormFactory();
+            $factory           = $this->getFormFactory();
             $elementOrFieldset = $factory->create($elementOrFieldset);
         }
 
@@ -191,7 +194,7 @@ class Form extends Fieldset implements FormInterface
      * available, and prepares any elements and/or fieldsets that require
      * preparation.
      *
-     * @return self
+     * @return $this
      */
     public function prepare()
     {
@@ -206,7 +209,7 @@ class Form extends Fieldset implements FormInterface
             $this->prepareElement($this);
         } else {
             foreach ($this->getIterator() as $elementOrFieldset) {
-                if ($elementOrFieldset instanceof FormInterface) {
+                if ($elementOrFieldset instanceof Form) {
                     $elementOrFieldset->prepare();
                 } elseif ($elementOrFieldset instanceof ElementPrepareAwareInterface) {
                     $elementOrFieldset->prepareElement($this);
@@ -221,16 +224,13 @@ class Form extends Fieldset implements FormInterface
     /**
      * Ensures state is ready for use. Here, we append the name of the fieldsets to every elements in order to avoid
      * name clashes if the same fieldset is used multiple times
-     *
-     * @param  FormInterface $form
-     * @return mixed|void
      */
-    public function prepareElement(FormInterface $form)
+    public function prepareElement(FormInterface $form): void
     {
         $name = $this->getName();
 
         foreach ($this->iterator as $elementOrFieldset) {
-            if ($form->wrapElements()) {
+            if ($form instanceof Form && $form->wrapElements()) {
                 $elementOrFieldset->setName($name . '[' . $elementOrFieldset->getName() . ']');
             }
 
@@ -246,21 +246,13 @@ class Form extends Fieldset implements FormInterface
      *
      * Typically, also passes data on to the composed input filter.
      *
-     * @param  array|\ArrayAccess|Traversable $data
-     * @return self
+     * @return $this
      * @throws Exception\InvalidArgumentException
      */
-    public function setData($data)
+    public function setData(iterable $data)
     {
         if ($data instanceof Traversable) {
             $data = ArrayUtils::iteratorToArray($data);
-        }
-        if (!is_array($data)) {
-            throw new Exception\InvalidArgumentException(sprintf(
-                '%s expects an array or Traversable argument; received "%s"',
-                __METHOD__,
-                (is_object($data) ? get_class($data) : gettype($data))
-            ));
         }
 
         $this->hasValidated = false;
@@ -275,14 +267,12 @@ class Form extends Fieldset implements FormInterface
      *
      * Ensures the object is populated with validated values.
      *
-     * @param  object $object
-     * @param  int $flags
-     * @return self
+     * @return $this
      * @throws Exception\InvalidArgumentException
      */
-    public function bind($object, $flags = FormInterface::VALUES_NORMALIZED)
+    public function bind(object $object, int $flags = FormInterface::VALUES_NORMALIZED)
     {
-        if (!in_array($flags, [FormInterface::VALUES_NORMALIZED, FormInterface::VALUES_RAW])) {
+        if (! in_array($flags, [FormInterface::VALUES_NORMALIZED, FormInterface::VALUES_RAW])) {
             throw new Exception\InvalidArgumentException(sprintf(
                 '%s expects the $flags argument to be one of "%s" or "%s"; received "%s"',
                 __METHOD__,
@@ -309,8 +299,7 @@ class Form extends Fieldset implements FormInterface
     /**
      * Set the hydrator to use when binding an object to the element
      *
-     * @param  HydratorInterface $hydrator
-     * @return FieldsetInterface
+     * @return $this
      */
     public function setHydrator(HydratorInterface $hydrator)
     {
@@ -324,22 +313,21 @@ class Form extends Fieldset implements FormInterface
     /**
      * Bind values to the bound object
      *
-     * @param array $values
-     * @return mixed
+     * @param  array $values
      */
-    public function bindValues(array $values = [])
+    public function bindValues(array $values = [], ?array $validationGroup = null): void
     {
-        if (!is_object($this->object)) {
-            if ($this->baseFieldset === null || $this->baseFieldset->allowValueBinding() == false) {
+        if (! is_object($this->object)) {
+            if ($this->baseFieldset === null || $this->baseFieldset->allowValueBinding() === false) {
                 return;
             }
         }
-        if (!$this->hasValidated() && !empty($values)) {
+        if (! $this->hasValidated() && ! empty($values)) {
             $this->setData($values);
-            if (!$this->isValid()) {
+            if (! $this->isValid()) {
                 return;
             }
-        } elseif (!$this->isValid) {
+        } elseif (! $this->isValid) {
             return;
         }
 
@@ -355,29 +343,33 @@ class Form extends Fieldset implements FormInterface
                 break;
         }
 
-        $data = $this->prepareBindData($data, $this->data);
+        $data            = $this->prepareBindData($data, $this->data);
+        $validationGroup = $this->getValidationGroup();
 
         // If there is a base fieldset, only hydrate beginning from the base fieldset
         if ($this->baseFieldset !== null) {
-            $data = $data[$this->baseFieldset->getName()];
-            $this->object = $this->baseFieldset->bindValues($data);
+            $data         = $data[$this->baseFieldset->getName()] ?? [];
+            $this->object = $this->baseFieldset->bindValues(
+                $data,
+                $validationGroup[$this->baseFieldset->getName()] ?? []
+            );
         } else {
-            $this->object = parent::bindValues($data);
+            $this->object = parent::bindValues($data, $validationGroup);
         }
     }
 
     /**
      * Parse filtered values and return only posted fields for binding
      *
-     * @param array $values
-     * @param array $match
+     * @param  array $values
+     * @param  array $match
      * @return array
      */
-    protected function prepareBindData(array $values, array $match)
+    protected function prepareBindData(array $values, array $match): array
     {
         $data = [];
         foreach ($values as $name => $value) {
-            if (!array_key_exists($name, $match)) {
+            if (! array_key_exists($name, $match)) {
                 continue;
             }
 
@@ -393,19 +385,18 @@ class Form extends Fieldset implements FormInterface
     /**
      * Set flag indicating whether or not to bind values on successful validation
      *
-     * @param  int $bindOnValidateFlag
-     * @return self
+     * @return $this
      * @throws Exception\InvalidArgumentException
      */
-    public function setBindOnValidate($bindOnValidateFlag)
+    public function setBindOnValidate(int $bindOnValidateFlag)
     {
-        if (!in_array($bindOnValidateFlag, [self::BIND_ON_VALIDATE, self::BIND_MANUAL])) {
+        if (! in_array($bindOnValidateFlag, [self::BIND_ON_VALIDATE, self::BIND_MANUAL])) {
             throw new Exception\InvalidArgumentException(sprintf(
                 '%s expects the flag to be one of %s::%s or %s::%s',
                 __METHOD__,
-                get_class($this),
+                static::class,
                 'BIND_ON_VALIDATE',
-                get_class($this),
+                static::class,
                 'BIND_MANUAL'
             ));
         }
@@ -415,19 +406,16 @@ class Form extends Fieldset implements FormInterface
 
     /**
      * Will we bind values to the bound object on successful validation?
-     *
-     * @return bool
      */
-    public function bindOnValidate()
+    public function bindOnValidate(): bool
     {
-        return (static::BIND_ON_VALIDATE === $this->bindOnValidate);
+        return static::BIND_ON_VALIDATE === $this->bindOnValidate;
     }
 
     /**
      * Set the base fieldset to use when hydrating
      *
-     * @param  FieldsetInterface $baseFieldset
-     * @return self
+     * @return $this
      * @throws Exception\InvalidArgumentException
      */
     public function setBaseFieldset(FieldsetInterface $baseFieldset)
@@ -438,20 +426,16 @@ class Form extends Fieldset implements FormInterface
 
     /**
      * Get the base fieldset to use when hydrating
-     *
-     * @return FieldsetInterface
      */
-    public function getBaseFieldset()
+    public function getBaseFieldset(): ?FieldsetInterface
     {
         return $this->baseFieldset;
     }
 
     /**
      * Check if the form has been validated
-     *
-     * @return bool
      */
-    public function hasValidated()
+    public function hasValidated(): bool
     {
         return $this->hasValidated;
     }
@@ -461,10 +445,9 @@ class Form extends Fieldset implements FormInterface
      *
      * Typically, will proxy to the composed input filter.
      *
-     * @return bool
      * @throws Exception\DomainException
      */
-    public function isValid()
+    public function isValid(): bool
     {
         if ($this->hasValidated) {
             return $this->isValid;
@@ -472,33 +455,20 @@ class Form extends Fieldset implements FormInterface
 
         $this->isValid = false;
 
-        if (!is_array($this->data) && !is_object($this->object)) {
+        if (! is_array($this->data) && ! is_object($this->object)) {
             throw new Exception\DomainException(sprintf(
                 '%s is unable to validate as there is no data currently set',
                 __METHOD__
             ));
         }
 
-        if (!is_array($this->data)) {
+        if (! is_array($this->data)) {
             $data = $this->extract();
             $this->populateValues($data, true);
-            if (!is_array($data)) {
-                throw new Exception\DomainException(sprintf(
-                    '%s is unable to validate as there is no data currently set',
-                    __METHOD__
-                ));
-            }
             $this->data = $data;
         }
 
         $filter = $this->getInputFilter();
-        if (!$filter instanceof InputFilterInterface) {
-            throw new Exception\DomainException(sprintf(
-                '%s is unable to validate as there is no input filter present',
-                __METHOD__
-            ));
-        }
-
         $filter->setData($this->data);
         $filter->setValidationGroup(InputFilterInterface::VALIDATE_ALL);
 
@@ -508,14 +478,14 @@ class Form extends Fieldset implements FormInterface
             $filter->setValidationGroup($validationGroup);
         }
 
-        $this->isValid = $result = $filter->isValid();
+        $this->isValid      = $result = $filter->isValid();
         $this->hasValidated = true;
 
         if ($result && $this->bindOnValidate()) {
             $this->bindValues();
         }
 
-        if (!$result) {
+        if (! $result) {
             $this->setMessages($filter->getMessages());
         }
 
@@ -528,13 +498,12 @@ class Form extends Fieldset implements FormInterface
      * By default, retrieves normalized values; pass one of the
      * FormInterface::VALUES_* constants to shape the behavior.
      *
-     * @param  int $flag
      * @return array|object
      * @throws Exception\DomainException
      */
-    public function getData($flag = FormInterface::VALUES_NORMALIZED)
+    public function getData(int $flag = FormInterface::VALUES_NORMALIZED)
     {
-        if (!$this->hasValidated) {
+        if (! $this->hasValidated) {
             throw new Exception\DomainException(sprintf(
                 '%s cannot return data as validation has not yet occurred',
                 __METHOD__
@@ -559,39 +528,19 @@ class Form extends Fieldset implements FormInterface
      *
      * Typically, proxies to the composed input filter
      *
-     * @throws Exception\InvalidArgumentException
-     * @return self
+     * @return $this
      */
-    public function setValidationGroup()
+    public function setValidationGroup(array $group)
     {
-        $argc = func_num_args();
-        if (0 === $argc) {
-            throw new Exception\InvalidArgumentException(sprintf(
-                '%s expects at least one argument; none provided',
-                __METHOD__
-            ));
-        }
-
-        $argv = func_get_args();
-        $this->hasValidated = false;
-
-        if ($argc > 1) {
-            $this->validationGroup = $argv;
-            return $this;
-        }
-
-        $arg = array_shift($argv);
-        if ($arg === FormInterface::VALIDATE_ALL) {
-            $this->validationGroup = null;
-            return $this;
-        }
-
-        if (!is_array($arg)) {
-            $arg = (array) $arg;
-        }
-
-        $this->validationGroup = $arg;
+        $this->hasValidated    = false;
+        $this->validationGroup = $group;
         return $this;
+    }
+
+    public function setValidateAll(): void
+    {
+        $this->hasValidated    = false;
+        $this->validationGroup = null;
     }
 
     /**
@@ -599,30 +548,26 @@ class Form extends Fieldset implements FormInterface
      *
      * @return null|array
      */
-    public function getValidationGroup()
+    public function getValidationGroup(): ?array
     {
         return $this->validationGroup;
     }
 
     /**
-     * Prepare the validation group in case Collection elements were used (this function also handle the case where elements
-     * could have been dynamically added or removed from a collection using JavaScript)
-     *
-     * @param FieldsetInterface $formOrFieldset
-     * @param array             $data
-     * @param array             $validationGroup
+     * Prepare the validation group in case Collection elements were used (this function also handle
+     * the case where elements could have been dynamically added or removed from a collection using JavaScript)
      */
-    protected function prepareValidationGroup(FieldsetInterface $formOrFieldset, array $data, array &$validationGroup)
+    protected function prepareValidationGroup(Fieldset $formOrFieldset, array $data, array &$validationGroup): void
     {
         foreach ($validationGroup as $key => &$value) {
-            if (!$formOrFieldset->has($key)) {
+            if (! $formOrFieldset->has((string) $key)) {
                 continue;
             }
 
-            $fieldset = $formOrFieldset->iterator->get($key);
+            $fieldset = $formOrFieldset->iterator->get((string) $key);
 
             if ($fieldset instanceof Collection) {
-                if (!isset($data[$key]) && $fieldset->getCount() == 0) {
+                if (! isset($data[$key]) && $fieldset->getCount() === 0) {
                     unset($validationGroup[$key]);
                     continue;
                 }
@@ -638,7 +583,7 @@ class Form extends Fieldset implements FormInterface
                 $value = $values;
             }
 
-            if (!isset($data[$key])) {
+            if (! isset($data[$key])) {
                 $data[$key] = [];
             }
             $this->prepareValidationGroup($fieldset, $data[$key], $validationGroup[$key]);
@@ -648,8 +593,7 @@ class Form extends Fieldset implements FormInterface
     /**
      * Set the input filter used by this form
      *
-     * @param  InputFilterInterface $inputFilter
-     * @return self
+     * @return $this
      */
     public function setInputFilter(InputFilterInterface $inputFilter)
     {
@@ -666,29 +610,30 @@ class Form extends Fieldset implements FormInterface
 
     /**
      * Retrieve input filter used by this form
-     *
-     * @return null|InputFilterInterface
      */
-    public function getInputFilter()
+    public function getInputFilter(): InputFilterInterface
     {
         if ($this->object instanceof InputFilterAwareInterface) {
-            if (null == $this->baseFieldset) {
+            if (null === $this->baseFieldset) {
                 $this->filter = $this->object->getInputFilter();
             } else {
-                $name = $this->baseFieldset->getName();
-                if (!$this->filter instanceof InputFilterInterface || !$this->filter->has($name)) {
+                $name = (string) $this->baseFieldset->getName();
+                if (! $this->filter instanceof InputFilterInterface || ! $this->filter->has($name)) {
                     $filter = new InputFilter();
+                    $filter->setFactory($this->getFormFactory()->getInputFilterFactory());
                     $filter->add($this->object->getInputFilter(), $name);
                     $this->filter = $filter;
                 }
             }
         }
 
-        if (!isset($this->filter)) {
+        if (! isset($this->filter)) {
             $this->filter = new InputFilter();
+            $this->filter->setFactory($this->getFormFactory()->getInputFilterFactory());
         }
 
-        if (!$this->hasAddedInputFilterDefaults
+        if (
+            ! $this->hasAddedInputFilterDefaults
             && $this->filter instanceof InputFilterInterface
             && $this->useInputFilterDefaults()
         ) {
@@ -702,21 +647,18 @@ class Form extends Fieldset implements FormInterface
     /**
      * Set flag indicating whether or not to scan elements and fieldsets for defaults
      *
-     * @param  bool $useInputFilterDefaults
-     * @return self
+     * @return $this
      */
-    public function setUseInputFilterDefaults($useInputFilterDefaults)
+    public function setUseInputFilterDefaults(bool $useInputFilterDefaults)
     {
-        $this->useInputFilterDefaults = (bool) $useInputFilterDefaults;
+        $this->useInputFilterDefaults = $useInputFilterDefaults;
         return $this;
     }
 
     /**
      * Should we use input filter defaults from elements and fieldsets?
-     *
-     * @return bool
      */
-    public function useInputFilterDefaults()
+    public function useInputFilterDefaults(): bool
     {
         return $this->useInputFilterDefaults;
     }
@@ -724,22 +666,19 @@ class Form extends Fieldset implements FormInterface
     /**
      * Set flag indicating whether or not to prefer the form input filter over element and fieldset defaults
      *
-     * @param  bool $preferFormInputFilter
-     * @return self
+     * @return $this
      */
-    public function setPreferFormInputFilter($preferFormInputFilter)
+    public function setPreferFormInputFilter(bool $preferFormInputFilter)
     {
-        $this->preferFormInputFilter = (bool) $preferFormInputFilter;
+        $this->preferFormInputFilter       = $preferFormInputFilter;
         $this->hasSetPreferFormInputFilter = true;
         return $this;
     }
 
     /**
      * Should we use form input filter over element input filter defaults from elements and fieldsets?
-     *
-     * @return bool
      */
-    public function getPreferFormInputFilter()
+    public function getPreferFormInputFilter(): bool
     {
         return $this->preferFormInputFilter;
     }
@@ -747,28 +686,33 @@ class Form extends Fieldset implements FormInterface
     /**
      * Attach defaults provided by the elements to the input filter
      *
-     * @param  InputFilterInterface $inputFilter
      * @param  FieldsetInterface $fieldset Fieldset to traverse when looking for default inputs
-     * @return void
      */
-    public function attachInputFilterDefaults(InputFilterInterface $inputFilter, FieldsetInterface $fieldset)
+    public function attachInputFilterDefaults(InputFilterInterface $inputFilter, FieldsetInterface $fieldset): void
     {
         $formFactory  = $this->getFormFactory();
         $inputFactory = $formFactory->getInputFilterFactory();
 
-        if ($fieldset instanceof Collection && $fieldset->getTargetElement() instanceof FieldsetInterface) {
-            $elements = $fieldset->getTargetElement()->getElements();
+        if (
+            $fieldset instanceof Collection
+            && ($targetElement = $fieldset->getTargetElement()) instanceof FieldsetInterface
+        ) {
+            $elements = $targetElement->getElements();
         } else {
             $elements = $fieldset->getElements();
         }
 
-        if (!$fieldset instanceof Collection || !$fieldset->getTargetElement() instanceof FieldsetInterface || $inputFilter instanceof CollectionInputFilter) {
+        if (
+            ! $fieldset instanceof Collection
+            || ! $fieldset->getTargetElement() instanceof FieldsetInterface
+            || $inputFilter instanceof CollectionInputFilter
+        ) {
             foreach ($elements as $name => $element) {
                 if ($this->preferFormInputFilter && $inputFilter->has($name)) {
                     continue;
                 }
 
-                if (!$element instanceof InputProviderInterface) {
+                if (! $element instanceof InputProviderInterface) {
                     if ($inputFilter->has($name)) {
                         continue;
                     }
@@ -785,10 +729,24 @@ class Form extends Fieldset implements FormInterface
                         $inputFilter->replace($input, $name);
                         continue;
                     }
+
+                    // If we are dealing with a collection input filter, check
+                    // the input filter it composes for an element of the same
+                    // name as was done above.
+                    if (
+                        $inputFilter instanceof CollectionInputFilter
+                        && $inputFilter->getInputFilter()->has($name)
+                        && $inputFilter->getInputFilter() instanceof ReplaceableInputInterface
+                    ) {
+                        $collectionInputFilter = $inputFilter->getInputFilter();
+                        $input->merge($collectionInputFilter->get($name));
+                        $collectionInputFilter->replace($input, $name);
+                        continue;
+                    }
                 }
 
                 // Add element input filter to CollectionInputFilter
-                if ($inputFilter instanceof CollectionInputFilter && !$inputFilter->getInputFilter()->has($name)) {
+                if ($inputFilter instanceof CollectionInputFilter && ! $inputFilter->getInputFilter()->has($name)) {
                     $inputFilter->getInputFilter()->add($input, $name);
                 } else {
                     $inputFilter->add($input, $name);
@@ -804,21 +762,23 @@ class Form extends Fieldset implements FormInterface
         }
 
         foreach ($fieldset->getFieldsets() as $name => $childFieldset) {
-            if (!$childFieldset instanceof InputFilterProviderInterface) {
-                if (!$inputFilter->has($name)) {
+            if (! $childFieldset instanceof InputFilterProviderInterface) {
+                if (! $inputFilter->has($name)) {
                     // Add a new empty input filter if it does not exist (or the fieldset's object input filter),
                     // so that elements of nested fieldsets can be recursively added
                     if ($childFieldset->getObject() instanceof InputFilterAwareInterface) {
                         $inputFilter->add($childFieldset->getObject()->getInputFilter(), $name);
                     } else {
                         // Add input filter for collections via getInputFilterSpecification()
-                        if ($childFieldset instanceof Collection
-                            && $childFieldset->getTargetElement() instanceof InputFilterProviderInterface
-                            && $childFieldset->getTargetElement()->getInputFilterSpecification()
+                        if (
+                            $childFieldset instanceof Collection
+                            && null !== ($targetElement = $childFieldset->getTargetElement())
+                            && $targetElement instanceof InputFilterProviderInterface
+                            && [] !== $targetElement->getInputFilterSpecification()
                         ) {
                             $collectionContainerFilter = new CollectionInputFilter();
 
-                            $spec = $childFieldset->getTargetElement()->getInputFilterSpecification();
+                            $spec   = $targetElement->getInputFilterSpecification();
                             $filter = $inputFactory->createInputFilter($spec);
 
                             $collectionContainerFilter->setInputFilter($filter);
@@ -831,7 +791,7 @@ class Form extends Fieldset implements FormInterface
                             }
 
                             // Add child elements from target element
-                            $childFieldset = $childFieldset->getTargetElement();
+                            $childFieldset = $targetElement;
                         } else {
                             $inputFilter->add(new InputFilter(), $name);
                         }
@@ -840,7 +800,7 @@ class Form extends Fieldset implements FormInterface
 
                 $fieldsetFilter = $inputFilter->get($name);
 
-                if (!$fieldsetFilter instanceof InputFilterInterface) {
+                if (! $fieldsetFilter instanceof InputFilterInterface) {
                     // Input attached for fieldset, not input filter; nothing more to do.
                     continue;
                 }
@@ -873,14 +833,11 @@ class Form extends Fieldset implements FormInterface
 
     /**
      * Add inputs to CollectionInputFilter
-     *
-     * @param  CollectionInputFilter $inputFilter
-     * @return CollectionInputFilter
      */
-    private function addInputsToCollectionInputFilter(CollectionInputFilter $inputFilter)
+    private function addInputsToCollectionInputFilter(CollectionInputFilter $inputFilter): CollectionInputFilter
     {
         foreach ($inputFilter->getInputs() as $name => $input) {
-            if (!$inputFilter->getInputFilter()->has($name)) {
+            if (! $inputFilter->getInputFilter()->has($name)) {
                 $inputFilter->getInputFilter()->add($input, $name);
             }
         }
@@ -891,21 +848,18 @@ class Form extends Fieldset implements FormInterface
     /**
      * Are the form elements/fieldsets names wrapped by the form name ?
      *
-     * @param  bool $wrapElements
-     * @return self
+     * @return $this
      */
-    public function setWrapElements($wrapElements)
+    public function setWrapElements(bool $wrapElements)
     {
-        $this->wrapElements = (bool) $wrapElements;
+        $this->wrapElements = $wrapElements;
         return $this;
     }
 
     /**
      * If true, form elements/fieldsets name's are wrapped around the form name itself
-     *
-     * @return bool
      */
-    public function wrapElements()
+    public function wrapElements(): bool
     {
         return $this->wrapElements;
     }
@@ -915,10 +869,14 @@ class Form extends Fieldset implements FormInterface
      *
      * @param bool $onlyBase
      */
-    public function populateValues($data, $onlyBase = false)
+    public function populateValues(iterable $data, bool $onlyBase = false): void
     {
+        if ($data instanceof Traversable) {
+            $data = ArrayUtils::iteratorToArray($data);
+        }
+
         if ($onlyBase && $this->baseFieldset !== null) {
-            $name = $this->baseFieldset->getName();
+            $name = (string) $this->baseFieldset->getName();
             if (array_key_exists($name, $data)) {
                 $this->baseFieldset->populateValues($data[$name]);
             }
@@ -932,15 +890,32 @@ class Form extends Fieldset implements FormInterface
      *
      * @return array
      */
-    protected function extract()
+    protected function extract(): array
     {
-        if (null !== $this->baseFieldset) {
-            $name = $this->baseFieldset->getName();
-            $values[$name] = $this->baseFieldset->extract();
+        if ($this->baseFieldset !== null) {
+            assert($this->baseFieldset instanceof Fieldset);
+            $name   = (string) $this->baseFieldset->getName();
+            $values = [$name => $this->baseFieldset->extract()];
         } else {
             $values = parent::extract();
         }
 
         return $values;
+    }
+
+    /**
+     * Set the input filter by name to use when binding an object to the element.
+     *
+     * The input filter manager {@see InputFilterPluginManager} is used via the
+     * form factory {@see Factory} and the input filter factory
+     * {@see \Laminas\InputFilter\Factory} to fetch the input filter.
+     */
+    public function setInputFilterByName(string $inputFilterName): void
+    {
+        $inputFilter = $this->getFormFactory()
+            ->getInputFilterFactory()
+            ->getInputFilterManager()
+            ->get($inputFilterName);
+        $this->setInputFilter($inputFilter);
     }
 }

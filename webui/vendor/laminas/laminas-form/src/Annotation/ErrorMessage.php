@@ -1,12 +1,12 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\Annotation;
+
+use Attribute;
+use Doctrine\Common\Annotations\Annotation;
+use Doctrine\Common\Annotations\Annotation\NamedArgumentConstructor;
 
 /**
  * ErrorMessage annotation
@@ -15,16 +15,27 @@ namespace Laminas\Form\Annotation;
  * given element. The content should be a string.
  *
  * @Annotation
+ * @NamedArgumentConstructor
  */
-class ErrorMessage extends AbstractStringAnnotation
+#[Attribute]
+final class ErrorMessage
 {
+    /** @var string */
+    protected $message;
+
+    /**
+     * Receive and process the contents of an annotation
+     */
+    public function __construct(string $message)
+    {
+        $this->message = $message;
+    }
+
     /**
      * Retrieve the message
-     *
-     * @return null|string
      */
-    public function getMessage()
+    public function getMessage(): string
     {
-        return $this->value;
+        return $this->message;
     }
 }

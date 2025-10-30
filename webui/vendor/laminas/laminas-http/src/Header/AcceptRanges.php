@@ -28,14 +28,12 @@ class AcceptRanges implements HeaderInterface
             );
         }
 
-        $header = new static($value);
-
-        return $header;
+        return new static($value);
     }
 
     public function __construct($rangeUnit = null)
     {
-        if ($rangeUnit) {
+        if ($rangeUnit !== null) {
             $this->setRangeUnit($rangeUnit);
         }
     }
@@ -59,7 +57,7 @@ class AcceptRanges implements HeaderInterface
 
     public function getRangeUnit()
     {
-        return $this->rangeUnit;
+        return (string) $this->rangeUnit;
     }
 
     public function toString()

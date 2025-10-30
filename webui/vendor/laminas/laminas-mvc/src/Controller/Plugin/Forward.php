@@ -13,7 +13,8 @@ use Laminas\Mvc\Controller\ControllerManager;
 use Laminas\Mvc\Exception;
 use Laminas\Mvc\InjectApplicationEventInterface;
 use Laminas\Mvc\MvcEvent;
-use Laminas\Mvc\Router\RouteMatch;
+use Laminas\Router\RouteMatch;
+use Laminas\Stdlib\CallbackHandler;
 
 class Forward extends AbstractPlugin
 {
@@ -176,24 +177,40 @@ class Forward extends AbstractPlugin
             $results[$id] = [];
             foreach ($eventArray as $eventName => $classArray) {
                 $results[$id][$eventName] = [];
-                $events = $sharedEvents->getListeners($id, $eventName);
-                foreach ($events as $currentEvent) {
-                    $currentCallback = $currentEvent->getCallback();
-
-                    // If we have an array, grab the object
-                    if (is_array($currentCallback)) {
-                        $currentCallback = array_shift($currentCallback);
+                $events = $this->getSharedListenersById($id, $eventName, $sharedEvents);
+                foreach ($events as $priority => $currentPriorityEvents) {
+                    // v2 fix
+                    if (!is_array($currentPriorityEvents)) {
+                        $currentPriorityEvents = [$currentPriorityEvents];
                     }
+                    // v3
+                    foreach ($currentPriorityEvents as $currentEvent) {
+                        $currentCallback = $currentEvent;
 
-                    // This routine is only valid for object callbacks
-                    if (!is_object($currentCallback)) {
-                        continue;
-                    }
+                        // laminas-eventmanager v2 compatibility:
+                        if ($currentCallback instanceof CallbackHandler) {
+                            $currentCallback = $currentEvent->getCallback();
+                            $priority = $currentEvent->getMetadatum('priority');
+                        }
 
-                    foreach ($classArray as $class) {
-                        if ($currentCallback instanceof $class) {
-                            $sharedEvents->detach($id, $currentEvent);
-                            $results[$id][$eventName][] = $currentEvent;
+                        // If we have an array, grab the object
+                        if (is_array($currentCallback)) {
+                            $currentCallback = array_shift($currentCallback);
+                        }
+
+                        // This routine is only valid for object callbacks
+                        if (!is_object($currentCallback)) {
+                            continue;
+                        }
+
+                        foreach ($classArray as $class) {
+                            if ($currentCallback instanceof $class) {
+                                // Pass $currentEvent; when using laminas-eventmanager v2,
+                                // this is the CallbackHandler, while in v3 it's
+                                // the actual listener.
+                                $this->detachSharedListener($id, $currentEvent, $sharedEvents);
+                                $results[$id][$eventName][$priority] = $currentEvent;
+                            }
                         }
                     }
                 }
@@ -214,8 +231,16 @@ class Forward extends AbstractPlugin
     {
         foreach ($listeners as $id => $eventArray) {
             foreach ($eventArray as $eventName => $callbacks) {
-                foreach ($callbacks as $current) {
-                    $sharedEvents->attach($id, $eventName, $current->getCallback(), $current->getMetadatum('priority'));
+                foreach ($callbacks as $priority => $current) {
+                    $callback = $current;
+
+                    // laminas-eventmanager v2 compatibility:
+                    if ($current instanceof CallbackHandler) {
+                        $callback = $current->getCallback();
+                        $priority = $current->getMetadatum('priority');
+                    }
+
+                    $sharedEvents->attach($id, $eventName, $callback, $priority);
                 }
             }
         }
@@ -235,7 +260,10 @@ class Forward extends AbstractPlugin
 
         $controller = $this->getController();
         if (!$controller instanceof InjectApplicationEventInterface) {
-            throw new Exception\DomainException('Forward plugin requires a controller that implements InjectApplicationEventInterface');
+            throw new Exception\DomainException(sprintf(
+                'Forward plugin requires a controller that implements InjectApplicationEventInterface; received %s',
+                (is_object($controller) ? get_class($controller) : var_export($controller, 1))
+            ));
         }
 
         $event = $controller->getEvent();
@@ -250,5 +278,48 @@ class Forward extends AbstractPlugin
         $this->event = $event;
 
         return $this->event;
+    }
+
+    /**
+     * Retrieve shared listeners for an event by identifier.
+     *
+     * Varies retrieval based on laminas-eventmanager version.
+     *
+     * @param string|int $id
+     * @param string $event
+     * @param SharedEvents $sharedEvents
+     * @return array|\Traversable
+     */
+    private function getSharedListenersById($id, $event, SharedEvents $sharedEvents)
+    {
+        if (method_exists($sharedEvents, 'attachAggregate')) {
+            // v2
+            return $sharedEvents->getListeners($id, $event) ?: [];
+        }
+
+        // v3
+        return $sharedEvents->getListeners([$id], $event);
+    }
+
+    /**
+     * Detach a shared listener by identifier.
+     *
+     * Varies detachment based on laminas-eventmanager version.
+     *
+     * @param string|int $id
+     * @param callable|CallbackHandler $listener
+     * @param SharedEvents $sharedEvents
+     * @return void
+     */
+    private function detachSharedListener($id, $listener, SharedEvents $sharedEvents)
+    {
+        if (method_exists($sharedEvents, 'attachAggregate')) {
+            // v2
+            $sharedEvents->detach($id, $listener);
+            return;
+        }
+
+        // v3
+        $sharedEvents->detach($listener, $id);
     }
 }

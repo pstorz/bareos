@@ -1,16 +1,14 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-form for the canonical source repository
- * @copyright https://github.com/laminas/laminas-form/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-form/blob/master/LICENSE.md New BSD License
- */
+declare(strict_types=1);
 
 namespace Laminas\Form\View\Helper;
 
-use Laminas\Captcha\AdapterInterface as CaptchaAdapter;
-use Laminas\Form\ElementInterface;
+use Laminas\Form\Element\Captcha;
 use Laminas\Form\Exception;
+
+use function method_exists;
+use function sprintf;
 
 class FormCaptcha extends AbstractHelper
 {
@@ -19,12 +17,14 @@ class FormCaptcha extends AbstractHelper
      *
      * Proxies to {@link render()}.
      *
-     * @param  ElementInterface $element
+     * @template T as null|Captcha
+     * @psalm-param T $element
+     * @psalm-return (T is null ? self : string)
      * @return string|FormCaptcha
      */
-    public function __invoke(ElementInterface $element = null)
+    public function __invoke(?Captcha $element = null)
     {
-        if (!$element) {
+        if (! $element) {
             return $this;
         }
 
@@ -34,25 +34,25 @@ class FormCaptcha extends AbstractHelper
     /**
      * Render a form captcha for an element
      *
-     * @param  ElementInterface $element
-     * @throws Exception\DomainException if the element does not compose a captcha, or the renderer does not implement plugin()
-     * @return string
+     * @throws Exception\DomainException If the element does not compose a captcha, or the renderer does
+     *                                   not implement plugin().
      */
-    public function render(ElementInterface $element)
+    public function render(Captcha $element): string
     {
         $captcha = $element->getCaptcha();
 
-        if ($captcha === null || !$captcha instanceof CaptchaAdapter) {
+        if ($captcha === null) {
             throw new Exception\DomainException(sprintf(
-                '%s requires that the element has a "captcha" attribute implementing Laminas\Captcha\AdapterInterface; none found',
+                '%s requires that the element has a "captcha" attribute implementing Laminas\Captcha\AdapterInterface; '
+                . 'none found',
                 __METHOD__
             ));
         }
 
-        $helper  = $captcha->getHelperName();
+        $helper = $captcha->getHelperName();
 
         $renderer = $this->getView();
-        if (!method_exists($renderer, 'plugin')) {
+        if ($renderer === null || ! method_exists($renderer, 'plugin')) {
             throw new Exception\DomainException(sprintf(
                 '%s requires that the renderer implements plugin(); it does not',
                 __METHOD__

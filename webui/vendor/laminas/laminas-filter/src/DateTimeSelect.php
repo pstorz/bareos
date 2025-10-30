@@ -1,11 +1,5 @@
 <?php
 
-/**
- * @see       https://github.com/laminas/laminas-filter for the canonical source repository
- * @copyright https://github.com/laminas/laminas-filter/blob/master/COPYRIGHT.md
- * @license   https://github.com/laminas/laminas-filter/blob/master/LICENSE.md New BSD License
- */
-
 namespace Laminas\Filter;
 
 class DateTimeSelect extends AbstractDateDropdown
@@ -54,7 +48,7 @@ class DateTimeSelect extends AbstractDateDropdown
                 && empty($value['day'])
                 && empty($value['hour'])
                 && empty($value['minute'])
-                && (!isset($value['second']) || empty($value['second']))
+                && (! isset($value['second']) || empty($value['second']))
             )
         ) {
             // Cannot handle this value
