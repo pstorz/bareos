@@ -3,8 +3,7 @@ set -e
 set -o pipefail
 set -u
 #
-# Run a simple backup
-#   then restore it.
+# Test the output of the status subscription command
 #
 TestName="$(basename "$(pwd)")"
 export TestName
@@ -22,6 +21,9 @@ rm -f "$tmp"/status-subscription*.txt
 
 cat <<END_OF_DATA >$tmp/bconcmds
 @$out ${NULL_DEV}
+sqlquery
+DELETE from job WHERE jobid!=1;
+
 use
 @$out $tmp/status-subscriptions.txt
 status subscriptions
