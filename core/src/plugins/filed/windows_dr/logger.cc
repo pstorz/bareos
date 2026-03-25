@@ -380,7 +380,7 @@ void format(std::string& buffer,
             std::chrono::nanoseconds nanos,
             std::size_t current,
             std::size_t max,
-            std::string_view suffix) noexcept
+            std::string_view suffix)
 {
   // we assume here that prefix/suffix is simple ascii text taking up
   // one glyph per character

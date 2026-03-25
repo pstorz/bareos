@@ -575,6 +575,7 @@ bRC Wrapper_registerBareosEvents(PluginContext* ctx, int nr_events, ...)
       event_mask |= 1 << event_num;
     } else {
       JobLog(bc::JMSG_ERROR, FMT_STRING("bad event nr {}"), event_num);
+      va_end(args);
       return bRC_Error;
     }
   }
@@ -600,6 +601,7 @@ bRC Wrapper_unregisterBareosEvents(PluginContext* ctx, int nr_events, ...)
       events.push_back(*event);
     } else {
       JobLog(bc::JMSG_ERROR, FMT_STRING("bad event nr {}"), event_num);
+      va_end(args);
       return bRC_Error;
     }
   }

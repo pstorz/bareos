@@ -166,7 +166,13 @@ class HandleOutput : public Output {
 
   std::size_t current_offset() const override { return current_offset_; }
 
-  ~HandleOutput() { flush_buffer(); }
+  ~HandleOutput()
+  {
+    try {
+      flush_buffer();
+    } catch (...) {
+    }
+  }
 
  private:
   HANDLE hndl_;

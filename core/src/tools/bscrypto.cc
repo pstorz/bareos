@@ -42,7 +42,7 @@
 #include "lib/base64.h"
 
 
-static void TerminateBscrypto(int exitcode)
+[[noreturn]] static void TerminateBscrypto(int exitcode)
 {
   TermMsg();
   exit(exitcode);

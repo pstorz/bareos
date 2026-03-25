@@ -151,10 +151,10 @@ static mntent_cache_entry_t* add_mntent_mapping(uint32_t dev,
     }
     DestroyMntentCacheEntry(mce);
     free(mce);
-  } else {
-    Dmsg2(250, "inserted %s (%s) into mountpoint cache!\n", mce->mountpoint,
-          mce->fstype);
+    return nullptr;
   }
+  Dmsg2(250, "inserted %s (%s) into mountpoint cache!\n", mce->mountpoint,
+        mce->fstype);
   return mce;
 }
 
@@ -309,15 +309,13 @@ static void refresh_mount_cache([[maybe_unused]] mntent_cache_entry_t*
   while (cnt < n_entries) {
     vmp = (struct vmount*)current;
 
-    if (SkipFstype(ve->vfsent_name)) { continue; }
-
-    if (stat(current + vmp->vmt_data[VMT_STUB].vmt_off, &st) < 0) { continue; }
-
     ve = getvfsbytype(vmp->vmt_gfstype);
-    if (ve && ve->vfsent_name) {
-      handle_entry(st.st_dev, current + vmp->vmt_data[VMT_OBJECT].vmt_off,
-                   current + vmp->vmt_data[VMT_STUB].vmt_off, ve->vfsent_name,
-                   current + vmp->vmt_data[VMT_ARGS].vmt_off);
+    if (ve && ve->vfsent_name && !SkipFstype(ve->vfsent_name)) {
+      if (stat(current + vmp->vmt_data[VMT_STUB].vmt_off, &st) >= 0) {
+        handle_entry(st.st_dev, current + vmp->vmt_data[VMT_OBJECT].vmt_off,
+                     current + vmp->vmt_data[VMT_STUB].vmt_off, ve->vfsent_name,
+                     current + vmp->vmt_data[VMT_ARGS].vmt_off);
+      }
     }
     current = current + vmp->vmt_length;
     cnt++;

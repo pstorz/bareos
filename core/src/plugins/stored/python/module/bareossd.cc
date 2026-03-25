@@ -318,7 +318,8 @@ static PyObject* PyBareosDebugMessage(PyObject*, PyObject* args)
 
   if (dbgmsg) { Dmsg(plugin_ctx, level, LOGPREFIX "%s", dbgmsg); }
 
-  Py_RETURN_NONE;
+  Py_INCREF(Py_None);
+  return Py_None;
 }
 
 /**
@@ -339,7 +340,8 @@ static PyObject* PyBareosJobMessage(PyObject*, PyObject* args)
 
   if (jobmsg) { Jmsg(plugin_ctx, type, LOGPREFIX "%s", jobmsg); }
 
-  Py_RETURN_NONE;
+  Py_INCREF(Py_None);
+  return Py_None;
 }
 
 /**

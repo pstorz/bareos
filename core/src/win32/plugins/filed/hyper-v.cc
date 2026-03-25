@@ -1886,6 +1886,7 @@ struct com_context {
   {
     active = other.active;
     other.active = false;
+    return *this;
   }
 
   ~com_context()
