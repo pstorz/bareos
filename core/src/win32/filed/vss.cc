@@ -184,6 +184,7 @@ char* VSSClient::GetShadowPath(const char* szFilePath)
     constexpr std::string_view sep = "\\"sv;
     auto len = found->second.size() + sep.size() + path.size() + 1;
     char* shadow_path = (char*)malloc(len * sizeof(*shadow_path));
+    if (!shadow_path) { goto bail_out; }
     shadow_path[len - 1] = '\0';
     auto head = std::copy(std::begin(found->second), std::end(found->second),
                           shadow_path);
@@ -221,6 +222,7 @@ wchar_t* VSSClient::GetShadowPathW(const wchar_t* szFilePath)
     constexpr std::wstring_view sep = L"\\"sv;
     auto len = found->second.size() + sep.size() + path.size() + 1;
     wchar_t* shadow_path = (wchar_t*)malloc(len * sizeof(*shadow_path));
+    if (!shadow_path) { goto bail_out; }
     shadow_path[len - 1] = '\0';
     auto head = std::copy(std::begin(found->second), std::end(found->second),
                           shadow_path);

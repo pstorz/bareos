@@ -94,7 +94,7 @@ const char* BErrNo::bstrerror()
 void BErrNo::FormatWin32Message()
 {
 #ifdef HAVE_WIN32
-  char* msg;
+  char* msg = nullptr;
   int windows_error_code = GetLastError();
 
   if (auto len = FormatMessage(

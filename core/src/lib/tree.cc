@@ -57,6 +57,7 @@ static void MallocBuf(TREE_ROOT* root, int size)
   struct s_mem* mem;
 
   mem = (struct s_mem*)malloc(size);
+  if (!mem) { Emsg1(M_ABORT, 0, T_("Out of memory: %d bytes needed\n"), size); }
   root->total_size += size;
   root->blocks++;
   mem->next = root->mem;

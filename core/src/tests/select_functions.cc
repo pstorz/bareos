@@ -123,7 +123,7 @@ TEST_F(JobTypeSelection, PermittedJobtypesFullNamesAreCorrectlyParsed)
 
     expected_types.push_back(allowed_jobtypes[i].job_type);
   }
-  argument.pop_back();
+  if (!argument.empty()) { argument.pop_back(); }  // remove trailing comma
 
   FakeListJobTypeCommand(argument);
   EXPECT_TRUE(GetUserJobTypeListSelection(ua, jobtypelist, false));
@@ -142,7 +142,7 @@ TEST_F(JobTypeSelection, PermittedShortJobtypesAreCorrectlyParsed)
 
     expected_types.push_back(allowed_jobtypes[i].job_type);
   }
-  argument.pop_back();
+  if (!argument.empty()) { argument.pop_back(); }
 
   FakeListJobTypeCommand(argument);
   EXPECT_TRUE(GetUserJobTypeListSelection(ua, jobtypelist, false));
@@ -167,7 +167,7 @@ TEST_F(JobTypeSelection,
 
     expected_types.push_back(allowed_jobtypes[i].job_type);
   }
-  argument.pop_back();
+  if (!argument.empty()) { argument.pop_back(); }  // remove trailing comma
 
   FakeListJobTypeCommand(argument);
   EXPECT_TRUE(GetUserJobTypeListSelection(ua, jobtypelist, false));

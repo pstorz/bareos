@@ -60,6 +60,7 @@ bool BareosAccurateFilelistHtable::AddFile(char* fname,
   total_length
       = sizeof(CurFile) + fname_length + lstat_length + chksum_length + 3;
   item = (CurFile*)file_list_->hash_malloc(total_length);
+  memset(item, 0, total_length);
 
   item->fname = (char*)item + sizeof(CurFile);
   memcpy(item->fname, fname, fname_length);

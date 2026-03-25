@@ -2364,9 +2364,9 @@ bRC grpc_connection::endRestoreFile()
 std::optional<int> receive_fd(int unix_socket, int expected_name)
 {
   char name_buf[sizeof(
-      expected_name)];  // the "name" is just the plugin fd number
-                        // this is used to make sure that we actually got the
-                        // correct file descriptor
+      expected_name)] = {};  // the "name" is just the plugin fd number
+                              // this is used to make sure that we actually got
+                              // the correct file descriptor
   int fd;
   int name;
   struct msghdr msg = {};

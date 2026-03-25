@@ -245,6 +245,7 @@ int JobqAdd(jobq_t* jq, JobControlRecord* jcr)
     Dmsg1(2300, "Prepended job=%d to ready queue\n", jcr->JobId);
   } else {
     // Add this job to the wait queue in priority sorted order
+    // cppcheck-suppress uninitvar
     foreach_dlist (li, jq->waiting_jobs) {
       Dmsg2(2300, "waiting item jobid=%d priority=%d\n", li->jcr->JobId,
             li->jcr->JobPriority);
@@ -289,6 +290,7 @@ int JobqRemove(jobq_t* jq, JobControlRecord* jcr)
   if (jq->valid != JOBQ_VALID) { return EINVAL; }
 
   lock_mutex(jq->mutex);
+  // cppcheck-suppress uninitvar
   foreach_dlist (item, jq->waiting_jobs) {
     if (jcr == item->jcr) {
       found = true;

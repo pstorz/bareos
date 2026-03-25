@@ -52,6 +52,7 @@ void Blocaltime(const time_t* time, struct tm* tm)
 #elif defined(HAVE_MSVC)
 void Blocaltime(const time_t* timep, struct tm* tm)
 {
+  *tm = {};
   auto error = localtime_s(tm, timep);
   if (error) { errno = error; }
 }

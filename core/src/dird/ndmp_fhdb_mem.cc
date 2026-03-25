@@ -123,6 +123,7 @@ static void MallocBuf(N_TREE_ROOT* root, int size)
   struct ndmp_fhdb_mem* mem;
 
   mem = (struct ndmp_fhdb_mem*)malloc(size);
+  if (!mem) { Emsg1(M_ABORT, 0, T_("Out of memory: %d bytes needed\n"), size); }
   root->total_size += size;
   root->blocks++;
   mem->next = root->mem;
@@ -329,7 +330,7 @@ static N_TREE_NODE* search_and_insert_tree_node(N_TREE_NODE* node,
 // Recursively search the tree for a certain inode number.
 static N_TREE_NODE* find_tree_node(N_TREE_NODE* node, uint64_t inode)
 {
-  N_TREE_NODE match_node;
+  N_TREE_NODE match_node{};
   N_TREE_NODE *found_node, *walker;
 
   match_node.inode = inode;
@@ -354,7 +355,7 @@ static N_TREE_NODE* find_tree_node(N_TREE_NODE* node, uint64_t inode)
 // Recursively search the tree for a certain inode number.
 static N_TREE_NODE* find_tree_node(N_TREE_ROOT* root, uint64_t inode)
 {
-  N_TREE_NODE match_node;
+  N_TREE_NODE match_node{};
   N_TREE_NODE *found_node, *walker;
 
   // See if this is a request for the root of the tree.
@@ -421,6 +422,7 @@ static inline void add_out_of_order_metadata(NIS* nis,
 
   // Create a new entry and insert it into the hash with the node number as key.
   OOO_MD* md_entry = (OOO_MD*)meta_data->hash_malloc(sizeof(OOO_MD));
+  *md_entry = OOO_MD{};
   md_entry->dir_node = dir_node;
   md_entry->nt_node = nt_node;
 

@@ -837,7 +837,7 @@ static int UserSelectJobidsOrFiles(UaContext* ua, RestoreContext* rx)
         if (!SelectBackupsBeforeDate(ua, rx, current_date)) { return 0; }
       } break;
       case 5: /* select backup at specified time */ {
-        decltype(date) that_date;
+        decltype(date) that_date{};
         if (!get_date(ua, that_date, sizeof(that_date))) { return 0; }
         if (!SelectBackupsBeforeDate(ua, rx, that_date)) { return 0; }
       } break;
@@ -855,7 +855,7 @@ static int UserSelectJobidsOrFiles(UaContext* ua, RestoreContext* rx)
         }
         return 2;
       case 7: /* enter files backed up before specified time */ {
-        decltype(date) that_date;
+        decltype(date) that_date{};
         if (!get_date(ua, that_date, sizeof(that_date))) { return 0; }
         if (!GetClientName(ua, rx)) { return 0; }
         ua->SendMsg(
@@ -879,7 +879,7 @@ static int UserSelectJobidsOrFiles(UaContext* ua, RestoreContext* rx)
       } break;
 
       case 9: /* Find JobIds for give date */ {
-        decltype(date) that_date;
+        decltype(date) that_date{};
         if (!get_date(ua, that_date, sizeof(that_date))) { return 0; }
         if (!SelectBackupsBeforeDate(ua, rx, that_date)) { return 0; }
         done = false;
