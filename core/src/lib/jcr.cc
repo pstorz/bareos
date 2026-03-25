@@ -220,7 +220,7 @@ JobControlRecord* new_jcr(JCR_free_HANDLER* daemon_free_jcr)
 
   JobControlRecord* jcr
       = static_cast<JobControlRecord*>(malloc(sizeof(JobControlRecord)));
-  jcr = new (jcr) JobControlRecord();
+  new (jcr) JobControlRecord();
 
   jcr->daemon_free_jcr = daemon_free_jcr;
   return jcr;

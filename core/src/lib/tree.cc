@@ -81,7 +81,7 @@ TREE_ROOT* new_tree(int count)
     count = 1000;
   }
   root = static_cast<TREE_ROOT*>(malloc(sizeof(TREE_ROOT)));
-  root = new (root) TREE_ROOT();
+  new (root) TREE_ROOT();
 
   // Assume filename + node  = 40 characters average length
   size = count * (BALIGN(sizeof(tree_node)) + 40);

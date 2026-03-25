@@ -263,7 +263,7 @@ static VolumeReservationItem* new_vol_item(DeviceControlRecord* dcr,
   VolumeReservationItem* vol;
 
   vol = (VolumeReservationItem*)malloc(sizeof(VolumeReservationItem));
-  vol = new (vol) VolumeReservationItem();
+  new (vol) VolumeReservationItem();
 
   vol->vol_name = strdup(VolumeName);
   if (dcr) {

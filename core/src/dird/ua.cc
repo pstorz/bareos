@@ -75,7 +75,7 @@ UaContext* new_ua_context(JobControlRecord* jcr)
   UaContext* ua;
 
   ua = (UaContext*)malloc(sizeof(UaContext));
-  ua = new (ua) UaContext(); /* placement new instead of memset */
+  new (ua) UaContext(); /* placement new instead of memset */
   ua->jcr = jcr;
   ua->db = jcr->db;
   ua->cmd = GetPoolMemory(PM_FNAME);
