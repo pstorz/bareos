@@ -1,6 +1,6 @@
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2017-2025 Bareos GmbH & Co. KG
+#   Copyright (C) 2017-2026 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -64,6 +64,10 @@ if(NOT HAVE_WIN32)
   add_executable(bpluginfo bpluginfo.cc)
   target_link_libraries(bpluginfo Bareos::Lib ${CMAKE_DL_LIBS} CLI11::CLI11)
   list(APPEND TOOLS_SBIN bpluginfo)
+
+  add_executable(bareos-detect-tape bareos-detect-tape.cc)
+  target_link_libraries(bareos-detect-tape Bareos::Lib CLI11::CLI11)
+  list(APPEND TOOLS_SBIN bareos-detect-tape)
 endif()
 
 if(NOT client-only)
