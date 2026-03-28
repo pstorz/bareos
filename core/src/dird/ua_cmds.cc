@@ -30,6 +30,7 @@
 #include "dird.h"
 #include "dird/dird_globals.h"
 #include "dird/backup.h"
+#include "dird/ua_autodetect.h"
 #include "dird/ua_cmds.h"
 #include "dird/ua_cmdstruct.h"
 #include "dird/expand.h"
@@ -310,6 +311,9 @@ static struct ua_cmdstruct commands[] = {
      NT_("pool=<pool-name> storage=<storage-name> jobid=<jobid>"), false, true},
     {NT_("autodisplay"), AutodisplayCmd, T_("Autodisplay console messages"),
      NT_("on | off"), false, false},
+    {NT_("autodetect"), AutodetectChangersCmd,
+     T_("Auto-detect tape changers via SCSI"),
+     NT_("changers [storage=<name>] [generate=yes]"), false, true},
     {NT_("automount"), AutomountCmd, T_("Automount after label"),
      NT_("on | off"), false, true},
     {NT_("cancel"), CancelCmd, T_("Cancel a job"),
