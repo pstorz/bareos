@@ -40,6 +40,10 @@
 #include "lib/bsock.h"
 #include "lib/berrno.h"
 #include "lib/bpipe.h"
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+#  include "lib/scsi_changer.h"
+#  include <fcntl.h>
+#endif
 
 namespace storagedaemon {
 
@@ -55,6 +59,403 @@ static char* transfer_edit_device_codes(DeviceControlRecord* dcr,
                                         const char* cmd,
                                         slot_number_t src_slot,
                                         slot_number_t dst_slot);
+
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+/* ── Native SCSI helpers ─────────────────────────────────────────────────── */
+
+/** Return true if this changer should use native SCSI instead of a script. */
+static bool ChangerUsesNativeScsi(DeviceControlRecord* dcr)
+{
+  AutochangerResource* changer_res = dcr->device_resource->changer_res;
+  return changer_res && changer_res->use_native_scsi;
+}
+
+/**
+ * Open the SCSI generic device for the changer and return its fd.
+ * The caller is responsible for closing it with close(fd).
+ * Returns -1 on failure (error already logged).
+ */
+static int OpenChangerFd(DeviceControlRecord* dcr)
+{
+  const char* changer_name = dcr->device_resource->changer_name;
+  if (!changer_name) {
+    Jmsg(dcr->jcr, M_ERROR, 0, T_("No Changer Device name configured for %s\n"),
+         dcr->dev->print_name());
+    return -1;
+  }
+
+  int fd = open(changer_name, O_RDWR | O_NONBLOCK | O_BINARY);
+  if (fd < 0) {
+    BErrNo be;
+    Jmsg(dcr->jcr, M_ERROR, 0, T_("Cannot open changer device %s: ERR=%s\n"),
+         changer_name, be.bstrerror());
+  }
+  return fd;
+}
+
+/**
+ * Translate logical slot number (1-based) to SCSI element address.
+ * Returns 0 if the slot is not found in the inventory.
+ */
+static uint16_t SlotToScsiAddr(slot_number_t logical_slot,
+                               const bareos::scsi::ChangerInventory& inv)
+{
+  for (const auto& s : inv.slots) {
+    if (s.logical_slot == logical_slot) { return s.address; }
+  }
+  for (const auto& s : inv.ie_slots) {
+    if (s.logical_slot == logical_slot) { return s.address; }
+  }
+  return 0;
+}
+
+/** Native SCSI implementation of the "loaded" query for a single drive. */
+static slot_number_t GetAutochangerLoadedSlotNative(DeviceControlRecord* dcr)
+{
+  int fd = OpenChangerFd(dcr);
+  if (fd < 0) { return kInvalidSlotNumber; }
+
+  bareos::scsi::ChangerInventory inv;
+  bool ok = bareos::scsi::ReadElementStatus(
+      fd, dcr->device_resource->changer_name, inv);
+  close(fd);
+  if (!ok) { return kInvalidSlotNumber; }
+
+  drive_number_t want_drive = dcr->dev->drive_index;
+  for (const auto& d : inv.drives) {
+    if (d.logical_drive == want_drive) {
+      if (d.loaded) {
+        dcr->dev->SetSlotNumber(d.loaded_from_slot);
+        return d.loaded_from_slot;
+      } else {
+        dcr->dev->SetSlotNumber(0);
+        return 0;
+      }
+    }
+  }
+  return kInvalidSlotNumber;
+}
+
+/** Native SCSI implementation of the "load" command. */
+static int AutoloadDeviceNative(DeviceControlRecord* dcr,
+                                int writing,
+                                BareosSocket* dir)
+{
+  JobControlRecord* jcr = dcr->jcr;
+  drive_number_t drive = dcr->dev->drive_index;
+  slot_number_t wanted_slot
+      = dcr->VolCatInfo.InChanger ? dcr->VolCatInfo.Slot : 0;
+
+  if (!IsSlotNumberValid(wanted_slot)) {
+    if (writing && dir) { return 0; }
+    if (!dcr->DirFindNextAppendableVolume()) { return 0; }
+    wanted_slot = dcr->VolCatInfo.InChanger ? dcr->VolCatInfo.Slot : 0;
+    if (!IsSlotNumberValid(wanted_slot)) { return 0; }
+  }
+
+  int fd = OpenChangerFd(dcr);
+  if (fd < 0) { return -1; }
+
+  bareos::scsi::ChangerInventory inv;
+  if (!bareos::scsi::ReadElementStatus(fd, dcr->device_resource->changer_name,
+                                       inv)) {
+    close(fd);
+    return -1;
+  }
+
+  /* Find the drive's current state */
+  uint16_t drive_addr = 0;
+  slot_number_t loaded_slot = 0;
+  for (const auto& d : inv.drives) {
+    if (d.logical_drive == drive) {
+      drive_addr = d.address;
+      loaded_slot = d.loaded ? d.loaded_from_slot : 0;
+      break;
+    }
+  }
+  if (!drive_addr) {
+    Jmsg(jcr, M_ERROR, 0, T_("Drive %hd not found in changer inventory\n"),
+         drive);
+    close(fd);
+    return -1;
+  }
+
+  /* Already loaded — nothing to do */
+  if (loaded_slot == wanted_slot && IsSlotNumberValid(loaded_slot)) {
+    dcr->dev->SetSlotNumber(wanted_slot);
+    close(fd);
+    return 1;
+  }
+
+  if (!LockChanger(dcr)) {
+    close(fd);
+    return -2;
+  }
+
+  /* Unload whatever is in the drive now */
+  if (IsSlotNumberValid(loaded_slot)) {
+    uint16_t ret_slot_addr = SlotToScsiAddr(loaded_slot, inv);
+    if (!ret_slot_addr) {
+      ret_slot_addr
+          = static_cast<uint16_t>(inv.first_slot_address + loaded_slot - 1);
+    }
+    Jmsg(jcr, M_INFO, 0,
+         T_("3307 Issuing autochanger \"unload slot %hd, drive %hd\" "
+            "command.\n"),
+         loaded_slot, drive);
+    dcr->dev->close(dcr);
+    if (!bareos::scsi::MoveMedium(fd, dcr->device_resource->changer_name,
+                                  drive_addr, ret_slot_addr)) {
+      Jmsg(jcr, M_ERROR, 0,
+           T_("3995 Autochanger unload slot %hd, drive %hd failed\n"),
+           loaded_slot, drive);
+      UnlockChanger(dcr);
+      close(fd);
+      return -1;
+    }
+    dcr->dev->SetSlotNumber(0);
+  }
+
+  /* Unload the wanted slot from any other drive that might have it */
+  uint16_t wanted_slot_addr = SlotToScsiAddr(wanted_slot, inv);
+  if (!wanted_slot_addr) {
+    wanted_slot_addr
+        = static_cast<uint16_t>(inv.first_slot_address + wanted_slot - 1);
+  }
+  for (const auto& d : inv.drives) {
+    if (d.logical_drive != drive && d.loaded
+        && d.loaded_from_slot == wanted_slot) {
+      Jmsg(jcr, M_INFO, 0, T_("3307 Unloading slot %hd from drive %hd\n"),
+           wanted_slot, d.logical_drive);
+      if (!bareos::scsi::MoveMedium(fd, dcr->device_resource->changer_name,
+                                    d.address, wanted_slot_addr)) {
+        UnlockChanger(dcr);
+        close(fd);
+        return -1;
+      }
+    }
+  }
+
+  /* Load the wanted slot into the drive */
+  Jmsg(jcr, M_INFO, 0,
+       T_("3304 Issuing autochanger \"load slot %hd, drive %hd\" "
+          "command.\n"),
+       wanted_slot, drive);
+  dcr->dev->close(dcr);
+  if (!bareos::scsi::MoveMedium(fd, dcr->device_resource->changer_name,
+                                wanted_slot_addr, drive_addr)) {
+    int rtn_stat = -1;
+    if (errno == ENOMEDIUM) {
+      Jmsg(jcr, M_ERROR, 0,
+           T_("3992 Autochanger load slot %hd: slot is empty\n"), wanted_slot);
+      rtn_stat = -3;
+    } else {
+      Jmsg(jcr, M_FATAL, 0,
+           T_("3992 Autochanger load slot %hd, drive %hd failed\n"),
+           wanted_slot, drive);
+    }
+    UnlockChanger(dcr);
+    close(fd);
+    return rtn_stat;
+  }
+
+  Jmsg(jcr, M_INFO, 0,
+       T_("3305 Autochanger \"load slot %hd, drive %hd\", status is OK.\n"),
+       wanted_slot, drive);
+  dcr->dev->SetSlotNumber(wanted_slot);
+  if (dcr->dev->vol) { dcr->dev->vol->ClearSwapping(); }
+
+  UnlockChanger(dcr);
+  close(fd);
+  return 1;
+}
+
+/** Native SCSI implementation of the "unload" command. */
+static bool UnloadAutochangerNative(DeviceControlRecord* dcr,
+                                    slot_number_t loaded_slot,
+                                    bool lock_set)
+{
+  Device* dev = dcr->dev;
+  JobControlRecord* jcr = dcr->jcr;
+  bool retval = true;
+
+  if (loaded_slot == 0) { return true; }
+
+  if (!lock_set) {
+    if (!LockChanger(dcr)) { return false; }
+  }
+
+  if (loaded_slot == kInvalidSlotNumber) {
+    loaded_slot = GetAutochangerLoadedSlotNative(dcr);
+  }
+
+  if (!IsSlotNumberValid(loaded_slot)) {
+    if (!lock_set) { UnlockChanger(dcr); }
+    return true; /* nothing to unload */
+  }
+
+  int fd = OpenChangerFd(dcr);
+  if (fd < 0) {
+    if (!lock_set) { UnlockChanger(dcr); }
+    return false;
+  }
+
+  bareos::scsi::ChangerInventory inv;
+  if (!bareos::scsi::ReadElementStatus(fd, dcr->device_resource->changer_name,
+                                       inv)) {
+    close(fd);
+    if (!lock_set) { UnlockChanger(dcr); }
+    return false;
+  }
+
+  drive_number_t drive = dev->drive_index;
+  uint16_t drive_addr = 0;
+  for (const auto& d : inv.drives) {
+    if (d.logical_drive == drive) {
+      drive_addr = d.address;
+      break;
+    }
+  }
+
+  uint16_t slot_addr = SlotToScsiAddr(loaded_slot, inv);
+  if (!slot_addr) {
+    slot_addr = static_cast<uint16_t>(inv.first_slot_address + loaded_slot - 1);
+  }
+
+  Jmsg(jcr, M_INFO, 0,
+       T_("3307 Issuing autochanger \"unload slot %hd, drive %hd\" "
+          "command.\n"),
+       loaded_slot, dev->drive);
+  dev->close(dcr);
+
+  if (!bareos::scsi::MoveMedium(fd, dcr->device_resource->changer_name,
+                                drive_addr, slot_addr)) {
+    BErrNo be;
+    Jmsg(jcr, M_INFO, 0,
+         T_("3995 Bad autochanger \"unload slot %hd, drive %hd\": ERR=%s\n"),
+         loaded_slot, dev->drive, be.bstrerror());
+    retval = false;
+    dev->InvalidateSlotNumber();
+  } else {
+    dev->SetSlotNumber(0);
+  }
+
+  close(fd);
+  if (!lock_set) { UnlockChanger(dcr); }
+
+  if (IsSlotNumberValid(loaded_slot)) { FreeVolume(dev); }
+  if (retval) { dev->ClearUnload(); }
+
+  return retval;
+}
+
+/** Native SCSI implementation of list/listall/slots commands. */
+static bool AutochangerCmdNative(DeviceControlRecord* dcr,
+                                 BareosSocket* dir,
+                                 const char* cmd)
+{
+  int fd = OpenChangerFd(dcr);
+  if (fd < 0) {
+    dir->fsend(T_("3997 Cannot open changer device.\n"));
+    return false;
+  }
+
+  bareos::scsi::ChangerInventory inv;
+  if (!bareos::scsi::ReadElementStatus(fd, dcr->device_resource->changer_name,
+                                       inv)) {
+    close(fd);
+    dir->fsend(T_("3997 READ ELEMENT STATUS failed.\n"));
+    return false;
+  }
+  close(fd);
+
+  if (bstrcmp(cmd, "slots")) {
+    dir->fsend("slots=%hd", inv.num_slots);
+    return true;
+  }
+
+  if (bstrcmp(cmd, "list")) {
+    for (const auto& s : inv.slots) {
+      if (s.full) { dir->fsend("%hd:%s\n", s.logical_slot, s.barcode); }
+    }
+    return true;
+  }
+
+  if (bstrcmp(cmd, "listall")) {
+    for (const auto& d : inv.drives) {
+      if (d.loaded) {
+        dir->fsend("D:%hd:F:%hd:%s\n", d.logical_drive, d.loaded_from_slot,
+                   d.barcode);
+      } else {
+        dir->fsend("D:%hd:E\n", d.logical_drive);
+      }
+    }
+    for (const auto& s : inv.slots) {
+      if (s.full) {
+        dir->fsend("S:%hd:F:%s\n", s.logical_slot, s.barcode);
+      } else {
+        dir->fsend("S:%hd:E\n", s.logical_slot);
+      }
+    }
+    for (const auto& ie : inv.ie_slots) {
+      if (ie.full) {
+        dir->fsend("I:%hd:F:%s\n", ie.logical_slot, ie.barcode);
+      } else {
+        dir->fsend("I:%hd:E\n", ie.logical_slot);
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/** Native SCSI implementation of the "transfer" command. */
+static bool AutochangerTransferCmdNative(DeviceControlRecord* dcr,
+                                         BareosSocket* dir,
+                                         slot_number_t src_slot,
+                                         slot_number_t dst_slot)
+{
+  int fd = OpenChangerFd(dcr);
+  if (fd < 0) {
+    dir->fsend(T_("3997 Cannot open changer device.\n"));
+    return false;
+  }
+
+  bareos::scsi::ChangerInventory inv;
+  if (!bareos::scsi::ReadElementStatus(fd, dcr->device_resource->changer_name,
+                                       inv)) {
+    close(fd);
+    dir->fsend(T_("3997 READ ELEMENT STATUS failed.\n"));
+    return false;
+  }
+
+  uint16_t src_addr = SlotToScsiAddr(src_slot, inv);
+  uint16_t dst_addr = SlotToScsiAddr(dst_slot, inv);
+
+  if (!src_addr) {
+    src_addr = static_cast<uint16_t>(inv.first_slot_address + src_slot - 1);
+  }
+  if (!dst_addr) {
+    dst_addr = static_cast<uint16_t>(inv.first_slot_address + dst_slot - 1);
+  }
+
+  bool ok = bareos::scsi::MoveMedium(fd, dcr->device_resource->changer_name,
+                                     src_addr, dst_addr);
+  close(fd);
+
+  if (ok) {
+    dir->fsend(
+        T_("3308 Successfully transferred volume from slot %hd to %hd.\n"),
+        src_slot, dst_slot);
+  } else {
+    dir->fsend(T_("3998 Autochanger transfer %hd→%hd failed.\n"), src_slot,
+               dst_slot);
+  }
+
+  return ok;
+}
+#endif /* HAVE_LOWLEVEL_SCSI_INTERFACE */
 
 // Init all the autochanger resources found
 bool InitAutochangers()
@@ -85,10 +486,13 @@ bool InitAutochangers()
       }
 
       if (!device_resource->changer_command) {
-        Jmsg(NULL, M_ERROR, 0,
-             T_("No Changer Command given for device %s. Cannot continue.\n"),
-             device_resource->resource_name_);
-        OK = false;
+        if (!changer->use_native_scsi) {
+          Jmsg(NULL, M_ERROR, 0,
+               T_("No Changer Command given for device %s. Cannot "
+                  "continue.\n"),
+               device_resource->resource_name_);
+          OK = false;
+        }
       }
 
       // Give the drive in the autochanger a logical drive number.
@@ -174,7 +578,8 @@ int AutoloadDevice(DeviceControlRecord* dcr, int writing, BareosSocket* dir)
            dcr->dev->print_name());
     }
     rtn_stat = 0;
-  } else if (!dcr->device_resource->changer_command) {
+  } else if (!dcr->device_resource->changer_command
+             && !dcr->device_resource->changer_res->use_native_scsi) {
     // Suppress info when polling
     if (!dcr->dev->poll) {
       Jmsg(jcr, M_INFO, 0,
@@ -184,6 +589,12 @@ int AutoloadDevice(DeviceControlRecord* dcr, int writing, BareosSocket* dir)
     }
     rtn_stat = 0;
   } else {
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+    if (ChangerUsesNativeScsi(dcr)) {
+      FreePoolMemory(changer);
+      return AutoloadDeviceNative(dcr, writing, dir);
+    }
+#endif
     uint32_t timeout = dcr->device_resource->max_changer_wait;
     int status;
     slot_number_t loaded_slot;
@@ -292,13 +703,33 @@ slot_number_t GetAutochangerLoadedSlot(DeviceControlRecord* dcr, bool lock_set)
 
   if (!dev->AttachedToAutochanger()) { return kInvalidSlotNumber; }
 
-  if (!dcr->device_resource->changer_command) { return kInvalidSlotNumber; }
+  if (!dcr->device_resource->changer_command
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+      && !ChangerUsesNativeScsi(dcr)
+#endif
+  ) {
+    return kInvalidSlotNumber;
+  }
 
   slot_number_t slot = dev->GetSlot();
   if (IsSlotNumberValid(slot)) { return slot; }
 
-  // Virtual disk autochanger
-  if (dcr->device_resource->changer_command[0] == 0) { return 1; }
+  // Virtual disk autochanger (only when using script path)
+  if (dcr->device_resource->changer_command
+      && dcr->device_resource->changer_command[0] == 0) {
+    return 1;
+  }
+
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  if (ChangerUsesNativeScsi(dcr)) {
+    if (!lock_set) {
+      if (!LockChanger(dcr)) { return kInvalidSlotNumber; }
+    }
+    slot_number_t result = GetAutochangerLoadedSlotNative(dcr);
+    if (!lock_set) { UnlockChanger(dcr); }
+    return result;
+  }
+#endif
 
   /* Only lock the changer if the lock_set is false e.g. changer not locked by
    * calling function. */
@@ -424,16 +855,29 @@ bool UnloadAutochanger(DeviceControlRecord* dcr,
 
   if (loaded_slot == 0) { return true; }
 
-  if (!dev->AttachedToAutochanger() || !dcr->device_resource->changer_name
-      || !dcr->device_resource->changer_command) {
+  if (!dev->AttachedToAutochanger() || !dcr->device_resource->changer_name) {
     return false;
   }
 
-  // Virtual disk autochanger
-  if (dcr->device_resource->changer_command[0] == 0) {
+  bool have_script = dcr->device_resource->changer_command != nullptr;
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  bool have_native = ChangerUsesNativeScsi(dcr);
+#else
+  bool have_native = false;
+#endif
+  if (!have_script && !have_native) { return false; }
+
+  // Virtual disk autochanger (script path, empty command string)
+  if (have_script && dcr->device_resource->changer_command[0] == 0) {
     dev->ClearUnload();
     return true;
   }
+
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  if (have_native) {
+    return UnloadAutochangerNative(dcr, loaded_slot, lock_set);
+  }
+#endif
 
   /* Only lock the changer if the lock_set is false e.g. changer not locked by
    * calling function. */
@@ -673,12 +1117,25 @@ bool AutochangerCmd(DeviceControlRecord* dcr,
   int status;
   int retries = 1; /* Number of retries on failing slot count */
 
-  if (!dev->AttachedToAutochanger() || !dcr->device_resource->changer_name
-      || !dcr->device_resource->changer_command) {
+  if (!dev->AttachedToAutochanger() || !dcr->device_resource->changer_name) {
     if (bstrcmp(cmd, "drives")) { dir->fsend("drives=1\n"); }
     dir->fsend(T_("3993 Device %s not an autochanger device.\n"),
                dev->print_name());
     return false;
+  }
+
+  {
+    bool have_script = dcr->device_resource->changer_command != nullptr;
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+    bool have_native = ChangerUsesNativeScsi(dcr);
+#else
+    bool have_native = false;
+#endif
+    if (!have_script && !have_native && !bstrcmp(cmd, "drives")) {
+      dir->fsend(T_("3993 Device %s not an autochanger device.\n"),
+                 dev->print_name());
+      return false;
+    }
   }
 
   if (bstrcmp(cmd, "drives")) {
@@ -695,6 +1152,16 @@ bool AutochangerCmd(DeviceControlRecord* dcr,
     dcr->dev->SetSlotNumber(0);
     GetAutochangerLoadedSlot(dcr);
   }
+
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  if (ChangerUsesNativeScsi(dcr)) {
+    LockChanger(dcr);
+    dir->fsend(T_("3306 Issuing autochanger \"%s\" command.\n"), cmd);
+    bool ok = AutochangerCmdNative(dcr, dir, cmd);
+    UnlockChanger(dcr);
+    return ok;
+  }
+#endif
 
   changer = GetPoolMemory(PM_FNAME);
   LockChanger(dcr);
@@ -769,8 +1236,22 @@ bool AutochangerTransferCmd(DeviceControlRecord* dcr,
   int len = SizeofPoolMemory(dir->msg) - 1;
   int status;
 
-  if (!dev->AttachedToAutochanger() || !dcr->device_resource->changer_name
-      || !dcr->device_resource->changer_command) {
+  if (!dev->AttachedToAutochanger() || !dcr->device_resource->changer_name) {
+    dir->fsend(T_("3993 Device %s not an autochanger device.\n"),
+               dev->print_name());
+    return false;
+  }
+
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  if (ChangerUsesNativeScsi(dcr)) {
+    LockChanger(dcr);
+    bool ok = AutochangerTransferCmdNative(dcr, dir, src_slot, dst_slot);
+    UnlockChanger(dcr);
+    return ok;
+  }
+#endif
+
+  if (!dcr->device_resource->changer_command) {
     dir->fsend(T_("3993 Device %s not an autochanger device.\n"),
                dev->print_name());
     return false;

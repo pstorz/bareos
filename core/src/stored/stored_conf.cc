@@ -218,7 +218,8 @@ static const ResourceItem autochanger_items[] = {
   { "Description", CFG_TYPE_STR, ITEM(res_changer, description_), {}},
   { "Device", CFG_TYPE_ALIST_RES, ITEM(res_changer, device_resources), {config::Required{}, config::Code{R_DEVICE}}},
   { "ChangerDevice", CFG_TYPE_STRNAME, ITEM(res_changer, changer_name), {config::Required{}}},
-  { "ChangerCommand", CFG_TYPE_STRNAME, ITEM(res_changer, changer_command), {config::Required{}}},
+  { "ChangerCommand", CFG_TYPE_STRNAME, ITEM(res_changer, changer_command), {}},
+  { "UseNativeScsi", CFG_TYPE_BOOL, ITEM(res_changer, use_native_scsi), {config::DefaultValue{"false"}, config::Description{"When set to yes, communicate with the autochanger via direct SCSI commands (SCSI SMC-3) instead of the external ChangerCommand script. Requires a SCSI generic device (/dev/sgX) as ChangerDevice."}}},
   {}
 };
 

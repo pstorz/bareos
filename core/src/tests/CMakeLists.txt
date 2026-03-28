@@ -402,6 +402,9 @@ if(NOT HAVE_WIN32 AND NOT client-only)
     LINK_LIBRARIES ${LINK_LIBRARIES}
     COMPILE_DEFINITIONS CERTDIR=\"${CERTDIR}\"
   )
+  bareos_add_test(
+    scsi_changer_test LINK_LIBRARIES Bareos::Lib GTest::gtest_main
+  )
 endif() # NOT HAVE_WIN32 AND NOT client-only
 
 if(HAVE_WIN32)

@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2011 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2019-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2019-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -54,6 +54,9 @@ class AutochangerResource : public BareosResource {
   char* changer_name{nullptr};    /**< Changer device name */
   char* changer_command{nullptr}; /**< Changer command  -- external program */
   brwlock_t changer_lock;         /**< One changer operation at a time */
+  bool use_native_scsi{false};    /**< UseNativeScsi = yes: bypass the
+                                       changer script and talk SCSI directly */
+  int changer_fd{-1};             /**< Cached SG_IO fd (opened lazily) */
  private:
   bool implicitly_created_{false};
 };
