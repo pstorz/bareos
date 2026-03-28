@@ -115,6 +115,7 @@ else()
   target_sources(bareos PRIVATE bpipe_unix.cc)
   target_sources(bareos PRIVATE scsi_tapealert.cc)
   target_sources(bareos PRIVATE scsi_changer.cc)
+  target_sources(bareos PRIVATE scsi_scanner.cc)
   target_sources(bareos PRIVATE osinfo_unix.cc)
 endif()
 

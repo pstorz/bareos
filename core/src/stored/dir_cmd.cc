@@ -47,6 +47,7 @@
 #include "stored/autochanger.h"
 #include "stored/blocksize_boundaries.h"
 #include "stored/bsr.h"
+#include "stored/detect_changers.h"
 #include "stored/device_control_record.h"
 #include "stored/sd_device_control_record.h"
 #include "stored/fd_cmds.h"
@@ -192,6 +193,7 @@ static struct s_sd_dir_cmds cmds[] = {
     {"autochanger", ChangerCmd, false},
     {"bootstrap", BootstrapCmd, false},
     {"cancel", CancelCmd, false},
+    {"detect changers", DetectChangersCmd, false},
     {"finish", FinishCmd, false}, /**< End of backup */
     {"JobId=", job_cmd, false},   /**< Start Job */
     {"label", LabelCmd, false},   /**< Label a tape */

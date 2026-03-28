@@ -99,6 +99,7 @@ target_sources(
   PRIVATE append.cc
           authenticate.cc
           checkpoint_handler.cc
+          detect_changers.cc
           dir_cmd.cc
           fd_cmds.cc
           job.cc

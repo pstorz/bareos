@@ -405,6 +405,9 @@ if(NOT HAVE_WIN32 AND NOT client-only)
   bareos_add_test(
     scsi_changer_test LINK_LIBRARIES Bareos::Lib GTest::gtest_main
   )
+  bareos_add_test(
+    scsi_scanner_test LINK_LIBRARIES Bareos::Lib GTest::gtest_main
+  )
 endif() # NOT HAVE_WIN32 AND NOT client-only
 
 if(HAVE_WIN32)
