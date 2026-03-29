@@ -296,11 +296,13 @@ int main(int margc, char* margv[])
 
   bool detect_mode = false;
   bool generate_config = false;
-  btape_app.add_flag("--detect", detect_mode,
-                     "Detect SCSI tape drives and changers, then exit.");
-  btape_app.add_flag("--generate", generate_config,
-                     "With --detect: also print bareos-sd / bareos-dir config "
-                     "snippets for detected changers.");
+  btape_app.add_flag(
+      "--detect", detect_mode,
+      "Detect SCSI tape drives and changers, then exit. No config required.");
+  btape_app.add_flag(
+      "--generate", generate_config,
+      "Detect SCSI tape drives and changers and print bareos-sd / bareos-dir "
+      "config snippets, then exit. No config required.");
 
   std::string archive_name;
   btape_app
@@ -315,7 +317,7 @@ int main(int margc, char* margv[])
 
   ParseBareosApp(btape_app, margc, margv);
 
-  if (detect_mode) {
+  if (detect_mode || generate_config) {
     detectcmd_run(generate_config);
     return 0;
   }
