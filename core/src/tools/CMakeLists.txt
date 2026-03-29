@@ -64,10 +64,6 @@ if(NOT HAVE_WIN32)
   add_executable(bpluginfo bpluginfo.cc)
   target_link_libraries(bpluginfo Bareos::Lib ${CMAKE_DL_LIBS} CLI11::CLI11)
   list(APPEND TOOLS_SBIN bpluginfo)
-
-  add_executable(bareos-detect-tape bareos-detect-tape.cc)
-  target_link_libraries(bareos-detect-tape Bareos::Lib CLI11::CLI11)
-  list(APPEND TOOLS_SBIN bareos-detect-tape)
 endif()
 
 if(NOT client-only)

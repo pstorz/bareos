@@ -66,6 +66,11 @@
 #include "include/jcr.h"
 #include "lib/serial.h"
 
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+#  include "lib/scsi_scanner.h"
+#  include "lib/scsi_changer.h"
+#endif
+
 inline void read_with_check(int fd, void* buf, size_t count)
 {
   if (read(fd, buf, count) < 0) {
@@ -127,6 +132,7 @@ static void rawfill_cmd();
 static bool open_the_device();
 static void autochangercmd();
 static bool do_unfill();
+static void detectcmd();
 
 /* Static variables */
 
@@ -176,6 +182,7 @@ static JobControlRecord* g_jcr = nullptr;
 static std::string Generate_interactive_commands_help();
 static void TerminateBtape(int sig);
 int GetCmd(const char* prompt);
+static void detectcmd_run(bool generate);
 
 
 /**
@@ -287,6 +294,14 @@ int main(int margc, char* margv[])
 
   AddVerboseOption(btape_app);
 
+  bool detect_mode = false;
+  bool generate_config = false;
+  btape_app.add_flag("--detect", detect_mode,
+                     "Detect SCSI tape drives and changers, then exit.");
+  btape_app.add_flag("--generate", generate_config,
+                     "With --detect: also print bareos-sd / bareos-dir config "
+                     "snippets for detected changers.");
+
   std::string archive_name;
   btape_app
       .add_option("bareos-archive-device-name", archive_name,
@@ -299,6 +314,11 @@ int main(int margc, char* margv[])
                              Generate_interactive_commands_help());
 
   ParseBareosApp(btape_app, margc, margv);
+
+  if (detect_mode) {
+    detectcmd_run(generate_config);
+    return 0;
+  }
 
   printf(T_("Tape block granularity is %d bytes.\n"), TAPE_BSIZE);
 
@@ -2826,6 +2846,190 @@ static void rawfill_cmd()
   weofcmd();
 }
 
+// ---------------------------------------------------------------------------
+// SCSI tape/changer detection
+// ---------------------------------------------------------------------------
+
+static void detectcmd_run(bool generate);
+
+static void detectcmd() { detectcmd_run(BtapeFindArg("generate") > 0); }
+
+static void detectcmd_run(bool generate)
+{
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  using namespace bareos::scsi;
+
+  std::vector<ScsiDeviceInfo> all = ScanScsiDevices();
+
+  std::vector<ScsiDeviceInfo> tape_drives, changers;
+  for (const auto& d : all) {
+    if (d.device_type == kScsiTypeTapeDrive) {
+      tape_drives.push_back(d);
+    } else if (d.device_type == kScsiTypeChanger) {
+      changers.push_back(d);
+    }
+  }
+
+  // ── Tape drives ────────────────────────────────────────────────────────────
+  if (tape_drives.empty()) {
+    printf("Tape drives: none detected\n");
+  } else {
+    printf("Tape drives:\n");
+    for (const auto& dev : tape_drives) {
+      printf("  %-12s  %-12s  %-8s  %-16s  SN:%s\n", dev.sg_path.c_str(),
+             dev.st_path.empty() ? "(no st)" : dev.st_path.c_str(),
+             dev.vendor.c_str(), dev.product.c_str(), dev.serial.c_str());
+    }
+  }
+
+  // ── Changers ───────────────────────────────────────────────────────────────
+  if (changers.empty()) {
+    printf("\nChangers: none detected\n");
+  } else {
+    printf("\nChangers:\n");
+    int changer_idx = 0;
+    for (const auto& dev : changers) {
+      printf("  [%d] %s  %-8s  %-16s  SN:%s\n", changer_idx,
+             dev.sg_path.c_str(), dev.vendor.c_str(), dev.product.c_str(),
+             dev.serial.c_str());
+
+      int fd = open(dev.sg_path.c_str(), O_RDWR | O_NONBLOCK);
+      if (fd < 0) {
+        printf("      (cannot open: %s)\n", strerror(errno));
+        ++changer_idx;
+        continue;
+      }
+
+      ChangerInventory inv{};
+      bool ok = ReadElementStatus(fd, dev.sg_path.c_str(), inv);
+      close(fd);
+
+      if (!ok) {
+        printf("      (READ ELEMENT STATUS failed)\n");
+        ++changer_idx;
+        continue;
+      }
+
+      printf("      Slots: %u    Drives: %u    I/E slots: %u\n",
+             static_cast<unsigned>(inv.num_slots),
+             static_cast<unsigned>(inv.num_drives),
+             static_cast<unsigned>(inv.num_ie_slots));
+
+      for (const auto& drv : inv.drives) {
+        std::string sg, st;
+        if (drv.logical_drive < static_cast<uint16_t>(tape_drives.size())) {
+          sg = tape_drives[drv.logical_drive].sg_path;
+          st = tape_drives[drv.logical_drive].st_path;
+        }
+        if (drv.loaded) {
+          printf("      Drive %u: [loaded] barcode=%-12s",
+                 static_cast<unsigned>(drv.logical_drive), drv.barcode);
+        } else {
+          printf("      Drive %u: [empty ]                    ",
+                 static_cast<unsigned>(drv.logical_drive));
+        }
+        if (!sg.empty()) {
+          printf("  sg=%-12s  st=%s", sg.c_str(), st.c_str());
+        }
+        printf("\n");
+      }
+
+      for (const auto& slot : inv.slots) {
+        if (slot.full) {
+          printf("      Slot %3u: [FULL ]  %s\n",
+                 static_cast<unsigned>(slot.logical_slot), slot.barcode);
+        } else {
+          printf("      Slot %3u: [empty]\n",
+                 static_cast<unsigned>(slot.logical_slot));
+        }
+      }
+
+      for (const auto& ie : inv.ie_slots) {
+        if (ie.full) {
+          printf("      I/E  %3u: [FULL ]  %s\n",
+                 static_cast<unsigned>(ie.logical_slot), ie.barcode);
+        } else {
+          printf("      I/E  %3u: [empty]\n",
+                 static_cast<unsigned>(ie.logical_slot));
+        }
+      }
+
+      ++changer_idx;
+    }
+  }
+
+  // ── Optional config snippets ───────────────────────────────────────────────
+  if (generate) {
+    int changer_idx = 0;
+    for (const auto& dev : changers) {
+      int fd = open(dev.sg_path.c_str(), O_RDWR | O_NONBLOCK);
+      if (fd < 0) {
+        ++changer_idx;
+        continue;
+      }
+      ChangerInventory inv{};
+      bool ok = ReadElementStatus(fd, dev.sg_path.c_str(), inv);
+      close(fd);
+      if (!ok) {
+        ++changer_idx;
+        continue;
+      }
+
+      std::string name = "Autochanger-" + std::to_string(changer_idx);
+      printf(
+          "\n# -- Generated snippet for %s (%s %s) "
+          "-------------------------------\n",
+          dev.sg_path.c_str(), dev.vendor.c_str(), dev.product.c_str());
+      printf("# Add to /etc/bareos/bareos-sd.d/autochanger/\n\n");
+
+      std::string drive_names;
+      for (unsigned i = 0; i < static_cast<unsigned>(inv.num_drives); ++i) {
+        if (i > 0) { drive_names += ", "; }
+        drive_names += name + "-Drive-" + std::to_string(i);
+      }
+
+      printf("Autochanger {\n");
+      printf("  Name = \"%s\"\n", name.c_str());
+      printf("  UseNativeScsi = yes\n");
+      printf("  ChangerDevice = %s\n", dev.sg_path.c_str());
+      printf("  Device = %s\n", drive_names.c_str());
+      printf("}\n\n");
+
+      for (unsigned i = 0; i < static_cast<unsigned>(inv.num_drives); ++i) {
+        std::string st = "<tape-device>";
+        if (i < static_cast<unsigned>(tape_drives.size())
+            && !tape_drives[i].st_path.empty()) {
+          st = tape_drives[i].st_path;
+        }
+        printf("Device {\n");
+        printf("  Name = \"%s-Drive-%u\"\n", name.c_str(), i);
+        printf("  DeviceType = tape\n");
+        printf("  ArchiveDevice = %s\n", st.c_str());
+        printf("  MediaType = LTO\n");
+        printf("  AutoChanger = yes\n");
+        printf("}\n\n");
+      }
+
+      printf("# Add to /etc/bareos/bareos-dir.d/storage/\n\n");
+      printf("Storage {\n");
+      printf("  Name = \"%s\"\n", name.c_str());
+      printf("  Address = <bareos-sd-hostname>\n");
+      printf("  Password = \"<bareos-sd-password>\"\n");
+      printf("  Device = \"%s\"\n", name.c_str());
+      printf("  MediaType = LTO\n");
+      printf("  AutoChanger = yes\n");
+      printf("}\n");
+
+      ++changer_idx;
+    }
+  }
+#else
+  printf(
+      "SCSI tape/changer detection not compiled in "
+      "(requires -Dscsi-crypto=on).\n");
+#endif
+}
+
 
 struct cmdstruct {
   const char* key;
@@ -2866,7 +3070,9 @@ static struct cmdstruct commands[] = {
     {NT_("wr"), wrcmd, T_("write a single Bareos block")},
     {NT_("rr"), rrcmd, T_("read a single record")},
     {NT_("rb"), rbcmd, T_("read a single Bareos block")},
-    {NT_("qfill"), qfillcmd, T_("quick fill command")}};
+    {NT_("qfill"), qfillcmd, T_("quick fill command")},
+    {NT_("detect"), detectcmd,
+     T_("detect SCSI tape drives and changers [generate]")}};
 #define comsize (sizeof(commands) / sizeof(struct cmdstruct))
 
 static void do_tape_cmds()
