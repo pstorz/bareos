@@ -133,8 +133,15 @@ static bool open_the_device();
 static void autochangercmd();
 static bool do_unfill();
 static void detectcmd();
+static void loadcmd_changer();
+static void unloadcmd_changer();
+static void movecmd_changer();
 
 /* Static variables */
+
+// Path to the changer device used by load/unload/move commands.
+// Set via --changer <path> CLI flag or changer=<path> interactive arg.
+static std::string g_changer_device;
 
 #define MAX_CMD_ARGS 30
 
@@ -303,6 +310,44 @@ int main(int margc, char* margv[])
       "--generate", generate_config,
       "Detect SCSI tape drives and changers and print bareos-sd / bareos-dir "
       "config snippets, then exit. No config required.");
+  btape_app
+      .add_option("--changer", g_changer_device,
+                  "SCSI changer device to use for load/unload/move commands\n"
+                  "(e.g. /dev/sg1). Auto-detected if not given.")
+      ->type_name("<device>");
+
+  std::string cli_load_serial, cli_move_serial, cli_move_to;
+  int cli_load_drive = 0, cli_unload_drive = 0;
+  int cli_move_from = 0;
+  bool cli_unload = false;
+
+  btape_app
+      .add_option("--load", cli_load_serial,
+                  "Load tape by barcode into a drive. No config required.\n"
+                  "Use with --drive <n> and optionally --changer <dev>.")
+      ->type_name("<barcode>");
+  btape_app.add_option("--drive", cli_load_drive, "Drive index for --load.")
+      ->type_name("<n>");
+  btape_app.add_flag("--unload", cli_unload,
+                     "Unload tape from drive. Use with --drive <n> and\n"
+                     "optionally --changer <dev>. No config required.");
+  btape_app
+      .add_option("--move-serial", cli_move_serial,
+                  "Move tape by barcode to a slot (use with --move-slot).\n"
+                  "No config required.")
+      ->type_name("<barcode>");
+  btape_app
+      .add_option("--move-slot", cli_move_to,
+                  "Destination slot for --move-serial.")
+      ->type_name("<n>");
+  btape_app
+      .add_option("--move-from", cli_move_from,
+                  "Source slot for slot-to-slot move (use with --move-to).\n"
+                  "No config required.")
+      ->type_name("<n>");
+  btape_app
+      .add_option("--move-to", cli_move_to, "Destination slot for --move-from.")
+      ->type_name("<n>");
 
   std::string archive_name;
   btape_app
@@ -321,6 +366,57 @@ int main(int margc, char* margv[])
     detectcmd_run(generate_config);
     return 0;
   }
+
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  if (!cli_load_serial.empty()) {
+    // btape --load <barcode> [--drive <n>] [--changer <dev>]
+    // Synthesise argk/argv so OpenChanger / loadcmd_changer helpers work
+    cmd = GetPoolMemory(PM_FNAME);
+    args = GetPoolMemory(PM_FNAME);
+    Mmsg(cmd, "cload serial=%s drive=%d", cli_load_serial.c_str(),
+         cli_load_drive);
+    ParseArgs(cmd, args, &argc, argk, argv, MAX_CMD_ARGS);
+    loadcmd_changer();
+    FreePoolMemory(cmd);
+    FreePoolMemory(args);
+    cmd = args = nullptr;
+    return 0;
+  }
+  if (cli_unload) {
+    cmd = GetPoolMemory(PM_FNAME);
+    args = GetPoolMemory(PM_FNAME);
+    Mmsg(cmd, "cunload drive=%d", cli_unload_drive);
+    ParseArgs(cmd, args, &argc, argk, argv, MAX_CMD_ARGS);
+    unloadcmd_changer();
+    FreePoolMemory(cmd);
+    FreePoolMemory(args);
+    cmd = args = nullptr;
+    return 0;
+  }
+  if (!cli_move_serial.empty() && !cli_move_to.empty()) {
+    cmd = GetPoolMemory(PM_FNAME);
+    args = GetPoolMemory(PM_FNAME);
+    Mmsg(cmd, "cmove serial=%s slot=%s", cli_move_serial.c_str(),
+         cli_move_to.c_str());
+    ParseArgs(cmd, args, &argc, argk, argv, MAX_CMD_ARGS);
+    movecmd_changer();
+    FreePoolMemory(cmd);
+    FreePoolMemory(args);
+    cmd = args = nullptr;
+    return 0;
+  }
+  if (cli_move_from != 0 && !cli_move_to.empty()) {
+    cmd = GetPoolMemory(PM_FNAME);
+    args = GetPoolMemory(PM_FNAME);
+    Mmsg(cmd, "cmove from=%d to=%s", cli_move_from, cli_move_to.c_str());
+    ParseArgs(cmd, args, &argc, argk, argv, MAX_CMD_ARGS);
+    movecmd_changer();
+    FreePoolMemory(cmd);
+    FreePoolMemory(args);
+    cmd = args = nullptr;
+    return 0;
+  }
+#endif
 
   printf(T_("Tape block granularity is %d bytes.\n"), TAPE_BSIZE);
 
@@ -3032,6 +3128,407 @@ static void detectcmd_run(bool generate)
 #endif
 }
 
+// ---------------------------------------------------------------------------
+// Changer open helper: returns an open fd for the selected changer device,
+// or -1 on failure.  Resolves the device in this order:
+//   1. changer=<dev> arg from the interactive command line
+//   2. g_changer_device (set via --changer CLI flag)
+//   3. Auto-detect: first changer found by ScanScsiDevices()
+// ---------------------------------------------------------------------------
+
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+static int OpenChanger(std::string& out_path)
+{
+  using namespace bareos::scsi;
+
+  // 1. Per-command override
+  int arg_idx = BtapeFindArg("changer");
+  if (arg_idx > 0 && argv[arg_idx] != nullptr) {
+    out_path = argv[arg_idx];
+  } else if (!g_changer_device.empty()) {
+    // 2. Session-level --changer flag
+    out_path = g_changer_device;
+  } else {
+    // 3. Auto-detect first changer
+    for (const auto& dev : ScanScsiDevices()) {
+      if (dev.device_type == kScsiTypeChanger) {
+        out_path = dev.sg_path;
+        break;
+      }
+    }
+  }
+
+  if (out_path.empty()) {
+    printf("No changer device found. Use 'changer=<dev>' or --changer.\n");
+    return -1;
+  }
+
+  int fd = open(out_path.c_str(), O_RDWR | O_NONBLOCK);
+  if (fd < 0) {
+    printf("Cannot open changer %s: %s\n", out_path.c_str(), strerror(errno));
+    return -1;
+  }
+  return fd;
+}
+
+/** Find a slot or drive whose barcode matches @p serial (case-insensitive). */
+struct ElementRef {
+  enum class Kind
+  {
+    kSlot,
+    kIeSlot,
+    kDrive
+  } kind;
+  uint16_t scsi_address;
+  uint16_t logical_number; /* 1-based slot or 0-based drive */
+};
+
+static bool FindBySerial(const bareos::scsi::ChangerInventory& inv,
+                         const std::string& serial,
+                         ElementRef& out)
+{
+  using namespace bareos::scsi;
+  for (const auto& s : inv.slots) {
+    if (s.full && Bstrcasecmp(s.barcode, serial.c_str())) {
+      out = {ElementRef::Kind::kSlot, s.address, s.logical_slot};
+      return true;
+    }
+  }
+  for (const auto& ie : inv.ie_slots) {
+    if (ie.full && Bstrcasecmp(ie.barcode, serial.c_str())) {
+      out = {ElementRef::Kind::kIeSlot, ie.address, ie.logical_slot};
+      return true;
+    }
+  }
+  for (const auto& d : inv.drives) {
+    if (d.loaded && Bstrcasecmp(d.barcode, serial.c_str())) {
+      out = {ElementRef::Kind::kDrive, d.address, d.logical_drive};
+      return true;
+    }
+  }
+  return false;
+}
+#endif /* HAVE_LOWLEVEL_SCSI_INTERFACE */
+
+// ---------------------------------------------------------------------------
+// load serial=<barcode> drive=<n> [changer=<dev>]
+// ---------------------------------------------------------------------------
+static void loadcmd_changer()
+{
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  using namespace bareos::scsi;
+
+  int serial_idx = BtapeFindArg("serial");
+  int drive_idx = BtapeFindArg("drive");
+
+  if (serial_idx <= 0 || argv[serial_idx] == nullptr) {
+    printf("Usage: cload serial=<barcode> drive=<n> [changer=<dev>]\n");
+    return;
+  }
+
+  std::string serial = argv[serial_idx];
+  int drive_num = (drive_idx > 0 && argv[drive_idx] != nullptr)
+                      ? atoi(argv[drive_idx])
+                      : 0;
+
+  std::string changer_path;
+  int fd = OpenChanger(changer_path);
+  if (fd < 0) { return; }
+
+  ChangerInventory inv{};
+  if (!ReadElementStatus(fd, changer_path.c_str(), inv)) {
+    printf("Failed to read element status from %s\n", changer_path.c_str());
+    close(fd);
+    return;
+  }
+
+  // Find the tape by serial
+  ElementRef src{};
+  if (!FindBySerial(inv, serial, src)) {
+    printf("Tape with serial '%s' not found in changer %s\n", serial.c_str(),
+           changer_path.c_str());
+    close(fd);
+    return;
+  }
+  if (src.kind == ElementRef::Kind::kDrive) {
+    printf("Tape '%s' is already loaded in drive %u\n", serial.c_str(),
+           static_cast<unsigned>(src.logical_number));
+    close(fd);
+    return;
+  }
+
+  // Find destination drive by logical index
+  if (drive_num < 0 || drive_num >= static_cast<int>(inv.drives.size())) {
+    printf("Drive %d not found (changer has %u drives)\n", drive_num,
+           static_cast<unsigned>(inv.drives.size()));
+    close(fd);
+    return;
+  }
+  const DriveInfo& dst_drive = inv.drives[drive_num];
+  if (dst_drive.loaded) {
+    printf("Drive %d is already loaded with '%s'. Unload it first.\n",
+           drive_num, dst_drive.barcode);
+    close(fd);
+    return;
+  }
+
+  printf("Loading '%s' from %s %u into drive %d on %s ...\n", serial.c_str(),
+         src.kind == ElementRef::Kind::kIeSlot ? "I/E slot" : "slot",
+         static_cast<unsigned>(src.logical_number), drive_num,
+         changer_path.c_str());
+
+  if (MoveMedium(fd, changer_path.c_str(), src.scsi_address,
+                 dst_drive.address)) {
+    printf("OK\n");
+  } else {
+    printf("FAILED: %s\n", strerror(errno));
+  }
+  close(fd);
+#else
+  printf("SCSI changer support not compiled in (requires -Dscsi-crypto=on).\n");
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// unload [drive=<n>] [changer=<dev>]
+// ---------------------------------------------------------------------------
+static void unloadcmd_changer()
+{
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  using namespace bareos::scsi;
+
+  int drive_idx = BtapeFindArg("drive");
+  int drive_num = (drive_idx > 0 && argv[drive_idx] != nullptr)
+                      ? atoi(argv[drive_idx])
+                      : 0;
+
+  std::string changer_path;
+  int fd = OpenChanger(changer_path);
+  if (fd < 0) { return; }
+
+  ChangerInventory inv{};
+  if (!ReadElementStatus(fd, changer_path.c_str(), inv)) {
+    printf("Failed to read element status from %s\n", changer_path.c_str());
+    close(fd);
+    return;
+  }
+
+  if (drive_num < 0 || drive_num >= static_cast<int>(inv.drives.size())) {
+    printf("Drive %d not found (changer has %u drives)\n", drive_num,
+           static_cast<unsigned>(inv.drives.size()));
+    close(fd);
+    return;
+  }
+
+  const DriveInfo& drv = inv.drives[drive_num];
+  if (!drv.loaded) {
+    printf("Drive %d is already empty.\n", drive_num);
+    close(fd);
+    return;
+  }
+
+  // Determine destination: return to source slot if known, else first empty
+  // storage slot.
+  uint16_t dst_addr = 0;
+  bool dst_found = false;
+
+  if (drv.loaded_from_slot > 0) {
+    // Prefer returning to origin slot
+    for (const auto& s : inv.slots) {
+      if (s.logical_slot == drv.loaded_from_slot && !s.full) {
+        dst_addr = s.address;
+        dst_found = true;
+        break;
+      }
+    }
+  }
+
+  if (!dst_found) {
+    for (const auto& s : inv.slots) {
+      if (!s.full) {
+        dst_addr = s.address;
+        dst_found = true;
+        break;
+      }
+    }
+  }
+
+  if (!dst_found) {
+    printf("No empty slot available to unload drive %d.\n", drive_num);
+    close(fd);
+    return;
+  }
+
+  // Find logical slot number for the message
+  uint16_t dst_logical = 0;
+  for (const auto& s : inv.slots) {
+    if (s.address == dst_addr) {
+      dst_logical = s.logical_slot;
+      break;
+    }
+  }
+
+  printf("Unloading drive %d ('%s') to slot %u on %s ...\n", drive_num,
+         drv.barcode, static_cast<unsigned>(dst_logical), changer_path.c_str());
+
+  if (MoveMedium(fd, changer_path.c_str(), drv.address, dst_addr)) {
+    printf("OK\n");
+  } else {
+    printf("FAILED: %s\n", strerror(errno));
+  }
+  close(fd);
+#else
+  printf("SCSI changer support not compiled in (requires -Dscsi-crypto=on).\n");
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// move serial=<barcode> slot=<n> [changer=<dev>]
+//   or: move from=<slot> to=<slot>   [changer=<dev>]
+// ---------------------------------------------------------------------------
+static void movecmd_changer()
+{
+#ifdef HAVE_LOWLEVEL_SCSI_INTERFACE
+  using namespace bareos::scsi;
+
+  int serial_idx = BtapeFindArg("serial");
+  int from_idx = BtapeFindArg("from");
+  int to_idx = BtapeFindArg("to");
+  int slot_idx = BtapeFindArg("slot");
+
+  bool by_serial = (serial_idx > 0 && argv[serial_idx] != nullptr
+                    && slot_idx > 0 && argv[slot_idx] != nullptr);
+  bool by_slot = (from_idx > 0 && argv[from_idx] != nullptr && to_idx > 0
+                  && argv[to_idx] != nullptr);
+
+  if (!by_serial && !by_slot) {
+    printf(
+        "Usage: cmove serial=<barcode> slot=<n> [changer=<dev>]\n"
+        "    or cmove from=<slot> to=<slot> [changer=<dev>]\n");
+    return;
+  }
+
+  std::string changer_path;
+  int fd = OpenChanger(changer_path);
+  if (fd < 0) { return; }
+
+  ChangerInventory inv{};
+  if (!ReadElementStatus(fd, changer_path.c_str(), inv)) {
+    printf("Failed to read element status from %s\n", changer_path.c_str());
+    close(fd);
+    return;
+  }
+
+  uint16_t src_addr = 0, dst_addr = 0;
+  std::string tape_label;
+  uint16_t src_logical = 0, dst_logical = 0;
+
+  if (by_serial) {
+    std::string serial = argv[serial_idx];
+    int dst_slot_num = atoi(argv[slot_idx]);
+
+    ElementRef src{};
+    if (!FindBySerial(inv, serial, src)) {
+      printf("Tape '%s' not found in changer %s\n", serial.c_str(),
+             changer_path.c_str());
+      close(fd);
+      return;
+    }
+    if (src.kind == ElementRef::Kind::kDrive) {
+      printf(
+          "Tape '%s' is in a drive. Use 'unload' to return it to a slot "
+          "first.\n",
+          serial.c_str());
+      close(fd);
+      return;
+    }
+    src_addr = src.scsi_address;
+    src_logical = src.logical_number;
+    tape_label = serial;
+
+    // Find destination slot
+    bool found = false;
+    for (const auto& s : inv.slots) {
+      if (s.logical_slot == static_cast<uint16_t>(dst_slot_num)) {
+        if (s.full) {
+          printf("Destination slot %d is not empty (contains '%s').\n",
+                 dst_slot_num, s.barcode);
+          close(fd);
+          return;
+        }
+        dst_addr = s.address;
+        dst_logical = s.logical_slot;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      printf("Slot %d not found in changer %s\n", dst_slot_num,
+             changer_path.c_str());
+      close(fd);
+      return;
+    }
+  } else {
+    // by from= to= slot numbers
+    int from_num = atoi(argv[from_idx]);
+    int to_num = atoi(argv[to_idx]);
+
+    bool src_found = false, dst_found = false;
+    for (const auto& s : inv.slots) {
+      if (s.logical_slot == static_cast<uint16_t>(from_num)) {
+        if (!s.full) {
+          printf("Source slot %d is empty.\n", from_num);
+          close(fd);
+          return;
+        }
+        src_addr = s.address;
+        src_logical = s.logical_slot;
+        tape_label = s.barcode;
+        src_found = true;
+      }
+      if (s.logical_slot == static_cast<uint16_t>(to_num)) {
+        if (s.full) {
+          printf("Destination slot %d is not empty (contains '%s').\n", to_num,
+                 s.barcode);
+          close(fd);
+          return;
+        }
+        dst_addr = s.address;
+        dst_logical = s.logical_slot;
+        dst_found = true;
+      }
+      if (src_found && dst_found) { break; }
+    }
+
+    if (!src_found) {
+      printf("Source slot %d not found in changer %s\n", from_num,
+             changer_path.c_str());
+      close(fd);
+      return;
+    }
+    if (!dst_found) {
+      printf("Destination slot %d not found in changer %s\n", to_num,
+             changer_path.c_str());
+      close(fd);
+      return;
+    }
+  }
+
+  printf("Moving '%s' from slot %u to slot %u on %s ...\n", tape_label.c_str(),
+         static_cast<unsigned>(src_logical), static_cast<unsigned>(dst_logical),
+         changer_path.c_str());
+
+  if (MoveMedium(fd, changer_path.c_str(), src_addr, dst_addr)) {
+    printf("OK\n");
+  } else {
+    printf("FAILED: %s\n", strerror(errno));
+  }
+  close(fd);
+#else
+  printf("SCSI changer support not compiled in (requires -Dscsi-crypto=on).\n");
+#endif
+}
+
 
 struct cmdstruct {
   const char* key;
@@ -3052,7 +3549,7 @@ static struct cmdstruct commands[] = {
     {NT_("fsr"), fsrcmd, T_("forward space a record")},
     {NT_("help"), HelpCmd, T_("print this command")},
     {NT_("label"), labelcmd, T_("write a Bareos label to the tape")},
-    {NT_("load"), loadcmd, T_("load a tape")},
+    {NT_("load"), loadcmd, T_("load a tape (device-level)")},
     {NT_("quit"), QuitCmd, T_("quit btape")},
     {NT_("rawfill"), rawfill_cmd, T_("use write() to fill tape")},
     {NT_("readlabel"), readlabelcmd,
@@ -3074,7 +3571,16 @@ static struct cmdstruct commands[] = {
     {NT_("rb"), rbcmd, T_("read a single Bareos block")},
     {NT_("qfill"), qfillcmd, T_("quick fill command")},
     {NT_("detect"), detectcmd,
-     T_("detect SCSI tape drives and changers [generate]")}};
+     T_("detect SCSI tape drives and changers [generate]")},
+    {NT_("cload"), loadcmd_changer,
+     T_("changer: load tape into drive: cload serial=<barcode> drive=<n> "
+        "[changer=<dev>]")},
+    {NT_("cunload"), unloadcmd_changer,
+     T_("changer: unload tape from drive: cunload [drive=<n>] "
+        "[changer=<dev>]")},
+    {NT_("cmove"), movecmd_changer,
+     T_("changer: move tape: cmove serial=<barcode> slot=<n> [changer=<dev>]"
+        "\n              or: cmove from=<slot> to=<slot> [changer=<dev>]")}};
 #define comsize (sizeof(commands) / sizeof(struct cmdstruct))
 
 static void do_tape_cmds()
