@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2010 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2018-2021 Bareos GmbH & Co. KG
+   Copyright (C) 2018-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -28,7 +28,8 @@ enum password_encoding
 {
   p_encoding_undefined,
   p_encoding_clear,
-  p_encoding_md5
+  p_encoding_md5,
+  p_encoding_scram_sha256
 };
 
 struct s_password {

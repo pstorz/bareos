@@ -449,6 +449,10 @@ bareos_add_test(
 )
 bareos_add_test(test_edit LINK_LIBRARIES Bareos::Lib GTest::gtest_main)
 
+bareos_add_test(
+  test_scram_sha256 LINK_LIBRARIES Bareos::Lib OpenSSL::SSL GTest::gtest_main
+)
+
 if(NOT MSVC)
   bareos_add_test(
     test_fd_plugins

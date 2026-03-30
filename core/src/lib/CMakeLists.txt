@@ -1,6 +1,6 @@
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2017-2025 Bareos GmbH & Co. KG
+#   Copyright (C) 2017-2026 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -50,6 +50,7 @@ target_sources(
           connection_pool.cc
           cram_md5.cc
           crypto.cc
+          scram_sha256.cc
           crypto_cache.cc
           crypto_openssl.cc
           crypto_wrap.cc
