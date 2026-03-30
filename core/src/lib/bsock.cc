@@ -3,7 +3,7 @@
 
    Copyright (C) 2007-2011 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -32,6 +32,7 @@
 #include "lib/berrno.h"
 #include "lib/bnet.h"
 #include "lib/cram_md5.h"
+#include "lib/scram_sha256.h"
 #include "lib/tls.h"
 #include "lib/util.h"
 #include "lib/bstringlist.h"
@@ -389,14 +390,8 @@ bool BareosSocket::TwoWayAuthenticate(JobControlRecord* jcr,
         = T_("TwoWayAuthenticate failed, because job was canceled.");
     Jmsg(jcr, M_FATAL, 0, "%s\n", err_msg);
     Dmsg0(debuglevel, "%s\n", err_msg);
-  } else if (password.encoding != p_encoding_md5) {
-    const char* err_msg = T_(
-        "Password encoding is not MD5. You are probably restoring a NDMP "
-        "Backup "
-        "with a restore job not configured for NDMP protocol.");
-    Jmsg(jcr, M_FATAL, 0, "%s\n", err_msg);
-    Dmsg0(debuglevel, "%s\n", err_msg);
-  } else {
+  } else if (password.encoding == p_encoding_md5) {
+    // CRAM-MD5 path (existing behaviour, unchanged).
     TlsPolicy local_tls_policy = tls_resource->GetPolicy();
     CramMd5Handshake cram_md5_handshake(this, password.value, local_tls_policy,
                                         own_qualified_name);
@@ -460,6 +455,72 @@ bool BareosSocket::TwoWayAuthenticate(JobControlRecord* jcr,
       auth_success = false;
     }
     if (tid) { StopBsockTimer(tid); }
+  } else if (password.encoding == p_encoding_scram_sha256
+             && initiated_by_remote) {
+    // SCRAM-SHA-256 server path.
+    // The connection is already TLS-protected (immediate TLS).
+    ScramSha256Verifier verifier;
+    if (!ScramSha256Verifier::Deserialize(password.value, verifier)) {
+      Jmsg(jcr, M_FATAL, 0,
+           T_("Invalid SCRAM-SHA-256 verifier in configuration.\n"));
+    } else {
+      btimer_t* tid = StartBsockTimer(this, AUTH_TIMEOUT);
+      fsend("auth-scram-sha-256\n");
+      ScramSha256Handshake scram_handshake(this, verifier, own_qualified_name);
+      auth_success = scram_handshake.DoHandshake(true);
+
+      if (!auth_success) {
+        char ipaddr_str[MAXHOSTNAMELEN]{};
+        SockaddrToAscii(&client_addr, ipaddr_str, sizeof(ipaddr_str));
+        switch (scram_handshake.result) {
+          case ScramSha256Handshake::HandshakeResult::NETWORK_ERROR:
+            Jmsg(jcr, M_FATAL, 0,
+                 T_("Network error during SCRAM-SHA-256 with %s\n"),
+                 ipaddr_str);
+            break;
+          case ScramSha256Handshake::HandshakeResult::WRONG_HASH:
+            Jmsg(jcr, M_FATAL, 0,
+                 T_("SCRAM-SHA-256 authorization key rejected by %s.\n"),
+                 ipaddr_str);
+            break;
+          case ScramSha256Handshake::HandshakeResult::FORMAT_MISMATCH:
+            Jmsg(jcr, M_FATAL, 0,
+                 T_("Wrong format of SCRAM-SHA-256 message from %s.\n"),
+                 ipaddr_str);
+            break;
+          default:
+            break;
+        }
+        fsend(T_("1999 Authorization failed.\n"));
+        Bmicrosleep(sleep_time_after_authentication_error, 0);
+      }
+      if (tid) { StopBsockTimer(tid); }
+    }
+  } else if (password.encoding == p_encoding_clear && !initiated_by_remote) {
+    // SCRAM-SHA-256 client path.
+    // Receive the server's auth-method announcement then run SCRAM.
+    btimer_t* tid = StartBsockTimer(this, AUTH_TIMEOUT);
+    int32_t n = recv();
+    if (n <= 0 || strncmp(msg, "auth-scram-sha-256", 18) != 0) {
+      Jmsg(jcr, M_FATAL, 0,
+           T_("SCRAM-SHA-256 negotiation failed: unexpected server "
+              "message.\n"));
+    } else {
+      ScramSha256Handshake scram_handshake(
+          this, std::string_view(password.value), own_qualified_name);
+      auth_success = scram_handshake.DoHandshake(false);
+      if (!auth_success) {
+        Jmsg(jcr, M_FATAL, 0, T_("SCRAM-SHA-256 authentication failed.\n"));
+      }
+    }
+    if (tid) { StopBsockTimer(tid); }
+  } else {
+    const char* err_msg = T_(
+        "Password encoding is not MD5. You are probably restoring a NDMP "
+        "Backup "
+        "with a restore job not configured for NDMP protocol.");
+    Jmsg(jcr, M_FATAL, 0, "%s\n", err_msg);
+    Dmsg0(debuglevel, "%s\n", err_msg);
   }
 
   if (jcr) { jcr->authenticated = auth_success; }
