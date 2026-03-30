@@ -42,6 +42,7 @@
 #include "lib/output_formatter.h"
 #include "include/compiler_macro.h"
 #include "lib/crypto.h"
+#include "lib/scram_sha256.h"
 
 #include <sstream>
 
@@ -599,6 +600,50 @@ void ConfigurationParser::StoreMd5Password(lexer* lc,
       }
       pwd->encoding = p_encoding_md5;
       pwd->value = strdup(sig);
+    }
+  }
+  ScanToEol(lc);
+  item->SetPresent();
+  ClearBit(index, (*item->allocated_resource)->inherit_content_);
+}
+
+// Store a SCRAM-SHA-256 password verifier.
+// Accepts either:
+//   - A plaintext password: derives and stores the verifier.
+//   - A pre-encoded verifier "[scram-sha-256]i=...,s=...,sk=...,svk=..."
+void ConfigurationParser::StoreScramPassword(lexer* lc,
+                                             const ResourceItem* item,
+                                             int index,
+                                             int pass)
+{
+  LexGetToken(lc, BCT_STRING);
+  if (pass == 1) {
+    s_password* pwd = GetItemVariablePointer<s_password*>(*item);
+    if (pwd->value) { free(pwd->value); }
+
+    static const char kPrefix[] = "[scram-sha-256]";
+    if (bstrncmp(lc->str, kPrefix, strlen(kPrefix))) {
+      // Pre-encoded verifier — validate and store as-is.
+      const char* encoded = lc->str + strlen(kPrefix);
+      ScramSha256Verifier v;
+      if (!ScramSha256Verifier::Deserialize(encoded, v)) {
+        scan_err1(lc, "Invalid SCRAM-SHA-256 verifier in resource \"%s\"",
+                  (*item->allocated_resource)->resource_name_);
+        return;
+      }
+      pwd->encoding = p_encoding_scram_sha256;
+      pwd->value = strdup(encoded);
+    } else {
+      // Plaintext password — generate verifier.
+      if (item->is_required && strnlen(lc->str, MAX_NAME_LENGTH) == 0) {
+        scan_err1(lc, "Empty Password not allowed in Resource \"%s\"",
+                  (*item->allocated_resource)->resource_name_);
+        return;
+      }
+      ScramSha256Verifier v = GenerateScramSha256Verifier(lc->str);
+      std::string serialized = v.Serialize();
+      pwd->encoding = p_encoding_scram_sha256;
+      pwd->value = strdup(serialized.c_str());
     }
   }
   ScanToEol(lc);
@@ -1432,6 +1477,9 @@ bool ConfigurationParser::StoreResource(int type,
     case CFG_TYPE_CLEARPASSWORD:
       StoreClearpassword(lc, item, index, pass);
       break;
+    case CFG_TYPE_SCRAM_PASSWORD:
+      StoreScramPassword(lc, item, index, pass);
+      break;
     case CFG_TYPE_NAME:
       StoreName(lc, item, index, pass);
       break;
@@ -1906,7 +1954,8 @@ void BareosResource::PrintResourceItem(const ResourceItem& item,
     }
     case CFG_TYPE_MD5PASSWORD:
     case CFG_TYPE_CLEARPASSWORD:
-    case CFG_TYPE_AUTOPASSWORD: {
+    case CFG_TYPE_AUTOPASSWORD:
+    case CFG_TYPE_SCRAM_PASSWORD: {
       s_password* password = GetItemVariablePointer<s_password*>(item);
 
       if (password && password->value != NULL) {
@@ -1922,6 +1971,11 @@ void BareosResource::PrintResourceItem(const ResourceItem& item,
             case p_encoding_md5:
               Dmsg2(200, "%s = \"[md5]%s\"\n", item.name, password->value);
               Mmsg(value, "[md5]%s", password->value);
+              break;
+            case p_encoding_scram_sha256:
+              Dmsg2(200, "%s = \"[scram-sha-256]%s\"\n", item.name,
+                    password->value);
+              Mmsg(value, "[scram-sha-256]%s", password->value);
               break;
             default:
               break;
@@ -2200,6 +2254,8 @@ static DatatypeName datatype_names[] = {
     {CFG_TYPE_STDSTRDIR, "DIRECTORY", "directory"},
     {CFG_TYPE_MD5PASSWORD, "MD5PASSWORD", "Password in MD5 format"},
     {CFG_TYPE_CLEARPASSWORD, "CLEARPASSWORD", "Password as cleartext"},
+    {CFG_TYPE_SCRAM_PASSWORD, "SCRAM_PASSWORD",
+     "Password as SCRAM-SHA-256 verifier"},
     {CFG_TYPE_AUTOPASSWORD, "AUTOPASSWORD",
      "Password stored in clear when needed otherwise hashed"},
     {CFG_TYPE_NAME, "NAME", "Name"},

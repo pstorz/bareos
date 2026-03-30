@@ -155,6 +155,12 @@ enum
   Num_ACL /**< keep last */
 };
 
+enum class AuthProtocol
+{
+  kCramMd5,      ///< Legacy CRAM-MD5 (default when password is md5-encoded)
+  kScramSha256,  ///< SCRAM-SHA-256 (RFC 5802 / RFC 7677)
+};
+
 // Profile Resource
 class ProfileResource : public BareosResource {
  public:
@@ -186,7 +192,8 @@ class ConsoleResource
   ConsoleResource() = default;
   virtual ~ConsoleResource() = default;
   UserAcl user_acl;
-  bool use_pam_authentication_ = false; /**< PAM Console */
+  bool use_pam_authentication_ = false;                /**< PAM Console */
+  AuthProtocol auth_protocol_{AuthProtocol::kCramMd5}; /**< Auth method */
 };
 
 class UserResource : public BareosResource {

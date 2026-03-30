@@ -93,6 +93,8 @@ enum
   CFG_TYPE_MD5PASSWORD = 3,         /* MD5 hashed Password */
   CFG_TYPE_CLEARPASSWORD = 4,       /* Clear text Password */
   CFG_TYPE_AUTOPASSWORD = 5,        /* Password stored in clear when needed otherwise hashed */
+  CFG_TYPE_SCRAM_PASSWORD = 48,     /* SCRAM-SHA-256 verifier */
+  CFG_TYPE_CONSOLE_AUTH_PROTOCOL = 49, /* Console auth protocol (cram-md5 or scram-sha-256) */
   CFG_TYPE_NAME = 6,                /* Name */
   CFG_TYPE_STRNAME = 7,             /* String Name */
   CFG_TYPE_RES = 8,                 /* Resource */
@@ -373,6 +375,10 @@ class ConfigurationParser {
                         const ResourceItem* item,
                         int index,
                         int pass);
+  void StoreScramPassword(lexer* lc,
+                          const ResourceItem* item,
+                          int index,
+                          int pass);
   void StoreClearpassword(lexer* lc,
                           const ResourceItem* item,
                           int index,

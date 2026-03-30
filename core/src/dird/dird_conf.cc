@@ -66,6 +66,7 @@
 #include "lib/edit.h"
 #include "lib/tls_resource_items.h"
 #include "lib/output_formatter_resource.h"
+#include "lib/s_password.h"
 #include "lib/version.h"
 
 #include <cassert>
@@ -182,6 +183,15 @@ static const ResourceItem con_items[] = {
   USER_ACL(res_con, user_acl.ACL_lists),
   ACL_PROFILE(res_con),
   { "UsePamAuthentication", CFG_TYPE_BOOL, ITEM(res_con, use_pam_authentication_), {config::IntroducedIn{18, 2, 4}, config::DefaultValue{"false"}, config::Description{"If set to yes, PAM will be used to authenticate the user on this console. Otherwise, only the credentials of this console resource are used for authentication."}}},
+  { "AuthProtocol", CFG_TYPE_CONSOLE_AUTH_PROTOCOL,
+    ITEM(res_con, auth_protocol_),
+    {config::DefaultValue{"auto"},
+     config::Description{
+         "Authentication protocol for this console. "
+         "\"scram-sha-256\" requires Bareos >= 26.0 on both sides. "
+         "\"cram-md5\" retains legacy behaviour. "
+         "\"auto\" (default) selects scram-sha-256 when a SCRAM verifier "
+         "is stored, cram-md5 otherwise."}}},
    TLS_COMMON_CONFIG(res_con),
    TLS_CERT_CONFIG(res_con),
   {}
@@ -2173,6 +2183,12 @@ static bool UpdateResourcePointer(int type, const ResourceItem* items)
             = std::move(res_con->tls_cert_.allowed_certificate_common_names_);
         p->user_acl.profiles = res_con->user_acl.profiles;
         p->user_acl.corresponding_resource = p;
+        // Auto-detect auth protocol from password encoding when not
+        // explicitly set: a SCRAM verifier implies scram-sha-256.
+        if (p->auth_protocol_ == AuthProtocol::kCramMd5
+            && p->password_.encoding == p_encoding_scram_sha256) {
+          p->auth_protocol_ = AuthProtocol::kScramSha256;
+        }
       }
       break;
     }
@@ -2600,6 +2616,31 @@ static void StoreAuthprotocoltype(lexer* lc,
               lc->str);
   }
 
+  ScanToEol(lc);
+  item->SetPresent();
+  ClearBit(index, (*item->allocated_resource)->inherit_content_);
+}
+
+// Store console auth protocol (cram-md5 or scram-sha-256).
+static void StoreConsoleAuthProtocol(lexer* lc,
+                                     const ResourceItem* item,
+                                     int index,
+                                     int)
+{
+  LexGetToken(lc, BCT_NAME);
+  if (Bstrcasecmp(lc->str, "scram-sha-256")) {
+    SetItemVariable<AuthProtocol>(*item, AuthProtocol::kScramSha256);
+  } else if (Bstrcasecmp(lc->str, "cram-md5")) {
+    SetItemVariable<AuthProtocol>(*item, AuthProtocol::kCramMd5);
+  } else if (Bstrcasecmp(lc->str, "auto")) {
+    // Resolved at runtime from password encoding; leave as default kCramMd5.
+    SetItemVariable<AuthProtocol>(*item, AuthProtocol::kCramMd5);
+  } else {
+    scan_err1(lc,
+              T_("Expected \"scram-sha-256\", \"cram-md5\", or \"auto\", "
+                 "got: %s"),
+              lc->str);
+  }
   ScanToEol(lc);
   item->SetPresent();
   ClearBit(index, (*item->allocated_resource)->inherit_content_);
@@ -3196,6 +3237,9 @@ static void ParseConfigCb(lexer* lc,
     case CFG_TYPE_AUTHTYPE:
       StoreAuthtype(lc, item, index, pass);
       break;
+    case CFG_TYPE_CONSOLE_AUTH_PROTOCOL:
+      StoreConsoleAuthProtocol(lc, item, index, pass);
+      break;
     case CFG_TYPE_DEVICE:
       StoreDevice(lc, item, index, pass);
       break;
@@ -3363,6 +3407,11 @@ static bool HasDefaultValue(const ResourceItem& item)
       is_default = HasDefaultValue(item, authmethods);
       break;
     }
+    case CFG_TYPE_CONSOLE_AUTH_PROTOCOL: {
+      auto proto = GetItemVariable<AuthProtocol>(item);
+      is_default = (proto == AuthProtocol::kCramMd5);
+      break;
+    }
     case CFG_TYPE_AUDIT: {
       is_default
           = HasDefaultValue(item, GetItemVariable<alist<const char*>*>(item));
@@ -3500,6 +3549,13 @@ static void PrintConfigCb(const ResourceItem& item,
     }
     case CFG_TYPE_AUTHTYPE: {
       send.KeyString(item.name, GetName(item, authmethods), inherited);
+      break;
+    }
+    case CFG_TYPE_CONSOLE_AUTH_PROTOCOL: {
+      auto proto = GetItemVariable<AuthProtocol>(item);
+      const char* name = (proto == AuthProtocol::kScramSha256) ? "scram-sha-256"
+                                                               : "cram-md5";
+      send.KeyString(item.name, name, inherited);
       break;
     }
     case CFG_TYPE_AUDIT: {
