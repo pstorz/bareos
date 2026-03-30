@@ -22,8 +22,24 @@
 #include "gtest/gtest.h"
 
 #include "lib/scram_sha256.h"
+#include "lib/bsock.h"
+#include "lib/bsock_tcp.h"
+#include "tests/bareos_test_sockets.h"
 
+#include <future>
+#include <signal.h>
 #include <string>
+
+static bool InitSignalHandlers()
+{
+#if !defined(HAVE_WIN32)
+  struct sigaction sig = {};
+  sig.sa_handler = SIG_IGN;
+  sigaction(SIGPIPE, &sig, nullptr);
+#endif
+  return true;
+}
+static bool signal_handlers_initialized = InitSignalHandlers();
 
 // ---------------------------------------------------------------------------
 // Verifier generation and serialization round-trip
@@ -65,7 +81,8 @@ TEST(ScramSha256Verifier, DeserializeRejectsInvalidInput)
   ScramSha256Verifier v;
   EXPECT_FALSE(ScramSha256Verifier::Deserialize("", v));
   EXPECT_FALSE(ScramSha256Verifier::Deserialize("i=310000", v));
-  EXPECT_FALSE(ScramSha256Verifier::Deserialize("i=abc,s=AA==,sk=AA==,svk=AA==", v));
+  EXPECT_FALSE(
+      ScramSha256Verifier::Deserialize("i=abc,s=AA==,sk=AA==,svk=AA==", v));
 }
 
 // Two verifiers for the same password must differ (random salt)
@@ -87,32 +104,6 @@ TEST(ScramSha256Verifier, DifferentPasswordsDifferentKeys)
 }
 
 // ---------------------------------------------------------------------------
-// Handshake simulation using a BareosSocket mock
-// ---------------------------------------------------------------------------
-
-// Simple synchronous in-memory pipe: one side writes, other reads.
-// We simulate a full handshake by running server and client in two threads.
-
-#include <thread>
-#include <functional>
-#include <atomic>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
-
-// Minimal socket mock using two shared queues (server↔client)
-struct MockChannel {
-  std::mutex mtx;
-  std::condition_variable cv;
-  std::queue<std::string> server_to_client;
-  std::queue<std::string> client_to_server;
-};
-
-// We cannot easily instantiate BareosSocket (abstract + huge deps), so we
-// test the crypto primitives directly via white-box tests instead.
-// Full handshake integration is covered by the system tests.
-
-// ---------------------------------------------------------------------------
 // Crypto vector tests (RFC 7677 §3 test vectors don't exist, so we use
 // known-good derivations verified against a reference implementation)
 // ---------------------------------------------------------------------------
@@ -131,4 +122,64 @@ TEST(ScramSha256Verifier, IterationsAffectKeys)
   EXPECT_EQ(high.iterations, 4096);
   EXPECT_EQ(low.stored_key.size(), 32u);
   EXPECT_EQ(high.stored_key.size(), 32u);
+}
+
+// ---------------------------------------------------------------------------
+// End-to-end handshake tests using real loopback sockets
+// ---------------------------------------------------------------------------
+
+// Run server and client handshakes concurrently on loopback TCP sockets.
+// Returns {server_result, client_result}.
+static std::pair<bool, bool> RunHandshake(const std::string& password,
+                                          const std::string& wrong_password
+                                          = "")
+{
+  auto sockets = create_connected_server_and_client_bareos_socket();
+
+  ScramSha256Verifier verifier = GenerateScramSha256Verifier(password, 4096);
+
+  const std::string client_pw
+      = wrong_password.empty() ? password : wrong_password;
+
+  auto server_future = std::async(std::launch::async, [&]() {
+    ScramSha256Handshake hs(sockets->server.get(), verifier, "server");
+    return hs.DoHandshake(true);
+  });
+
+  auto client_future = std::async(std::launch::async, [&]() {
+    ScramSha256Handshake hs(sockets->client.get(), client_pw, "client");
+    return hs.DoHandshake(false);
+  });
+
+  bool server_ok = server_future.get();
+  bool client_ok = client_future.get();
+  return {server_ok, client_ok};
+}
+
+TEST(ScramSha256Handshake, CorrectPasswordBothSucceed)
+{
+  auto [server_ok, client_ok] = RunHandshake("s3cr3t-password");
+  EXPECT_TRUE(server_ok);
+  EXPECT_TRUE(client_ok);
+}
+
+TEST(ScramSha256Handshake, WrongPasswordBothFail)
+{
+  auto [server_ok, client_ok] = RunHandshake("correct", "wrong");
+  EXPECT_FALSE(server_ok);
+  EXPECT_FALSE(client_ok);
+}
+
+TEST(ScramSha256Handshake, EmptyPasswordWorks)
+{
+  auto [server_ok, client_ok] = RunHandshake("");
+  EXPECT_TRUE(server_ok);
+  EXPECT_TRUE(client_ok);
+}
+
+TEST(ScramSha256Handshake, UnicodePassword)
+{
+  auto [server_ok, client_ok] = RunHandshake("pässwörد");
+  EXPECT_TRUE(server_ok);
+  EXPECT_TRUE(client_ok);
 }

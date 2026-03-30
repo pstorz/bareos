@@ -48,6 +48,7 @@
 #include "lib/util.h"
 #include "lib/watchdog.h"
 #include "lib/cli.h"
+#include "lib/scram_sha256.h"
 
 #include "dird/reload.h"
 
@@ -221,9 +222,31 @@ int main(int argc, char* argv[])
                 "Print configuration schema in JSON format and exit.")
       ->excludes(xc);
 
+  std::string hash_password_plaintext;
+  dir_app
+      .add_option(
+          "--hash-password",
+          [&hash_password_plaintext](std::vector<std::string> val) {
+            hash_password_plaintext = val.front();
+            return true;
+          },
+          "Hash <password> with SCRAM-SHA-256 and print the result\n"
+          "in config-file format, then exit.\n"
+          "Use the output as the Password directive in a Console\n"
+          "resource when AuthProtocol = scram-sha-256.")
+      ->type_name("<password>")
+      ->expected(1);
+
   AddDeprecatedExportOptionsHelp(dir_app);
 
   ParseBareosApp(dir_app, argc, argv);
+
+  if (!hash_password_plaintext.empty()) {
+    ScramSha256Verifier v
+        = GenerateScramSha256Verifier(hash_password_plaintext);
+    printf("[scram-sha-256]%s\n", v.Serialize().c_str());
+    return BEXIT_SUCCESS;
+  }
 
   if (!no_signals) { InitSignals(TerminateDird); }
 

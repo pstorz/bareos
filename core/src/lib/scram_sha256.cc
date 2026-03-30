@@ -65,6 +65,26 @@
 
 static constexpr int kSha256Len = 32;
 
+// Parse a SCRAM attribute list ("k1=v1,k2=v2,...") and return the value for
+// the requested single-character key, or empty string if not found.
+// Correctly handles values that contain '=' (e.g. base64 with padding).
+static std::string ScramAttr(const std::string& msg, char key)
+{
+  // Walk comma-separated segments; each segment is "k=value..."
+  size_t pos = 0;
+  while (pos < msg.size()) {
+    size_t comma = msg.find(',', pos);
+    size_t end = (comma == std::string::npos) ? msg.size() : comma;
+    // Each segment must have at least "k=" (2 chars)
+    if (end - pos >= 2 && msg[pos] == key && msg[pos + 1] == '=') {
+      return msg.substr(pos + 2, end - pos - 2);
+    }
+    if (comma == std::string::npos) { break; }
+    pos = comma + 1;
+  }
+  return {};
+}
+
 // Standard RFC 4648 base64 (not the Bacula-compatible variant).
 static std::string Base64Encode(const std::string& data)
 {
@@ -94,8 +114,7 @@ static std::string Base64Decode(const std::string& encoded)
   BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
 
   std::string result(encoded.size(), '\0');
-  int len
-      = BIO_read(b64, result.data(), static_cast<int>(encoded.size()));
+  int len = BIO_read(b64, result.data(), static_cast<int>(encoded.size()));
   BIO_free_all(b64);
   if (len < 0) { return {}; }
   result.resize(static_cast<size_t>(len));
@@ -166,8 +185,8 @@ ScramSha256Verifier GenerateScramSha256Verifier(std::string_view password,
   // Random 16-byte salt
   std::array<uint8_t, 16> salt_raw{};
   RAND_bytes(salt_raw.data(), static_cast<int>(salt_raw.size()));
-  v.salt = std::string(reinterpret_cast<char*>(salt_raw.data()),
-                       salt_raw.size());
+  v.salt
+      = std::string(reinterpret_cast<char*>(salt_raw.data()), salt_raw.size());
 
   std::string pw(password);
   std::string salted_password = Pbkdf2Sha256(pw, v.salt, v.iterations);
@@ -196,7 +215,8 @@ bool ScramSha256Verifier::Deserialize(std::string_view encoded,
     auto pos = s.find(prefix + "=");
     if (pos == std::string::npos) { return {}; }
     pos += prefix.size() + 1;
-    auto end = next_key.empty() ? std::string::npos : s.find("," + next_key + "=", pos);
+    auto end = next_key.empty() ? std::string::npos
+                                : s.find("," + next_key + "=", pos);
     return s.substr(pos, end == std::string::npos ? end : end - pos);
   };
 
@@ -225,10 +245,9 @@ bool ScramSha256Verifier::Deserialize(std::string_view encoded,
 // ScramSha256Handshake — constructors
 // ---------------------------------------------------------------------------
 
-ScramSha256Handshake::ScramSha256Handshake(
-    BareosSocket* bs,
-    const ScramSha256Verifier& verifier,
-    std::string_view own_qualified_name)
+ScramSha256Handshake::ScramSha256Handshake(BareosSocket* bs,
+                                           const ScramSha256Verifier& verifier,
+                                           std::string_view own_qualified_name)
     : bs_(bs)
     , own_qualified_name_(own_qualified_name)
     , is_server_(true)
@@ -260,6 +279,9 @@ bool ScramSha256Handshake::ServerSide()
     return false;
   }
   std::string client_first(bs_->msg);
+  if (!client_first.empty() && client_first.back() == '\n') {
+    client_first.pop_back();
+  }
 
   // client-first: "n,,n=<username>,r=<cnonce>"
   // client-first-bare is everything after the leading "n,,"
@@ -273,15 +295,14 @@ bool ScramSha256Handshake::ServerSide()
   }
   std::string client_first_bare = client_first.substr(kGs2Header.size());
 
-  // Extract client nonce: "n=<name>,r=<cnonce>"
-  auto r_pos = client_first_bare.find(",r=");
-  if (r_pos == std::string::npos) {
+  // Extract client nonce from client-first-bare: "n=<name>,r=<cnonce>"
+  std::string client_nonce = ScramAttr(client_first_bare, 'r');
+  if (client_nonce.empty()) {
     result = HandshakeResult::FORMAT_MISMATCH;
     bs_->fsend("1999 Authorization failed.\n");
     Bmicrosleep(bs_->sleep_time_after_authentication_error, 0);
     return false;
   }
-  std::string client_nonce = client_first_bare.substr(r_pos + 3);
 
   // --- Build and send server-first-message ---
   std::string server_nonce = client_nonce + GenerateNonce();
@@ -322,9 +343,9 @@ bool ScramSha256Handshake::ServerSide()
   std::string client_final_no_proof = client_final.substr(0, p_pos);
   std::string client_proof_b64 = client_final.substr(p_pos + 3);
 
-  // Verify the combined nonce in client-final starts with client nonce
+  // Verify the combined nonce in client-final matches what we sent.
   // client-final-without-proof: "c=biws,r=<nonces>"
-  if (client_final_no_proof.find("r=" + server_nonce) == std::string::npos) {
+  if (ScramAttr(client_final_no_proof, 'r') != server_nonce) {
     Dmsg0(kDebugLevel, "scram: nonce mismatch in client-final\n");
     result = HandshakeResult::WRONG_HASH;
     bs_->fsend("1999 Authorization failed.\n");
@@ -341,8 +362,7 @@ bool ScramSha256Handshake::ServerSide()
   // ClientSignature = HMAC(StoredKey, AuthMessage)
   // ClientKey = ClientProof XOR ClientSignature
   // Verify: H(ClientKey) == StoredKey
-  std::string client_signature
-      = HmacSha256(verifier_.stored_key, auth_message);
+  std::string client_signature = HmacSha256(verifier_.stored_key, auth_message);
   std::string client_proof = Base64Decode(client_proof_b64);
   if (client_proof.size() != kSha256Len) {
     result = HandshakeResult::FORMAT_MISMATCH;
@@ -412,19 +432,9 @@ bool ScramSha256Handshake::ClientSide()
   }
 
   // Parse "r=<nonces>,s=<salt-b64>,i=<N>"
-  auto parse_attr = [&](const std::string& key) -> std::string {
-    std::string prefix = key + "=";
-    auto pos = server_first.find(prefix);
-    if (pos == std::string::npos) { return {}; }
-    pos += prefix.size();
-    auto end = server_first.find(',', pos);
-    return server_first.substr(pos,
-                               end == std::string::npos ? end : end - pos);
-  };
-
-  std::string server_nonce = parse_attr("r");
-  std::string salt_b64 = parse_attr("s");
-  std::string iter_str = parse_attr("i");
+  std::string server_nonce = ScramAttr(server_first, 'r');
+  std::string salt_b64 = ScramAttr(server_first, 's');
+  std::string iter_str = ScramAttr(server_first, 'i');
 
   if (server_nonce.empty() || salt_b64.empty() || iter_str.empty()) {
     Dmsg0(kDebugLevel, "scram: bad server-first format\n");
@@ -434,7 +444,8 @@ bool ScramSha256Handshake::ClientSide()
 
   // Server nonce must start with our client nonce
   if (server_nonce.substr(0, client_nonce.size()) != client_nonce) {
-    Dmsg0(kDebugLevel, "scram: server nonce does not start with client nonce\n");
+    Dmsg0(kDebugLevel,
+          "scram: server nonce does not start with client nonce\n");
     result = HandshakeResult::WRONG_HASH;
     return false;
   }
@@ -476,8 +487,7 @@ bool ScramSha256Handshake::ClientSide()
   std::string client_proof_b64 = Base64Encode(client_proof);
 
   // --- Send client-final-message ---
-  std::string client_final
-      = client_final_no_proof + ",p=" + client_proof_b64;
+  std::string client_final = client_final_no_proof + ",p=" + client_proof_b64;
   if (!bs_->fsend("%s\n", client_final.c_str())) {
     Dmsg1(kDebugLevel, "scram: send client-final failed: %s\n",
           bs_->bstrerror());
