@@ -105,6 +105,42 @@ if(xxHash_ADDED)
   endif()
 endif()
 
+if(ENABLE_FUZZING)
+  # FuzzTest's BuildDependencies.cmake fetches googletest v1.17.0 via
+  # FetchContent.  This version is not ABI-compatible with the system gmock
+  # (which expects its own matching gtest headers on the include path).
+  # Pre-declaring googletest here (before CPMAddPackage(fuzztest) runs the
+  # FuzzTest CMakeLists) causes FetchContent to honour our declaration and use
+  # it when FuzzTest calls FetchContent_Declare(googletest …), effectively
+  # making FuzzTest use the same gtest version as the rest of the project.
+  find_package(GTest 1.8 CONFIG QUIET)
+  if(GTest_FOUND)
+    set(googletest_POPULATED TRUE)
+    get_target_property(_gtest_inc GTest::gtest INTERFACE_INCLUDE_DIRECTORIES)
+    # Derive the source root from the include dir (…/googletest/include → …)
+    if(_gtest_inc)
+      get_filename_component(_gtest_root "${_gtest_inc}" DIRECTORY)
+      get_filename_component(_gtest_root "${_gtest_root}" DIRECTORY)
+      set(googletest_SOURCE_DIR "${_gtest_root}")
+    endif()
+    # Tell FetchContent that googletest is already provided so FuzzTest won't
+    # download an incompatible version.
+    include(FetchContent)
+    FetchContent_Declare(googletest SOURCE_DIR "${googletest_SOURCE_DIR}")
+  endif()
+
+  CPMAddPackage(
+    NAME fuzztest
+    VERSION 2026.02.19
+    GITHUB_REPOSITORY google/fuzztest
+    GIT_TAG 2026-02-19
+    EXCLUDE_FROM_ALL YES
+  )
+  if(fuzztest_ADDED)
+    fuzztest_setup_fuzzing_flags()
+  endif()
+endif()
+
 # Dump package information from CPM into a YAML file
 file(WRITE "${CMAKE_BINARY_DIR}/cpm-packages.yaml"
      "# List of packages provided by CPM\n" "---\n"

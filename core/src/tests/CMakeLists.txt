@@ -541,3 +541,7 @@ if(ENABLE_BARRI)
 endif()
 
 include(DebugEdit)
+
+if(ENABLE_FUZZING)
+  add_subdirectory(fuzz)
+endif()

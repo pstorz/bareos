@@ -46,6 +46,7 @@ if(coverage)
 endif()
 
 option(ENABLE_SYSTEMTESTS "Enable the systemtest suite" ON)
+option(ENABLE_FUZZING "Build fuzz tests (Google FuzzTest via CPM)" OFF)
 option(CPM_ONLY "Add CPM packages and exit" OFF)
 if(CPM_ONLY)
   include(BareosCpmPackages)
