@@ -47,3 +47,91 @@ Unittests in other languages i.e. Python can be established using the add_test a
         exit(0)
 
 In this case only the return value of the script is evaluated: 0 for success and 1 for failure.
+
+Fuzz Tests
+----------
+
+Bareos ships fuzz tests for the BareosSocket layer (``core/src/tests/fuzz/``).
+They are built with `Google FuzzTest <https://github.com/google/fuzztest>`_,
+which integrates with Google Test so each fuzz target also acts as a
+normal unit test in CI.
+
+Fuzz tests are **disabled by default**.  To enable them, pass
+``-DENABLE_FUZZING=yes`` to CMake.  FuzzTest is fetched automatically
+via CPM (no extra installation required on Linux):
+
+.. code-block:: shell-session
+
+   cmake -S . -B cmake-build -G Ninja -DENABLE_FUZZING=yes
+   cmake --build cmake-build --parallel
+
+Running in unit-test mode (CI)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In unit-test mode every FUZZ_TEST property runs a small number of
+generated inputs and all hand-written TEST() regression cases execute
+normally.  This is identical to running any other ctest suite:
+
+.. code-block:: shell-session
+
+   ctest --test-dir cmake-build -R "^fuzz:" --output-on-failure
+
+Coverage-guided fuzzing (Clang + ASan)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To run the engine in full fuzzing mode you need Clang and pass the
+``FUZZTEST_FUZZING_MODE=ON`` CMake option:
+
+.. code-block:: shell-session
+
+   CC=clang CXX=clang++ \
+   cmake -S . -B build-fuzz -G Ninja \
+         -DENABLE_FUZZING=yes \
+         -DFUZZTEST_FUZZING_MODE=ON
+   cmake --build build-fuzz --parallel
+
+   # Run one fuzz target:
+   ./build-fuzz/core/src/tests/fuzz/fuzz_bsock_tcp_recv \
+       --fuzz=BsockFuzz.RecvNeverCrashes
+
+Available fuzz targets
+~~~~~~~~~~~~~~~~~~~~~~~
+
+All targets live in ``core/src/tests/fuzz/`` and belong to the CTest
+label ``fuzz:``.
+
+.. list-table::
+   :widths: 35 65
+   :header-rows: 1
+
+   * - Target
+     - What it covers
+   * - ``fuzz_hello_parsing``
+     - ``GetNameAndResourceTypeAndVersionFromHello()``
+   * - ``fuzz_response_message_parsing``
+     - ``EvaluateResponseMessageId()`` and ``ReadoutCommandIdFromMessage()``
+   * - ``fuzz_bsock_tcp_recv``
+     - ``BareosSocketTCP::recv()`` – 4-byte header + payload wire format
+   * - ``fuzz_cleartext_hello_detection``
+     - ``EvaluateCleartextBareosHello()`` – MSG_PEEK path
+   * - ``fuzz_send_recv_roundtrip``
+     - ``BareosSocket::send()`` → ``recv()`` round-trip
+   * - ``fuzz_fsend``
+     - ``BareosSocket::fsend()`` / ``vfsend()`` format string handling
+   * - ``fuzz_control_bwlimit``
+     - ``BareosSocket::ControlBwlimit()`` rate-limiter arithmetic
+
+Seed corpora for the protocol-parsing targets are stored alongside the
+sources in ``core/src/tests/fuzz/corpus/``.
+
+Adding a new fuzz target
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Create ``core/src/tests/fuzz/fuzz_<name>.cc``.
+2. Use the ``bareos_add_fuzz_test()`` macro in
+   ``core/src/tests/fuzz/CMakeLists.txt``.
+3. Write at least one ``FUZZ_TEST(Suite, Property).WithDomains(...)``
+   property and one or more ``TEST(Suite, Regression)`` cases.
+
+For a brief introduction to the FuzzTest API see the
+`FuzzTest user guide <https://github.com/google/fuzztest/blob/main/doc/fuzz-test-macro.md>`_.
