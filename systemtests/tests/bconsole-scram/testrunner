@@ -1,0 +1,137 @@
+#!/bin/bash
+set -e
+set -o pipefail
+set -u
+#
+# System test: bconsole authentication using SCRAM-SHA-256.
+#
+# The Director is configured with a Console resource that uses SCRAM-SHA-256
+# (AuthProtocol = scram-sha-256; Password = "[scram-sha-256]..." verifier).
+# bconsole connects using the corresponding plaintext password.
+#
+# Tests:
+#   1. Successful login with correct plaintext password
+#   2. Login attempt with wrong password is rejected
+#
+TestName="$(basename "$(pwd)")"
+export TestName
+
+#shellcheck source=../../environment.in
+. ./environment
+
+#shellcheck source=../../scripts/functions
+. "${BAREOS_SCRIPTS_DIR}"/functions
+"${BAREOS_SCRIPTS_DIR}"/cleanup
+"${BAREOS_SCRIPTS_DIR}"/setup
+
+start_test
+
+# --- Generate SCRAM-SHA-256 verifier from a known plaintext password ---
+SCRAM_PLAINTEXT="scram-test-password"
+SCRAM_VERIFIER=$("${BAREOS_DIRECTOR_BINARY}" --hash-password "${SCRAM_PLAINTEXT}")
+
+if [[ "${SCRAM_VERIFIER}" != "[scram-sha-256]"* ]]; then
+  set_error "bareos-dir --hash-password did not return a [scram-sha-256] verifier"
+  end_test
+  exit 1
+fi
+print_debug "Generated SCRAM verifier: ${SCRAM_VERIFIER}"
+
+# Write the SCRAM Console resource into the additional_test_config directory.
+# bareos-dir picks up all .conf files from that directory on startup.
+cat >"${config_directory_dir_additional_test_config}/console-scram-test.conf" <<EOF
+Console {
+  Name = scram-test
+  Password = "${SCRAM_VERIFIER}"
+  AuthProtocol = scram-sha-256
+  Profile = operator
+  TlsEnable = no
+  TlsRequire = no
+}
+EOF
+
+# bconsole config for successful SCRAM login (plaintext password)
+BCONSOLE_SCRAM_CONF="${tmp}/bconsole-scram.conf"
+cat >"${BCONSOLE_SCRAM_CONF}" <<EOF
+Director {
+  Name = bconsole-scram-dir
+  Port = ${BAREOS_DIRECTOR_PORT}
+  Address = 127.0.0.1
+  Password = "unused-default"
+  TlsEnable = no
+  TlsRequire = no
+}
+Console {
+  Name = scram-test
+  ScramPassword = "${SCRAM_PLAINTEXT}"
+  TlsEnable = no
+  TlsRequire = no
+}
+EOF
+
+# bconsole config with an intentionally wrong password
+BCONSOLE_WRONG_CONF="${tmp}/bconsole-scram-wrong.conf"
+cat >"${BCONSOLE_WRONG_CONF}" <<EOF
+Director {
+  Name = bconsole-scram-dir
+  Port = ${BAREOS_DIRECTOR_PORT}
+  Address = 127.0.0.1
+  Password = "unused-default"
+  TlsEnable = no
+  TlsRequire = no
+}
+Console {
+  Name = scram-test
+  ScramPassword = "definitely-wrong-password"
+  TlsEnable = no
+  TlsRequire = no
+}
+EOF
+
+# --- Start the Director only (no FD/SD needed for console auth tests) ---
+start_dir
+
+if ! "${BAREOS_SCRIPTS_DIR}"/bareos-ctl-dir status >/dev/null 2>&1; then
+  set_error "Director failed to start"
+  end_test
+  exit 1
+fi
+
+# --- Test 1: Successful SCRAM-SHA-256 authentication ---
+cat >"${tmp}/bconcmds" <<END_OF_DATA
+@$out ${tmp}/log1.out
+status director
+quit
+END_OF_DATA
+
+if ! "${BAREOS_BCONSOLE_BINARY}" -c "${BCONSOLE_SCRAM_CONF}" \
+    <"${tmp}/bconcmds" >"${tmp}/log1.out" 2>"${tmp}/err1.out"; then
+  print_debug "=== bconsole stdout ==="
+  cat "${tmp}/log1.out"
+  print_debug "=== bconsole stderr ==="
+  cat "${tmp}/err1.out"
+  set_error "SCRAM authentication with correct password failed."
+fi
+
+expect_grep "Running Jobs:" \
+  "${tmp}/log1.out" \
+  "SCRAM auth succeeded but 'status director' output was unexpected."
+
+print_debug "OK: SCRAM authentication with correct password succeeded."
+
+# --- Test 2: Wrong password must be rejected ---
+if "${BAREOS_BCONSOLE_BINARY}" -c "${BCONSOLE_WRONG_CONF}" \
+    <"${tmp}/bconcmds" >"${tmp}/log2.out" 2>"${tmp}/err2.out"; then
+  print_debug "=== bconsole stdout ==="
+  cat "${tmp}/log2.out"
+  print_debug "=== bconsole stderr ==="
+  cat "${tmp}/err2.out"
+  set_error "SCRAM authentication with wrong password succeeded. This must NOT happen."
+fi
+
+print_debug "OK: SCRAM authentication with wrong password was correctly rejected."
+
+# --- Cleanup ---
+stop_bareos
+
+end_test

@@ -536,8 +536,22 @@ void ConfigurationParser::StoreMd5Password(lexer* lc,
 
     if (pwd->value) { free(pwd->value); }
 
+    // See if we are parsing a SCRAM-SHA-256 verifier (used when a resource
+    // with CFG_TYPE_AUTOPASSWORD stores a SCRAM verifier in the Password
+    // field, e.g. a Console resource with AuthProtocol = scram-sha-256).
+    if (bstrncmp(lc->str, "[scram-sha-256]", 15)) {
+      const char* encoded = lc->str + 15;
+      ScramSha256Verifier v;
+      if (!ScramSha256Verifier::Deserialize(encoded, v)) {
+        scan_err1(lc, "Invalid SCRAM-SHA-256 verifier in resource \"%s\"\n",
+                  (*item->allocated_resource)->resource_name_);
+        return;
+      }
+      pwd->encoding = p_encoding_scram_sha256;
+      pwd->value = strdup(encoded);
+    }
     // See if we are parsing an MD5 encoded password already.
-    if (bstrncmp(lc->str, "[md5]", 5)) {
+    else if (bstrncmp(lc->str, "[md5]", 5)) {
       if (item->is_required) {
         static const char* empty_password_md5_hash
             = "d41d8cd98f00b204e9800998ecf8427e";

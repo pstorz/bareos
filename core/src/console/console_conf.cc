@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2009 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -58,7 +58,16 @@ static const ResourceItem cons_items[] = {
   { "RcFile", CFG_TYPE_DIR, ITEM(res_cons, rc_file), {}},
   { "HistoryFile", CFG_TYPE_DIR, ITEM(res_cons, history_file), {}},
   { "HistoryLength", CFG_TYPE_PINT32, ITEM(res_cons, history_length), {config::DefaultValue{"100"}}},
-  { "Password", CFG_TYPE_MD5PASSWORD, ITEM(res_cons, password_), {config::Required{}}},
+  { "Password", CFG_TYPE_MD5PASSWORD, ITEM(res_cons, password_),
+    {config::Description{
+        "MD5-hashed password for CRAM-MD5 authentication (default). "
+        "Use ScramPassword instead when the Director Console resource uses "
+        "AuthProtocol = scram-sha-256."}}},
+  { "ScramPassword", CFG_TYPE_CLEARPASSWORD, ITEM(res_cons, password_),
+    {config::Description{
+        "Plaintext password for SCRAM-SHA-256 authentication. "
+        "Use instead of Password when AuthProtocol on the Director Console "
+        "resource is set to scram-sha-256."}}},
   { "Director", CFG_TYPE_STR, ITEM(res_cons, director), {}},
   { "HeartbeatInterval", CFG_TYPE_TIME, ITEM(res_cons, heartbeat_interval), {config::DefaultValue{"0"}}},
   TLS_COMMON_CONFIG(res_cons),
