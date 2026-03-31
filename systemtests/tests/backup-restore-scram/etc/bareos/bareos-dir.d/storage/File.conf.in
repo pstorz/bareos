@@ -1,0 +1,10 @@
+Storage {
+  Name = File
+  Address = @hostname@
+  ScramPassword = "@sd_password@"
+  Device = FileStorage
+  Media Type = File
+  Port = @sd_port@
+  TlsEnable = yes
+  TlsRequire = yes
+}

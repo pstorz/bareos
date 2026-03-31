@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2008 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -124,7 +124,8 @@ static const ResourceItem cli_items[] = {
 static const ResourceItem dir_items[] = {
   { "Name", CFG_TYPE_NAME, ITEM(res_dir, resource_name_), {config::Required{}}},
   { "Description", CFG_TYPE_STR, ITEM(res_dir, description_), {}},
-  { "Password", CFG_TYPE_MD5PASSWORD, ITEM(res_dir, password_), {config::Required{}}},
+  { "Password", CFG_TYPE_MD5PASSWORD, ITEM(res_dir, password_), {}},
+  { "ScramPassword", CFG_TYPE_CLEARPASSWORD, ITEM(res_dir, password_), {config::Description{"Cleartext password for SCRAM-SHA-256 authentication."}}},
   { "Address", CFG_TYPE_STR, ITEM(res_dir, address), {config::Description{"Director Network Address. Only required if \"Connection From Client To Director\" is enabled."}}},
   { "Port", CFG_TYPE_PINT32, ITEM(res_dir, port), {config::IntroducedIn{16, 2, 2}, config::DefaultValue{DIR_DEFAULT_PORT}, config::Description{"Director Network Port. Only used if \"Connection From Client To Director\" is enabled."}}},
   { "ConnectionFromDirectorToClient", CFG_TYPE_BOOL, ITEM(res_dir, conn_from_dir_to_fd), {config::IntroducedIn{16, 2, 2}, config::DefaultValue{"true"}, config::Description{"This Client will accept incoming network connection from this Director."}}},

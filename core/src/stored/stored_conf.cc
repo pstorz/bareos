@@ -125,7 +125,8 @@ static const ResourceItem store_items[] = {
 static const ResourceItem dir_items[] = {
   { "Name", CFG_TYPE_NAME, ITEM(res_dir, resource_name_), {config::Required{}}},
   { "Description", CFG_TYPE_STR, ITEM(res_dir, description_), {}},
-  { "Password", CFG_TYPE_AUTOPASSWORD, ITEM(res_dir, password_), {config::Required{}}},
+  { "Password", CFG_TYPE_AUTOPASSWORD, ITEM(res_dir, password_), {}},
+  { "ScramPassword", CFG_TYPE_CLEARPASSWORD, ITEM(res_dir, password_), {config::Description{"Cleartext password for SCRAM-SHA-256 authentication."}}},
   { "Monitor", CFG_TYPE_BOOL, ITEM(res_dir, monitor), {}},
   { "MaximumBandwidthPerJob", CFG_TYPE_SPEED, ITEM(res_dir, max_bandwidth_per_job), {}},
   { "KeyEncryptionKey", CFG_TYPE_AUTOPASSWORD, ITEM(res_dir, keyencrkey), {config::Code{1}}},

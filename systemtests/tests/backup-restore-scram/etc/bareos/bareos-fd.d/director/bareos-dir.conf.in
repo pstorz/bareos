@@ -1,0 +1,7 @@
+Director {
+  Name = bareos-dir
+  ScramPassword = "@fd_password@"
+  Description = "Allow the configured Director to access this file daemon."
+  TlsEnable = yes
+  TlsRequire = yes
+}

@@ -496,6 +496,40 @@ bool BareosSocket::TwoWayAuthenticate(JobControlRecord* jcr,
       }
       if (tid) { StopBsockTimer(tid); }
     }
+  } else if (password.encoding == p_encoding_clear && initiated_by_remote) {
+    // SCRAM-SHA-256 server path using a cleartext password.
+    // A verifier is generated on-the-fly from the cleartext; this is safe
+    // because the connection is protected by TLS-PSK using the same secret.
+    ScramSha256Verifier verifier = GenerateScramSha256Verifier(password.value);
+    btimer_t* tid = StartBsockTimer(this, AUTH_TIMEOUT);
+    fsend("auth-scram-sha-256\n");
+    ScramSha256Handshake scram_handshake(this, verifier, own_qualified_name);
+    auth_success = scram_handshake.DoHandshake(true);
+    if (!auth_success) {
+      char ipaddr_str[MAXHOSTNAMELEN]{};
+      SockaddrToAscii(&client_addr, ipaddr_str, sizeof(ipaddr_str));
+      switch (scram_handshake.result) {
+        case ScramSha256Handshake::HandshakeResult::NETWORK_ERROR:
+          Jmsg(jcr, M_FATAL, 0,
+               T_("Network error during SCRAM-SHA-256 with %s\n"), ipaddr_str);
+          break;
+        case ScramSha256Handshake::HandshakeResult::WRONG_HASH:
+          Jmsg(jcr, M_FATAL, 0,
+               T_("SCRAM-SHA-256 authorization key rejected by %s.\n"),
+               ipaddr_str);
+          break;
+        case ScramSha256Handshake::HandshakeResult::FORMAT_MISMATCH:
+          Jmsg(jcr, M_FATAL, 0,
+               T_("Wrong format of SCRAM-SHA-256 message from %s.\n"),
+               ipaddr_str);
+          break;
+        default:
+          break;
+      }
+      fsend(T_("1999 Authorization failed.\n"));
+      Bmicrosleep(sleep_time_after_authentication_error, 0);
+    }
+    if (tid) { StopBsockTimer(tid); }
   } else if (password.encoding == p_encoding_clear && !initiated_by_remote) {
     // SCRAM-SHA-256 client path.
     // Receive the server's auth-method announcement then run SCRAM.
