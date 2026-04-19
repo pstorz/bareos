@@ -1749,7 +1749,10 @@ status subscriptions
    :config:option:`dir/director/SubscriptionFile`. When the file exists, it
    becomes the authoritative source for the configured subscription units and
    the Director verifies the embedded signer certificate against an embedded
-   Bareos trust anchor.
+   Bareos trust anchor. By default the build embeds the test trust anchor from
+   ``core/src/dird/subscription-trust-anchor-test.pem``. Builds can replace it
+   at CMake configure time with
+   ``-DSUBSCRIPTION_TRUST_ANCHOR_FILE=/path/to/bareos-subscription-root.pem``.
    The file contains a canonical JSON ``payload`` string plus a ``signature``
    object with the signature ``algorithm``, signer ``certificate`` and
    Base64-encoded signature ``value``.

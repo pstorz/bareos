@@ -52,7 +52,7 @@
 #include "dird/date_time.h"
 #include "dird/dird_globals.h"
 #include "dird/director_jcr_impl.h"
-#include "dird/subscription_trust_anchor.h"
+#include "subscription_trust_anchor.h"
 #include "include/auth_protocol_types.h"
 #include "include/auth_types.h"
 #include "include/migration_selection_types.h"

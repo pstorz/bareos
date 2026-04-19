@@ -1,0 +1,27 @@
+/*
+   BAREOS® - Backup Archiving REcovery Open Sourced
+
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
+
+   This program is Free Software; you can redistribute it and/or
+   modify it under the terms of version three of the GNU Affero General Public
+   License as published by the Free Software Foundation and included
+   in the file LICENSE.
+ */
+
+#ifndef BAREOS_DIRD_SUBSCRIPTION_TRUST_ANCHOR_H_
+#define BAREOS_DIRD_SUBSCRIPTION_TRUST_ANCHOR_H_
+
+namespace directordaemon {
+
+/*
+ * Embedded subscription trust anchor generated at CMake configure time from:
+ * @SUBSCRIPTION_TRUST_ANCHOR_SOURCE@
+ */
+inline constexpr const char kEmbeddedSubscriptionTrustAnchor[]
+    = R"SUBTA(
+@SUBSCRIPTION_TRUST_ANCHOR_PEM@)SUBTA";
+
+}  // namespace directordaemon
+
+#endif  // BAREOS_DIRD_SUBSCRIPTION_TRUST_ANCHOR_H_

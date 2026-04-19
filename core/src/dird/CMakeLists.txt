@@ -21,6 +21,30 @@ message("Entering ${CMAKE_CURRENT_SOURCE_DIR}")
 include(BareosConfigureFile)
 include(BareosWindowsResource)
 
+set(
+  SUBSCRIPTION_TRUST_ANCHOR_FILE
+  "${CMAKE_CURRENT_SOURCE_DIR}/subscription-trust-anchor-test.pem"
+  CACHE FILEPATH
+        "PEM file embedded as the Director subscription trust anchor"
+)
+
+if(NOT EXISTS "${SUBSCRIPTION_TRUST_ANCHOR_FILE}")
+  message(
+    FATAL_ERROR
+      "SUBSCRIPTION_TRUST_ANCHOR_FILE does not exist: "
+      "${SUBSCRIPTION_TRUST_ANCHOR_FILE}"
+  )
+endif()
+
+file(READ "${SUBSCRIPTION_TRUST_ANCHOR_FILE}" SUBSCRIPTION_TRUST_ANCHOR_PEM)
+set(
+  SUBSCRIPTION_TRUST_ANCHOR_SOURCE "${SUBSCRIPTION_TRUST_ANCHOR_FILE}"
+)
+configure_file(
+  subscription_trust_anchor.h.in
+  "${CMAKE_CURRENT_BINARY_DIR}/subscription_trust_anchor.h" @ONLY
+)
+
 if(NOT ENABLE_JANSSON)
   message(FATAL_ERROR "Bareos Director requires Jansson support")
 endif()
@@ -32,6 +56,8 @@ if(HAVE_WIN32)
     ${PROJECT_SOURCE_DIR}/src/win32/dird
   )
 endif()
+
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_library(dird_objects STATIC)
 add_library(Bareos::Dir ALIAS dird_objects)
