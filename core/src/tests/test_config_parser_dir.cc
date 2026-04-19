@@ -212,6 +212,44 @@ TEST_F(ConfigParser_Dir, runscript_test)
   my_config->DumpResources(PrintMessage, NULL);
 }
 
+TEST_F(ConfigParser_Dir, loads_signed_subscription_file)
+{
+  auto director_config = DirectorPrepareResources(
+      "configs/bareos-configparser-tests/bareos-dir-subscription-file.conf");
+
+  ASSERT_NE(director_config, nullptr);
+  ASSERT_NE(me, nullptr);
+
+  EXPECT_EQ(me->subscriptions, 1240U);
+  EXPECT_EQ(me->subscription_entitlement.source, "signed-file");
+  EXPECT_EQ(me->subscription_entitlement.customer_id, "customer-0001");
+  EXPECT_EQ(me->subscription_entitlement.customer_name, "Example Corp");
+  EXPECT_EQ(me->subscription_entitlement.contract_id, "contract-2026-0001");
+  EXPECT_EQ(me->subscription_entitlement.issuer, "Bareos GmbH & Co. KG");
+  EXPECT_EQ(me->subscription_entitlement.key_id,
+            "bareos-subscription-signing-dev-1");
+  EXPECT_EQ(me->subscription_entitlement.signature_algorithm,
+            "sha256-rsa-pkcs1v15");
+  EXPECT_EQ(me->subscription_entitlement.signer_certificate_subject,
+            "O=Bareos GmbH & Co. KG,CN=Bareos Subscription Signing Test");
+  EXPECT_EQ(me->subscription_entitlement.issued_at, 1760889600);
+  ASSERT_TRUE(me->subscription_entitlement.not_valid_before.has_value());
+  EXPECT_EQ(*me->subscription_entitlement.not_valid_before, 1760889600);
+  EXPECT_EQ(me->subscription_entitlement.expires_at, 1893456000);
+}
+
+TEST_F(ConfigParser_Dir, defaults_subscription_file_to_config_dir)
+{
+  auto director_config
+      = DirectorPrepareResources("configs/bareos-configparser-tests");
+
+  ASSERT_NE(director_config, nullptr);
+  ASSERT_NE(me, nullptr);
+
+  EXPECT_STREQ(me->subscription_file, CONFDIR "/bareos-subscription.json");
+  EXPECT_EQ(me->subscription_entitlement.source, "director-config");
+}
+
 void test_config_directive_type(
     std::function<void(DirectorResource*)> test_func)
 {

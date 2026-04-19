@@ -492,6 +492,13 @@ std::string get_subscription_status_checksum_source_text(UaContext* ua,
   return checksum_source;
 }
 
+static std::string FormatSubscriptionTimestamp(time_t timestamp)
+{
+  char formatted[30] = {0};
+  bstrftime(formatted, sizeof(formatted), timestamp, "%F %T");
+  return formatted;
+}
+
 /**
  * Check the number of clients in the DB against the configured number of
  * subscriptions
@@ -605,6 +612,46 @@ static bool DoSubscriptionStatus(UaContext* ua)
   }
 
   ua->SendMsg(T_("\nBackup unit summary:\n"));
+  ua->send->ObjectKeyValue("subscription-source", "Subscription source: ",
+                           me->subscription_entitlement.source.c_str(), "%s\n");
+  if (me->subscription_entitlement.source == "signed-file") {
+    ua->send->ObjectKeyValue(
+        "subscription-customer-name", "Customer name: ",
+        me->subscription_entitlement.customer_name.c_str(), "%s\n");
+    ua->send->ObjectKeyValue(
+        "subscription-customer-id", "Customer id: ",
+        me->subscription_entitlement.customer_id.c_str(), "%s\n");
+    ua->send->ObjectKeyValue(
+        "subscription-contract-id", "Contract id: ",
+        me->subscription_entitlement.contract_id.c_str(), "%s\n");
+    ua->send->ObjectKeyValue("subscription-issuer", "Issuer: ",
+                             me->subscription_entitlement.issuer.c_str(), "%s\n");
+    ua->send->ObjectKeyValue("subscription-key-id", "Signing key id: ",
+                             me->subscription_entitlement.key_id.c_str(), "%s\n");
+    ua->send->ObjectKeyValue("subscription-signature-algorithm",
+                             "Signature algorithm: ",
+                             me->subscription_entitlement.signature_algorithm.c_str(),
+                             "%s\n");
+    ua->send->ObjectKeyValue("subscription-signer-certificate-subject",
+                             "Signer certificate subject: ",
+                             me->subscription_entitlement.signer_certificate_subject.c_str(),
+                             "%s\n");
+    std::string issued_at
+        = FormatSubscriptionTimestamp(me->subscription_entitlement.issued_at);
+    ua->send->ObjectKeyValue("subscription-issued-at", "Issued at: ",
+                             issued_at.c_str(), "%s\n");
+    if (me->subscription_entitlement.not_valid_before) {
+      std::string not_valid_before = FormatSubscriptionTimestamp(
+          *me->subscription_entitlement.not_valid_before);
+      ua->send->ObjectKeyValue("subscription-not-valid-before",
+                               "Not valid before: ",
+                               not_valid_before.c_str(), "%s\n");
+    }
+    std::string expires_at
+        = FormatSubscriptionTimestamp(me->subscription_entitlement.expires_at);
+    ua->send->ObjectKeyValue("subscription-expires-at", "Expires at: ",
+                             expires_at.c_str(), "%s\n");
+  }
   PoolMem query(PM_MESSAGE);
   ua->db->FillQuery(query, BareosDb::SQL_QUERY::subscription_units_total_2,
                     ua->db->get_predefined_query(

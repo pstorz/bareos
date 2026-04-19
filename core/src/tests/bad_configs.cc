@@ -40,3 +40,51 @@ TEST(BadConfig, changing_pw_type)
 
   delete parser;
 }
+
+TEST(BadConfig, subscription_invalid_signature)
+{
+  InitDirGlobals();
+  std::string path_to_config
+      = std::string("configs/bad_configs/subscription-invalid-signature.conf");
+
+  auto* parser = directordaemon::InitDirConfig(path_to_config.c_str(), M_INFO);
+
+  ASSERT_NE(parser, nullptr);
+  directordaemon::my_config = parser;
+
+  EXPECT_FALSE(parser->ParseConfig());
+
+  delete parser;
+}
+
+TEST(BadConfig, subscription_manual_override)
+{
+  InitDirGlobals();
+  std::string path_to_config
+      = std::string("configs/bad_configs/subscription-manual-override.conf");
+
+  auto* parser = directordaemon::InitDirConfig(path_to_config.c_str(), M_INFO);
+
+  ASSERT_NE(parser, nullptr);
+  directordaemon::my_config = parser;
+
+  EXPECT_FALSE(parser->ParseConfig());
+
+  delete parser;
+}
+
+TEST(BadConfig, subscription_unsupported_algorithm)
+{
+  InitDirGlobals();
+  std::string path_to_config
+      = std::string("configs/bad_configs/subscription-unsupported-algorithm.conf");
+
+  auto* parser = directordaemon::InitDirConfig(path_to_config.c_str(), M_INFO);
+
+  ASSERT_NE(parser, nullptr);
+  directordaemon::my_config = parser;
+
+  EXPECT_FALSE(parser->ParseConfig());
+
+  delete parser;
+}

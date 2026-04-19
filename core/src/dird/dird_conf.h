@@ -92,6 +92,20 @@ class PoolResource;
 class RunResource;
 class DeviceResource;
 
+struct SubscriptionEntitlement {
+  std::string source = "director-config";
+  std::string signature_algorithm;
+  std::string signer_certificate_subject;
+  std::string customer_id;
+  std::string customer_name;
+  std::string contract_id;
+  std::string issuer;
+  std::string key_id;
+  time_t issued_at = 0;
+  std::optional<time_t> not_valid_before;
+  time_t expires_at = 0;
+};
+
 // Print configuration file schema in json format
 bool PrintConfigSchemaJson(PoolMem& buff);
 
@@ -102,6 +116,7 @@ class DirectorResource
  public:
   DirectorResource() = default;
   virtual ~DirectorResource() = default;
+  virtual bool Validate() override;
   dlist<IPADDR>* DIRaddrs = nullptr;
   dlist<IPADDR>* DIRsrc_addr = nullptr; /* Address to source connections from */
   char* query_file = nullptr;           /* SQL query file */
@@ -124,9 +139,11 @@ class DirectorResource
   alist<const char*>* audit_events
       = nullptr;                  /* Specific audit events to enable */
   uint32_t ndmp_loglevel = 0;     /* NDMP Protocol specific loglevel to use */
+  char* subscription_file = nullptr; /* Signed subscription entitlement file */
   uint32_t subscriptions = 0;     /* Number of subscriptions available */
+  SubscriptionEntitlement subscription_entitlement{};
   uint32_t jcr_watchdog_time = 0; /* Absolute time after which a Job gets
-                                 terminated  regardless of its progress */
+                                  terminated  regardless of its progress */
   uint32_t stats_collect_interval
       = 0;               /* Statistics collect interval in seconds */
   char* verid = nullptr; /* Custom Id to print in version command */

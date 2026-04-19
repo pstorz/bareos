@@ -1,0 +1,6 @@
+Director {
+  Name = "bareos-dir"
+  Password = "secret"
+  SubscriptionFile = "@CMAKE_CURRENT_SOURCE_DIR@/configs/bareos-configparser-tests/subscription-valid.json"
+  Subscriptions = 100
+}

@@ -1743,6 +1743,17 @@ status subscriptions
    The value for the configured units can be set in
    :config:option:`dir/director/Subscriptions`.
 
+   The Director checks for a Bareos-issued signed subscription file on every
+   config parse. By default it looks for ``bareos-subscription.json`` in the
+   Bareos configuration directory, and this path can be overridden with
+   :config:option:`dir/director/SubscriptionFile`. When the file exists, it
+   becomes the authoritative source for the configured subscription units and
+   the Director verifies the embedded signer certificate against an embedded
+   Bareos trust anchor.
+   The file contains a canonical JSON ``payload`` string plus a ``signature``
+   object with the signature ``algorithm``, signer ``certificate`` and
+   Base64-encoded signature ``value``.
+
    To get data aggregated only per client (instead of per client and plugin),
    you can use the keyword ``clients`` (e.g.
    :bcommand:`status subscriptions clients`).
@@ -1763,10 +1774,21 @@ status subscriptions
       For a detailed per-client report run 'status subscriptions client=<client-name>'
 
       Backup unit summary:
+       Subscription source: signed-file
+       Customer name: Example Corp
+       Customer id: customer-0001
+       Contract id: contract-2026-0001
+       Issuer: Bareos GmbH & Co. KG
+       Signing key id: bareos-subscription-signing-dev-1
+       Signature algorithm: sha256-rsa-pkcs1v15
+       Signer certificate subject: O=Bareos GmbH & Co. KG,CN=Bareos Subscription Signing Test
+       Issued at: 2025-10-19 08:00:00
+       Not valid before: 2025-10-19 08:00:00
+       Expires at: 2030-01-01 00:00:00
        accounting_mode: count-based (1 volume-based units < 6 count-based units)
                   used: 6
-            configured: 10
-             remaining: 4
+             configured: 1240
+              remaining: 1234
 
 
    To get data aggregated only per plugin (instead of per client and plugin),

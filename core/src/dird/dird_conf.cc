@@ -52,12 +52,15 @@
 #include "dird/date_time.h"
 #include "dird/dird_globals.h"
 #include "dird/director_jcr_impl.h"
+#include "dird/subscription_trust_anchor.h"
 #include "include/auth_protocol_types.h"
 #include "include/auth_types.h"
 #include "include/migration_selection_types.h"
 #include "include/protocol_types.h"
+#include "lib/base64.h"
 #include "lib/berrno.h"
 #include "lib/breg.h"
+#include "lib/bsys.h"
 #include "lib/tls_conf.h"
 #include "lib/qualified_resource_name_type_converter.h"
 #include "lib/parse_conf.h"
@@ -69,9 +72,17 @@
 #include "lib/version.h"
 
 #include <cassert>
+#include <cstdio>
+#include <limits>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
+
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/x509_vfy.h>
 
 namespace directordaemon {
 
@@ -128,6 +139,7 @@ static const ResourceItem dir_items[] = {
   { "PluginDirectory", CFG_TYPE_DIR, ITEM(res_dir, plugin_directory), {config::IntroducedIn{14, 2, 0}, config::Description{"Plugins are loaded from this directory. To load only specific plugins, use 'Plugin Names'."}}},
   { "PluginNames", CFG_TYPE_PLUGIN_NAMES, ITEM(res_dir, plugin_names), {config::IntroducedIn{14, 2, 0}, config::Description{"List of plugins, that should get loaded from 'Plugin Directory' (only basenames, '-dir.so' is added automatically). If empty, all plugins will get loaded."}}},
   { "ScriptsDirectory", CFG_TYPE_DIR, ITEM(res_dir, scripts_directory), {config::DefaultValue{PATH_BAREOS_SCRIPTDIR}, config::Description{"Path to directory containing script files"}, config::PlatformSpecific{}}},
+  { "SubscriptionFile", CFG_TYPE_STR, ITEM(res_dir, subscription_file), {config::DefaultValue{CONFDIR "/bareos-subscription.json"}, config::Description{"Path to a Bareos-issued signed subscription file. The Director checks this file on every config parse and uses it as the authoritative source for configured subscriptions when it exists."}, config::PlatformSpecific{}}},
   { "Subscriptions", CFG_TYPE_PINT32, ITEM(res_dir, subscriptions), {config::IntroducedIn{12, 4, 4}, config::DefaultValue{"0"}}},
   { "MaximumConcurrentJobs", CFG_TYPE_PINT32, ITEM(res_dir, MaxConcurrentJobs), {config::DefaultValue{"1"}}},
   { "MaximumConsoleConnections", CFG_TYPE_PINT32, ITEM(res_dir, MaxConsoleConnections), {config::DefaultValue{"20"}}},
@@ -1128,6 +1140,453 @@ static void PropagateResource(const ResourceItem* items,
 }
 
 
+namespace {
+
+constexpr uint32_t kSubscriptionSchemaVersion = 1;
+constexpr time_t kSubscriptionClockSkew = 300;
+constexpr char kSubscriptionIssuer[] = "Bareos GmbH & Co. KG";
+constexpr char kSubscriptionSignatureAlgorithm[] = "sha256-rsa-pkcs1v15";
+
+using JsonPtr = std::unique_ptr<json_t, decltype(&json_decref)>;
+using EvpKeyPtr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
+using EvpMdCtxPtr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
+using BioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+using X509Ptr = std::unique_ptr<X509, decltype(&X509_free)>;
+using X509StorePtr = std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)>;
+using X509StoreCtxPtr
+    = std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)>;
+
+std::string JsonErrorToString(const json_error_t& error)
+{
+  std::ostringstream stream;
+  stream << error.text << " (line " << error.line << ", column " << error.column
+         << ")";
+  return stream.str();
+}
+
+bool LoadJsonFromFile(const char* path, JsonPtr& json, std::string& error)
+{
+  json_error_t json_error{};
+  json.reset(json_load_file(path, 0, &json_error));
+  if (!json) {
+    error = std::string(T_("Could not parse JSON subscription file: "))
+            + JsonErrorToString(json_error);
+    return false;
+  }
+
+  if (!json_is_object(json.get())) {
+    error = T_("Subscription file must contain a JSON object.");
+    return false;
+  }
+
+  return true;
+}
+
+bool GetRequiredString(json_t* json,
+                       const char* field,
+                       std::string& value,
+                       std::string& error)
+{
+  json_t* current = json_object_get(json, field);
+  if (!current || !json_is_string(current)) {
+    error = std::string(T_("Subscription field '")) + field
+            + T_("' must be a JSON string.");
+    return false;
+  }
+
+  value = json_string_value(current);
+  if (value.empty()) {
+    error = std::string(T_("Subscription field '")) + field
+            + T_("' must not be empty.");
+    return false;
+  }
+
+  return true;
+}
+
+bool GetRequiredPositiveUint32(json_t* json,
+                               const char* field,
+                               uint32_t& value,
+                               std::string& error)
+{
+  json_t* current = json_object_get(json, field);
+  if (!current || !json_is_integer(current)) {
+    error = std::string(T_("Subscription field '")) + field
+            + T_("' must be a JSON integer.");
+    return false;
+  }
+
+  json_int_t parsed = json_integer_value(current);
+  if (parsed <= 0 || parsed > std::numeric_limits<uint32_t>::max()) {
+    error = std::string(T_("Subscription field '")) + field
+            + T_("' must be between 1 and UINT32_MAX.");
+    return false;
+  }
+
+  value = static_cast<uint32_t>(parsed);
+  return true;
+}
+
+bool GetRequiredTimestamp(json_t* json,
+                          const char* field,
+                          time_t& value,
+                          std::string& error)
+{
+  uint32_t parsed = 0;
+  if (!GetRequiredPositiveUint32(json, field, parsed, error)) { return false; }
+
+  value = static_cast<time_t>(parsed);
+  return true;
+}
+
+bool GetOptionalTimestamp(json_t* json,
+                          const char* field,
+                          std::optional<time_t>& value,
+                          std::string& error)
+{
+  json_t* current = json_object_get(json, field);
+  if (!current) {
+    value.reset();
+    return true;
+  }
+
+  if (!json_is_integer(current)) {
+    error = std::string(T_("Subscription field '")) + field
+            + T_("' must be a JSON integer when present.");
+    return false;
+  }
+
+  json_int_t parsed = json_integer_value(current);
+  if (parsed <= 0) {
+    error = std::string(T_("Subscription field '")) + field
+            + T_("' must be positive when present.");
+    return false;
+  }
+
+  value = static_cast<time_t>(parsed);
+  return true;
+}
+
+bool DecodeBase64Signature(const std::string& encoded,
+                           std::vector<unsigned char>& signature,
+                           std::string& error)
+{
+  std::string normalized;
+  normalized.reserve(encoded.size());
+
+  for (const char character : encoded) {
+    if (!B_ISSPACE(character) && character != '=') {
+      normalized.push_back(character);
+    }
+  }
+
+  if (normalized.empty()) {
+    error = T_("Subscription signature must not be empty.");
+    return false;
+  }
+
+  std::vector<char> decoded(BASE64_SIZE(normalized.size()));
+  int signature_length = Base64ToBin(decoded.data(), decoded.size(),
+                                     normalized.data(), normalized.size());
+  if (signature_length <= 0) {
+    error = T_("Subscription signature is not valid base64.");
+    return false;
+  }
+
+  signature.assign(decoded.begin(), decoded.begin() + signature_length);
+  return true;
+}
+
+bool LoadCertificateFromPem(const std::string& certificate_pem,
+                            X509Ptr& certificate,
+                            std::string& error,
+                            const char* field_name)
+{
+  BioPtr certificate_bio(BIO_new_mem_buf(certificate_pem.data(),
+                                         certificate_pem.size()),
+                         BIO_free);
+  if (!certificate_bio) {
+    error = std::string(T_("Could not allocate OpenSSL BIO for '")) + field_name
+            + T_("'.");
+    return false;
+  }
+
+  certificate.reset(
+      PEM_read_bio_X509(certificate_bio.get(), nullptr, nullptr, nullptr));
+  if (!certificate) {
+    error = std::string(T_("Could not parse PEM certificate from '"))
+            + field_name + T_("'.");
+    return false;
+  }
+
+  return true;
+}
+
+std::string GetCertificateSubject(X509* certificate)
+{
+  BIO* subject_bio = BIO_new(BIO_s_mem());
+  if (!subject_bio) { return {}; }
+
+  const int print_result
+      = X509_NAME_print_ex(subject_bio, X509_get_subject_name(certificate), 0,
+                           XN_FLAG_RFC2253);
+  if (print_result < 0) {
+    BIO_free(subject_bio);
+    return {};
+  }
+
+  char* data = nullptr;
+  const long length = BIO_get_mem_data(subject_bio, &data);
+  std::string subject;
+  if (length > 0 && data) { subject.assign(data, length); }
+  BIO_free(subject_bio);
+  return subject;
+}
+
+bool LoadEmbeddedTrustAnchor(X509Ptr& trust_anchor, std::string& error)
+{
+  return LoadCertificateFromPem(kEmbeddedSubscriptionTrustAnchor, trust_anchor,
+                                error, "embedded trust anchor");
+}
+
+bool VerifySignerCertificate(const std::string& signer_certificate_pem,
+                             X509Ptr& signer_certificate,
+                             std::string& signer_certificate_subject,
+                             std::string& error)
+{
+  X509Ptr trust_anchor(nullptr, X509_free);
+  if (!LoadEmbeddedTrustAnchor(trust_anchor, error)) { return false; }
+
+  if (!LoadCertificateFromPem(signer_certificate_pem, signer_certificate, error,
+                              "signature.certificate")) {
+    return false;
+  }
+
+  X509StorePtr trust_store(X509_STORE_new(), X509_STORE_free);
+  if (!trust_store) {
+    error = T_("Could not allocate OpenSSL X509 store.");
+    return false;
+  }
+
+  if (X509_STORE_add_cert(trust_store.get(), trust_anchor.get()) != 1) {
+    error = T_("Could not add the embedded subscription trust anchor.");
+    return false;
+  }
+
+  X509StoreCtxPtr trust_ctx(X509_STORE_CTX_new(), X509_STORE_CTX_free);
+  if (!trust_ctx) {
+    error = T_("Could not allocate OpenSSL X509 store context.");
+    return false;
+  }
+
+  if (X509_STORE_CTX_init(trust_ctx.get(), trust_store.get(),
+                          signer_certificate.get(), nullptr)
+      != 1) {
+    error = T_("Could not initialize certificate verification context.");
+    return false;
+  }
+
+  if (X509_verify_cert(trust_ctx.get()) != 1) {
+    error = T_("Subscription signer certificate is not trusted by the embedded Bareos trust anchor.");
+    return false;
+  }
+
+  signer_certificate_subject = GetCertificateSubject(signer_certificate.get());
+  return true;
+}
+
+bool VerifySubscriptionSignature(const std::string& signature_algorithm,
+                                 const std::string& signer_certificate_pem,
+                                 const std::string& payload,
+                                 const std::string& signature_base64,
+                                 std::string& signer_certificate_subject,
+                                 std::string& error)
+{
+  if (signature_algorithm != kSubscriptionSignatureAlgorithm) {
+    error = std::string(T_("Unsupported subscription signature algorithm '"))
+            + signature_algorithm + T_("'.");
+    return false;
+  }
+
+  X509Ptr signer_certificate(nullptr, X509_free);
+  if (!VerifySignerCertificate(signer_certificate_pem, signer_certificate,
+                               signer_certificate_subject, error)) {
+    return false;
+  }
+
+  EvpKeyPtr public_key(X509_get_pubkey(signer_certificate.get()), EVP_PKEY_free);
+  if (!public_key) {
+    error = T_("Could not extract public key from subscription signer certificate.");
+    return false;
+  }
+
+  std::vector<unsigned char> signature;
+  if (!DecodeBase64Signature(signature_base64, signature, error)) {
+    return false;
+  }
+
+  EvpMdCtxPtr mdctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+  if (!mdctx) {
+    error = T_("Could not allocate OpenSSL digest context.");
+    return false;
+  }
+
+  if (EVP_DigestVerifyInit(mdctx.get(), nullptr, EVP_sha256(), nullptr,
+                           public_key.get())
+      != 1) {
+    error = T_("OpenSSL could not initialize subscription signature verification.");
+    return false;
+  }
+
+  if (EVP_DigestVerifyUpdate(mdctx.get(), payload.data(), payload.size()) != 1) {
+    error = T_("OpenSSL could not hash the subscription payload.");
+    return false;
+  }
+
+  if (EVP_DigestVerifyFinal(mdctx.get(), signature.data(), signature.size())
+      != 1) {
+    error = T_("Subscription signature verification failed.");
+    return false;
+  }
+
+  return true;
+}
+
+bool ParseSignedSubscriptionPayload(const std::string& payload,
+                                    SubscriptionEntitlement& entitlement,
+                                    uint32_t& subscriptions,
+                                    std::string& error)
+{
+  json_error_t json_error{};
+  JsonPtr payload_json(json_loadb(payload.data(), payload.size(), 0, &json_error),
+                       json_decref);
+  if (!payload_json) {
+    error = std::string(T_("Could not parse subscription payload JSON: "))
+            + JsonErrorToString(json_error);
+    return false;
+  }
+
+  if (!json_is_object(payload_json.get())) {
+    error = T_("Subscription payload must contain a JSON object.");
+    return false;
+  }
+
+  uint32_t schema_version = 0;
+  if (!GetRequiredPositiveUint32(payload_json.get(), "schema_version",
+                                 schema_version, error)) {
+    return false;
+  }
+  if (schema_version != kSubscriptionSchemaVersion) {
+    error = T_("Unsupported subscription schema version.");
+    return false;
+  }
+
+  if (!GetRequiredString(payload_json.get(), "issuer", entitlement.issuer,
+                         error)) {
+    return false;
+  }
+  if (entitlement.issuer != kSubscriptionIssuer) {
+    error = T_("Subscription issuer is not trusted.");
+    return false;
+  }
+
+  if (!GetRequiredString(payload_json.get(), "customer_id",
+                         entitlement.customer_id, error)
+      || !GetRequiredString(payload_json.get(), "customer_name",
+                            entitlement.customer_name, error)
+      || !GetRequiredString(payload_json.get(), "contract_id",
+                            entitlement.contract_id, error)
+      || !GetRequiredString(payload_json.get(), "key_id", entitlement.key_id,
+                            error)
+      || !GetRequiredTimestamp(payload_json.get(), "issued_at",
+                               entitlement.issued_at, error)
+      || !GetOptionalTimestamp(payload_json.get(), "not_valid_before",
+                               entitlement.not_valid_before, error)
+      || !GetRequiredTimestamp(payload_json.get(), "expires_at",
+                               entitlement.expires_at, error)
+      || !GetRequiredPositiveUint32(payload_json.get(), "subscriptions",
+                                    subscriptions, error)) {
+    return false;
+  }
+
+  if (entitlement.not_valid_before
+      && *entitlement.not_valid_before > entitlement.expires_at) {
+    error = T_("Subscription not_valid_before must be earlier than expires_at.");
+    return false;
+  }
+
+  if (entitlement.issued_at > entitlement.expires_at) {
+    error = T_("Subscription issued_at must be earlier than expires_at.");
+    return false;
+  }
+
+  time_t now = time(nullptr);
+  if (entitlement.issued_at > now + kSubscriptionClockSkew) {
+    error = T_("Subscription issued_at is in the future.");
+    return false;
+  }
+  if (entitlement.not_valid_before
+      && *entitlement.not_valid_before > now + kSubscriptionClockSkew) {
+    error = T_("Subscription is not yet valid.");
+    return false;
+  }
+  if (entitlement.expires_at <= now - kSubscriptionClockSkew) {
+    error = T_("Subscription has expired.");
+    return false;
+  }
+
+  entitlement.source = "signed-file";
+  return true;
+}
+
+bool LoadSignedSubscription(const char* subscription_file,
+                            SubscriptionEntitlement& entitlement,
+                            uint32_t& subscriptions,
+                            std::string& error)
+{
+  JsonPtr signed_document(nullptr, json_decref);
+  if (!LoadJsonFromFile(subscription_file, signed_document, error)) {
+    return false;
+  }
+
+  std::string payload;
+  if (!GetRequiredString(signed_document.get(), "payload", payload, error)) {
+    return false;
+  }
+
+  json_t* signature_metadata = json_object_get(signed_document.get(), "signature");
+  if (!signature_metadata || !json_is_object(signature_metadata)) {
+    error = T_("Subscription field 'signature' must be a JSON object.");
+    return false;
+  }
+
+  std::string signature_algorithm;
+  std::string signer_certificate;
+  std::string signature_value;
+  if (!GetRequiredString(signature_metadata, "algorithm", signature_algorithm,
+                         error)
+      || !GetRequiredString(signature_metadata, "certificate",
+                            signer_certificate, error)
+      || !GetRequiredString(signature_metadata, "value", signature_value,
+                            error)) {
+    return false;
+  }
+
+  std::string signer_certificate_subject;
+  if (!VerifySubscriptionSignature(signature_algorithm, signer_certificate,
+                                   payload, signature_value,
+                                   signer_certificate_subject, error)) {
+    return false;
+  }
+
+  entitlement.signature_algorithm = signature_algorithm;
+  entitlement.signer_certificate_subject = signer_certificate_subject;
+  return ParseSignedSubscriptionPayload(payload, entitlement, subscriptions, error);
+}
+
+}  // namespace
+
+
 // Ensure that all required items are present
 bool ValidateResource(int res_type,
                       const ResourceItem* items,
@@ -1159,6 +1618,47 @@ bool ValidateResource(int res_type,
     }
   }
 
+  return true;
+}
+
+bool DirectorResource::Validate()
+{
+  subscription_entitlement = {};
+
+  const bool subscription_file_was_configured = IsMemberPresent("SubscriptionFile");
+  const bool subscription_file_exists
+      = subscription_file && PathExists(subscription_file);
+
+  if (!subscription_file_exists) {
+    if (subscription_file_was_configured) {
+      Jmsg(NULL, M_ERROR, 0,
+           T_("Director \"%s\" could not find signed subscription file \"%s\".\n"),
+           resource_name_, subscription_file);
+      return false;
+    }
+    return true;
+  }
+
+  if (IsMemberPresent("Subscriptions")) {
+    Jmsg(NULL, M_ERROR, 0,
+         T_("Director \"%s\" cannot configure both \"SubscriptionFile\" and "
+            "\"Subscriptions\".\n"),
+         resource_name_);
+    return false;
+  }
+
+  std::string error;
+  uint32_t loaded_subscriptions = 0;
+  if (!LoadSignedSubscription(subscription_file, subscription_entitlement,
+                              loaded_subscriptions, error)) {
+    Jmsg(NULL, M_ERROR, 0,
+         T_("Director \"%s\" could not load signed subscription file \"%s\": "
+            "%s\n"),
+         resource_name_, subscription_file, error.c_str());
+    return false;
+  }
+
+  subscriptions = loaded_subscriptions;
   return true;
 }
 
