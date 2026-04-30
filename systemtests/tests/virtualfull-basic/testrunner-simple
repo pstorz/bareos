@@ -2,7 +2,7 @@
 
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2025-2025 Bareos GmbH & Co. KG
+#   Copyright (C) 2025-2026 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -113,5 +113,13 @@ fi
 expect_grep "Consolidating JobIds 1,2 containing ${expected_file_count} files" \
   "${test_home}/virtual.out" \
   "Consolidation message was not emitted"
+
+expect_grep "Virtual backup worker elapsed:" \
+  "${test_home}/virtual.out" \
+  "Virtual backup worker elapsed time was not reported"
+
+expect_grep "Virtual backup worker rate:" \
+  "${test_home}/virtual.out" \
+  "Virtual backup worker rate was not reported"
 
 end_test

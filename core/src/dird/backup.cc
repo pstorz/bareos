@@ -923,19 +923,23 @@ void UpdateBootstrapFile(JobControlRecord* jcr)
 void GenerateBackupSummary(JobControlRecord *jcr, ClientDbRecord *cr, int msg_type, const char *TermMsg)
 {
    char sdt[50], edt[50], schedt[50], gdt[50];
+   char worker_sdt[50], worker_edt[50], worker_elapsed[50];
    char ec1[30], ec2[30], ec3[30], ec4[30], ec5[30], compress[50];
    char ec6[30], ec7[30], ec8[30], elapsed[50];
    double kbps;
+   double worker_kbps = 0;
    utime_t RunTime;
+   utime_t WorkerRunTime = 0;
    MediaDbRecord mr;
    PoolMem temp,
-            level_info,
-            statistics,
-            quota_info,
-            client_options,
-            daemon_status,
-            secure_erase_status,
-            compress_algo_list;
+             level_info,
+             statistics,
+             quota_info,
+             client_options,
+             daemon_status,
+             worker_performance,
+             secure_erase_status,
+             compress_algo_list;
 
    bstrftimes(schedt, sizeof(schedt), jcr->dir_impl->jr.SchedTime);
    bstrftimes(sdt, sizeof(sdt), jcr->dir_impl->jr.StartTime);
@@ -947,8 +951,30 @@ void GenerateBackupSummary(JobControlRecord *jcr, ClientDbRecord *cr, int msg_ty
 
    if (RunTime <= 0) {
       kbps = 0;
-   } else {
+    } else {
       kbps = ((double)jcr->dir_impl->jr.JobBytes) / (1000.0 * (double)RunTime);
+    }
+
+   if (jcr->is_JobLevel(L_VIRTUAL_FULL)
+       && jcr->dir_impl->jr.RealEndTime >= jcr->start_time) {
+      bstrftimes(worker_sdt, sizeof(worker_sdt), jcr->start_time);
+      bstrftimes(worker_edt, sizeof(worker_edt), jcr->dir_impl->jr.RealEndTime);
+      WorkerRunTime = jcr->dir_impl->jr.RealEndTime - jcr->start_time;
+
+      if (WorkerRunTime > 0) {
+         worker_kbps = ((double)jcr->dir_impl->SDJobBytes)
+                       / (1000.0 * (double)WorkerRunTime);
+      }
+
+      Mmsg(worker_performance, T_(
+           "  Virtual backup worker start time: %s\n"
+           "  Virtual backup worker end time:   %s\n"
+           "  Virtual backup worker elapsed:    %s\n"
+           "  Virtual backup worker rate:       %.1f KB/s\n"),
+           worker_sdt,
+           worker_edt,
+           edit_utime(WorkerRunTime, worker_elapsed, sizeof(worker_elapsed)),
+           worker_kbps);
    }
 
    if (DbLocker _{jcr->db}; !jcr->db->GetJobVolumeNames(jcr, jcr->dir_impl->jr.JobId, jcr->VolumeName)) {
@@ -1167,6 +1193,7 @@ void GenerateBackupSummary(JobControlRecord *jcr, ClientDbRecord *cr, int msg_ty
         "%s"                                         /* FD/SD Statistics */
         "%s"                                         /* Quota info */
         "  Rate:                   %.1f KB/s\n"
+        "%s"                                         /* Worker performance */
         "%s"                                         /* Client options */
         "  Volume name(s):         %s\n"
         "  Volume Session Id:      %d\n"
@@ -1196,6 +1223,7 @@ void GenerateBackupSummary(JobControlRecord *jcr, ClientDbRecord *cr, int msg_ty
         statistics.c_str(),
         quota_info.c_str(),
         kbps,
+        worker_performance.c_str(),
         client_options.c_str(),
         jcr->VolumeName,
         jcr->VolSessionId,
