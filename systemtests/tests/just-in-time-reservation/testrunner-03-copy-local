@@ -2,7 +2,7 @@
 
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2024-2025 Bareos GmbH & Co. KG
+#   Copyright (C) 2024-2026 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -65,11 +65,11 @@ expect_grep "AfterJob: prevjobid=\*None\* newjobid=\*None\*" \
   "$copy_log" \
   "After runscript does not return expected previous jobid (%O) and new jobid (%N)."
 
-expect_grep "New Backup JobId" \
+expect_grep "Copied JobId" \
   "$copy_log" \
   "No new backup jobid was created."
 
-new_job_id=$(grep "New Backup JobId:" "$copy_log" | sed -n -e 's/^.*JobId:[[:space:]]*//p')
+new_job_id=$(grep "Copied JobId:" "$copy_log" | sed -n -e 's/^.*JobId:[[:space:]]*//p')
 
 expect_grep "Using just in time reservation for job" \
   "$copy_log" \

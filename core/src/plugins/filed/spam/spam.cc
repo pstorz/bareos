@@ -1,7 +1,7 @@
 /*
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2024-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2024-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -36,6 +36,8 @@ namespace filedaemon {
 namespace {
 CoreFunctions* bareos = NULL;
 thread_local std::size_t num_messages = 0;
+constexpr std::size_t kMaxIterations = 50'000;
+constexpr std::size_t kLogEveryIterations = 100;
 
 #define Jmsg(ctx, type, fmt, ...)                                           \
   bareos->JobMessage((ctx), __FILE__, __LINE__, (type), std::time(nullptr), \
@@ -58,8 +60,11 @@ bRC setPluginValue(PluginContext*, pVariable, void*) { return bRC_OK; }
 bRC handlePluginEvent(PluginContext*, bEvent*, void*) { return bRC_OK; }
 bRC startBackupFile(PluginContext* ctx, save_pkt*)
 {
-  if (num_messages < 50'000) {
-    Jmsg(ctx, M_INFO, "I am spamming (%" PRIuz ")\n", num_messages++);
+  if (num_messages < kMaxIterations) {
+    if (num_messages % kLogEveryIterations == 0) {
+      Jmsg(ctx, M_INFO, "I am spamming (%" PRIuz ")\n", num_messages);
+    }
+    ++num_messages;
     return bRC_Skip;
   }
 
