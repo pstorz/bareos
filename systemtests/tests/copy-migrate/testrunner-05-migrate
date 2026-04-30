@@ -36,6 +36,12 @@ messages
 @$out $query_results
 sqlquery
 SELECT type from job where jobid in (11,12,13);
+SELECT count(*) FROM job
+WHERE jobid IN (15,17,19)
+  AND jobfiles > 0
+  AND jobbytes > 0
+  AND volsessionid > 0
+  AND volsessiontime > 0;
 .
 quit
 END_OF_DATA
@@ -72,6 +78,10 @@ if [[ $(grep -c "|.*M.*|" "$query_results") -ne "3" ]]; then
   echo "Former backup jobs were not successfully converted to 'Migrated Jobs'."
   estat=2
 fi
+
+expect_grep "|     3 |" \
+  "$query_results" \
+  "Migration worker jobs should persist execution counters in the Job table."
 
 rm -f $query_results
 

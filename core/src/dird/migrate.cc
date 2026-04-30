@@ -1544,77 +1544,157 @@ static inline void GenerateMigrateSummary(JobControlRecord* jcr,
       kbps = (double)jcr->dir_impl->SDJobBytes / (1000 * RunTime);
     }
 
-    Jmsg(jcr, msg_type, 0,
-         T_("%s %s %s (%s):\n"
-            "  OS Information:         %s\n"
-            "  Prev Backup JobId:      %s\n"
-            "  Prev Backup Job:        %s\n"
-            "  New Backup JobId:       %s\n"
-            "  Current JobId:          %s\n"
-            "  Current Job:            %s\n"
-            "  Backup Level:           %s\n"
-            "  Client:                 %s\n"
-            "  FileSet:                \"%s\"\n"
-            "  Read Pool:              \"%s\" (From %s)\n"
-            "  Read Storage:           \"%s\" (From %s)\n"
-            "  Write Pool:             \"%s\" (From %s)\n"
-            "  Write Storage:          \"%s\" (From %s)\n"
-            "  Next Pool:              \"%s\" (From %s)\n"
-            "  Catalog:                \"%s\" (From %s)\n"
-            "  Start time:             %s\n"
-            "  End time:               %s\n"
-            "  Elapsed time:           %s\n"
-            "  Priority:               %d\n"
-            "  SD Files Written:       %s\n"
-            "  SD Bytes Written:       %s (%sB)\n"
-            "  Rate:                   %.1f KB/s\n"
-            "  Volume name(s):         %s\n"
-            "  Volume Session Id:      %d\n"
-            "  Volume Session Time:    %d\n"
-            "  Last Volume Bytes:      %s (%sB)\n"
-            "  SD Errors:              %d\n"
-            "  SD termination status:  %s\n"
-            "  Bareos binary info:     %s\n"
-            "  Job triggered by:       %s\n"
-            "  Termination:            %s\n\n"),
-         BAREOS, my_name, kBareosVersionStrings.Full,
-         kBareosVersionStrings.ShortDate, kBareosVersionStrings.GetOsInfo(),
-         edit_uint64(jcr->dir_impl->previous_jr->JobId, ec6),
-         jcr->dir_impl->previous_jr->Job,
-         mig_jcr ? edit_uint64(mig_jcr->dir_impl->jr.JobId, ec7) : T_("*None*"),
-         edit_uint64(jcr->dir_impl->jr.JobId, ec8), jcr->dir_impl->jr.Job,
-         JobLevelToString(jcr->getJobLevel()),
-         jcr->dir_impl->res.client ? jcr->dir_impl->res.client->resource_name_
-                                   : T_("*None*"),
-         jcr->dir_impl->res.fileset ? jcr->dir_impl->res.fileset->resource_name_
-                                    : T_("*None*"),
-         jcr->dir_impl->res.rpool->resource_name_,
-         jcr->dir_impl->res.rpool_source,
-         jcr->dir_impl->res.read_storage
-             ? jcr->dir_impl->res.read_storage->resource_name_
-             : T_("*None*"),
-         NPRT(jcr->dir_impl->res.rstore_source),
-         jcr->dir_impl->res.pool->resource_name_,
-         jcr->dir_impl->res.pool_source,
-         jcr->dir_impl->res.write_storage
-             ? jcr->dir_impl->res.write_storage->resource_name_
-             : T_("*None*"),
-         NPRT(jcr->dir_impl->res.wstore_source),
-         jcr->dir_impl->res.next_pool
-             ? jcr->dir_impl->res.next_pool->resource_name_
-             : T_("*None*"),
-         NPRT(jcr->dir_impl->res.npool_source),
-         jcr->dir_impl->res.catalog->resource_name_,
-         jcr->dir_impl->res.catalog_source, sdt, edt,
-         edit_utime(RunTime, elapsed, sizeof(elapsed)), jcr->JobPriority,
-         edit_uint64_with_commas(jcr->dir_impl->SDJobFiles, ec1),
-         edit_uint64_with_commas(jcr->dir_impl->SDJobBytes, ec2),
-         edit_uint64_with_suffix(jcr->dir_impl->SDJobBytes, ec3), (float)kbps,
-         mig_jcr ? mig_jcr->VolumeName : T_("*None*"), jcr->VolSessionId,
-         jcr->VolSessionTime, edit_uint64_with_commas(mr->VolBytes, ec4),
-         edit_uint64_with_suffix(mr->VolBytes, ec5), jcr->dir_impl->SDErrors,
-         sd_term_msg.c_str(), kBareosVersionStrings.JoblogMessage,
-         JobTriggerToString(jcr->dir_impl->job_trigger).c_str(), term_code);
+    if (jcr->getJobType() == JT_COPY) {
+      Jmsg(jcr, msg_type, 0,
+           T_("%s %s %s (%s):\n"
+              "  OS Information:         %s\n"
+              "  Source JobId:           %s\n"
+              "  Source Job:             %s\n"
+              "  Copied JobId:           %s\n"
+              "  Copied Job:             %s\n"
+              "  Copy Control JobId:     %s\n"
+              "  Copy Control Job:       %s\n"
+              "  Source Backup Level:    %s\n"
+              "  Source Client:          %s\n"
+              "  Source FileSet:         \"%s\"\n"
+              "  Read Pool:              \"%s\" (From %s)\n"
+              "  Read Storage:           \"%s\" (From %s)\n"
+              "  Write Pool:             \"%s\" (From %s)\n"
+              "  Write Storage:          \"%s\" (From %s)\n"
+              "  Next Pool:              \"%s\" (From %s)\n"
+              "  Catalog:                \"%s\" (From %s)\n"
+              "  Start time:             %s\n"
+              "  End time:               %s\n"
+              "  Elapsed time:           %s\n"
+              "  Priority:               %d\n"
+              "  SD Files Written:       %s\n"
+              "  SD Bytes Written:       %s (%sB)\n"
+              "  Rate:                   %.1f KB/s\n"
+              "  Volume name(s):         %s\n"
+              "  Volume Session Id:      %d\n"
+              "  Volume Session Time:    %d\n"
+              "  Last Volume Bytes:      %s (%sB)\n"
+              "  SD Errors:              %d\n"
+              "  SD termination status:  %s\n"
+              "  Bareos binary info:     %s\n"
+              "  Job triggered by:       %s\n"
+              "  Termination:            %s\n\n"),
+           BAREOS, my_name, kBareosVersionStrings.Full,
+           kBareosVersionStrings.ShortDate, kBareosVersionStrings.GetOsInfo(),
+           edit_uint64(jcr->dir_impl->previous_jr->JobId, ec6),
+           jcr->dir_impl->previous_jr->Job,
+           mig_jcr ? edit_uint64(mig_jcr->dir_impl->jr.JobId, ec7)
+                   : T_("*None*"),
+           mig_jcr ? mig_jcr->dir_impl->jr.Job : T_("*None*"),
+           edit_uint64(jcr->dir_impl->jr.JobId, ec8), jcr->dir_impl->jr.Job,
+           JobLevelToString(jcr->getJobLevel()),
+           jcr->dir_impl->res.client ? jcr->dir_impl->res.client->resource_name_
+                                     : T_("*None*"),
+           jcr->dir_impl->res.fileset
+               ? jcr->dir_impl->res.fileset->resource_name_
+               : T_("*None*"),
+           jcr->dir_impl->res.rpool->resource_name_,
+           jcr->dir_impl->res.rpool_source,
+           jcr->dir_impl->res.read_storage
+               ? jcr->dir_impl->res.read_storage->resource_name_
+               : T_("*None*"),
+           NPRT(jcr->dir_impl->res.rstore_source),
+           jcr->dir_impl->res.pool->resource_name_,
+           jcr->dir_impl->res.pool_source,
+           jcr->dir_impl->res.write_storage
+               ? jcr->dir_impl->res.write_storage->resource_name_
+               : T_("*None*"),
+           NPRT(jcr->dir_impl->res.wstore_source),
+           jcr->dir_impl->res.next_pool
+               ? jcr->dir_impl->res.next_pool->resource_name_
+               : T_("*None*"),
+           NPRT(jcr->dir_impl->res.npool_source),
+           jcr->dir_impl->res.catalog->resource_name_,
+           jcr->dir_impl->res.catalog_source, sdt, edt,
+           edit_utime(RunTime, elapsed, sizeof(elapsed)), jcr->JobPriority,
+           edit_uint64_with_commas(jcr->dir_impl->SDJobFiles, ec1),
+           edit_uint64_with_commas(jcr->dir_impl->SDJobBytes, ec2),
+           edit_uint64_with_suffix(jcr->dir_impl->SDJobBytes, ec3), (float)kbps,
+           mig_jcr ? mig_jcr->VolumeName : T_("*None*"), jcr->VolSessionId,
+           jcr->VolSessionTime, edit_uint64_with_commas(mr->VolBytes, ec4),
+           edit_uint64_with_suffix(mr->VolBytes, ec5), jcr->dir_impl->SDErrors,
+           sd_term_msg.c_str(), kBareosVersionStrings.JoblogMessage,
+           JobTriggerToString(jcr->dir_impl->job_trigger).c_str(), term_code);
+    } else {
+      Jmsg(jcr, msg_type, 0,
+           T_("%s %s %s (%s):\n"
+              "  OS Information:         %s\n"
+              "  Prev Backup JobId:      %s\n"
+              "  Prev Backup Job:        %s\n"
+              "  New Backup JobId:       %s\n"
+              "  Current JobId:          %s\n"
+              "  Current Job:            %s\n"
+              "  Backup Level:           %s\n"
+              "  Client:                 %s\n"
+              "  FileSet:                \"%s\"\n"
+              "  Read Pool:              \"%s\" (From %s)\n"
+              "  Read Storage:           \"%s\" (From %s)\n"
+              "  Write Pool:             \"%s\" (From %s)\n"
+              "  Write Storage:          \"%s\" (From %s)\n"
+              "  Next Pool:              \"%s\" (From %s)\n"
+              "  Catalog:                \"%s\" (From %s)\n"
+              "  Start time:             %s\n"
+              "  End time:               %s\n"
+              "  Elapsed time:           %s\n"
+              "  Priority:               %d\n"
+              "  SD Files Written:       %s\n"
+              "  SD Bytes Written:       %s (%sB)\n"
+              "  Rate:                   %.1f KB/s\n"
+              "  Volume name(s):         %s\n"
+              "  Volume Session Id:      %d\n"
+              "  Volume Session Time:    %d\n"
+              "  Last Volume Bytes:      %s (%sB)\n"
+              "  SD Errors:              %d\n"
+              "  SD termination status:  %s\n"
+              "  Bareos binary info:     %s\n"
+              "  Job triggered by:       %s\n"
+              "  Termination:            %s\n\n"),
+           BAREOS, my_name, kBareosVersionStrings.Full,
+           kBareosVersionStrings.ShortDate, kBareosVersionStrings.GetOsInfo(),
+           edit_uint64(jcr->dir_impl->previous_jr->JobId, ec6),
+           jcr->dir_impl->previous_jr->Job,
+           mig_jcr ? edit_uint64(mig_jcr->dir_impl->jr.JobId, ec7)
+                   : T_("*None*"),
+           edit_uint64(jcr->dir_impl->jr.JobId, ec8), jcr->dir_impl->jr.Job,
+           JobLevelToString(jcr->getJobLevel()),
+           jcr->dir_impl->res.client ? jcr->dir_impl->res.client->resource_name_
+                                     : T_("*None*"),
+           jcr->dir_impl->res.fileset
+               ? jcr->dir_impl->res.fileset->resource_name_
+               : T_("*None*"),
+           jcr->dir_impl->res.rpool->resource_name_,
+           jcr->dir_impl->res.rpool_source,
+           jcr->dir_impl->res.read_storage
+               ? jcr->dir_impl->res.read_storage->resource_name_
+               : T_("*None*"),
+           NPRT(jcr->dir_impl->res.rstore_source),
+           jcr->dir_impl->res.pool->resource_name_,
+           jcr->dir_impl->res.pool_source,
+           jcr->dir_impl->res.write_storage
+               ? jcr->dir_impl->res.write_storage->resource_name_
+               : T_("*None*"),
+           NPRT(jcr->dir_impl->res.wstore_source),
+           jcr->dir_impl->res.next_pool
+               ? jcr->dir_impl->res.next_pool->resource_name_
+               : T_("*None*"),
+           NPRT(jcr->dir_impl->res.npool_source),
+           jcr->dir_impl->res.catalog->resource_name_,
+           jcr->dir_impl->res.catalog_source, sdt, edt,
+           edit_utime(RunTime, elapsed, sizeof(elapsed)), jcr->JobPriority,
+           edit_uint64_with_commas(jcr->dir_impl->SDJobFiles, ec1),
+           edit_uint64_with_commas(jcr->dir_impl->SDJobBytes, ec2),
+           edit_uint64_with_suffix(jcr->dir_impl->SDJobBytes, ec3), (float)kbps,
+           mig_jcr ? mig_jcr->VolumeName : T_("*None*"), jcr->VolSessionId,
+           jcr->VolSessionTime, edit_uint64_with_commas(mr->VolBytes, ec4),
+           edit_uint64_with_suffix(mr->VolBytes, ec5), jcr->dir_impl->SDErrors,
+           sd_term_msg.c_str(), kBareosVersionStrings.JoblogMessage,
+           JobTriggerToString(jcr->dir_impl->job_trigger).c_str(), term_code);
+    }
   } else {
     // Copy/Migrate selection only Job.
     Jmsg(jcr, msg_type, 0,
@@ -1641,6 +1721,51 @@ static inline void GenerateMigrateSummary(JobControlRecord* jcr,
   }
 }
 
+static bool InsertMigrationJobLogRecord(JobControlRecord* jcr,
+                                        uint64_t target_jobid,
+                                        const char* msg)
+{
+  if (!jcr || !jcr->db || !jcr->db->IsConnected()) { return false; }
+
+  int length = strlen(msg);
+  char dt[MAX_TIME_LENGTH];
+  char jobid[50];
+  PoolMem query(PM_MESSAGE), esc_msg(PM_MESSAGE);
+
+  esc_msg.check_size(length * 2 + 1);
+  jcr->db->EscapeString(jcr, esc_msg.c_str(), msg, length);
+
+  bstrutime(dt, sizeof(dt), time(nullptr));
+  Mmsg(query, "INSERT INTO Log (JobId, Time, LogText) VALUES (%s,'%s','%s')",
+       edit_uint64(target_jobid, jobid), dt, esc_msg.c_str());
+
+  return jcr->db->SqlExec(query.c_str());
+}
+
+static void CopyMigrationExecutionCountersToWorkerJob(JobControlRecord* jcr,
+                                                      JobControlRecord* mig_jcr)
+{
+  /* Keep the worker job row queryable: the worker tracks the execution facts,
+   * while the copied or migrated backup keeps the resulting backup identity. */
+  if (jcr->dir_impl->remote_replicate) {
+    jcr->JobFiles = mig_jcr->dir_impl->SDJobFiles;
+    jcr->JobBytes = mig_jcr->dir_impl->SDJobBytes;
+    jcr->VolSessionId = mig_jcr->VolSessionId;
+    jcr->VolSessionTime = mig_jcr->VolSessionTime;
+
+    mig_jcr->JobFiles = jcr->JobFiles;
+    mig_jcr->JobBytes = jcr->JobBytes;
+  } else {
+    jcr->JobFiles = jcr->dir_impl->SDJobFiles;
+    jcr->JobBytes = jcr->dir_impl->SDJobBytes;
+
+    mig_jcr->JobFiles = jcr->JobFiles;
+    mig_jcr->JobBytes = jcr->JobBytes;
+    mig_jcr->VolSessionId = jcr->VolSessionId;
+    mig_jcr->VolSessionTime = jcr->VolSessionTime;
+  }
+}
+
 // Release resources allocated during backup.
 void MigrationCleanup(JobControlRecord* jcr, int TermCode)
 {
@@ -1652,7 +1777,6 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
   PoolMem query(PM_MESSAGE);
 
   Dmsg2(100, "Enter migrate_cleanup %d %c\n", TermCode, TermCode);
-  UpdateJobEnd(jcr, TermCode);
 
   /* Check if we actually did something.
    * mig_jcr is jcr of the newly migrated job. */
@@ -1667,21 +1791,13 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
     Mmsg(query, "UPDATE Job SET priorjobid='%s' WHERE JobId=%d", new_jobid,
          jcr->JobId);
     jcr->db->SqlQuery(query.c_str());
+    jcr->dir_impl->jr.PriorJobId = mig_jcr->dir_impl->jr.JobId;
 
-    /* See if we used a remote SD if so the mig_jcr contains
-     * the jobfiles and jobbytes and the new volsessionid
-     * and volsessiontime as the writing SD generates this info. */
-    if (jcr->dir_impl->remote_replicate) {
-      mig_jcr->JobFiles = jcr->JobFiles = mig_jcr->dir_impl->SDJobFiles;
-      mig_jcr->JobBytes = jcr->JobBytes = mig_jcr->dir_impl->SDJobBytes;
-    } else {
-      mig_jcr->JobFiles = jcr->JobFiles = jcr->dir_impl->SDJobFiles;
-      mig_jcr->JobBytes = jcr->JobBytes = jcr->dir_impl->SDJobBytes;
-      mig_jcr->VolSessionId = jcr->VolSessionId;
-      mig_jcr->VolSessionTime = jcr->VolSessionTime;
-    }
+    CopyMigrationExecutionCountersToWorkerJob(jcr, mig_jcr);
     mig_jcr->dir_impl->jr.RealEndTime = 0;
     mig_jcr->dir_impl->jr.PriorJobId = jcr->dir_impl->previous_jr->JobId;
+
+    UpdateJobEnd(jcr, TermCode);
 
     MaybeConvertTerminatedJobToWarnings(
         mig_jcr, TermCode, T_("non-fatal job errors"), jcr->JobErrors,
@@ -1689,7 +1805,8 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
 
     UpdateJobEnd(mig_jcr, TermCode);
 
-    // Update final items to set them to the previous job's values
+    // Keep the copied or migrated backup timestamps aligned with the source
+    // job.
     Mmsg(query,
          "UPDATE Job SET StartTime='%s',EndTime='%s',"
          "JobTDate=%s WHERE JobId=%s",
@@ -1747,7 +1864,8 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
           break;
         case JT_COPY:
           /* If we terminated a Copy Job successfully we should:
-           * - Copy any Log records to the new JobId
+           * - Copy the source Job log to the new JobId
+           * - Add provenance Log records to the new JobId
            * - Copy any MetaData of a NDMP backup
            * - Set type="Job Copy" for the new job */
           Mmsg(query,
@@ -1755,6 +1873,18 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
                "SELECT %s, Time, LogText FROM Log WHERE JobId=%s",
                new_jobid, old_jobid);
           mig_jcr->db->SqlQuery(query.c_str());
+
+          {
+            char control_jobid[50];
+            PoolMem log_text(PM_MESSAGE);
+
+            Mmsg(log_text,
+                 T_("Copied from source JobId %s Job=%s by Copy control JobId "
+                    "%s Job=%s.\n"),
+                 old_jobid, jcr->dir_impl->previous_jr->Job,
+                 edit_uint64(jcr->JobId, control_jobid), jcr->Job);
+            InsertMigrationJobLogRecord(jcr, mig_jcr->JobId, log_text.c_str());
+          }
 
           /* If we just copied a NDMP job, we need to copy the file MetaData
            * to the new job. The file MetaData is stored as hardlinks to the
@@ -1864,6 +1994,8 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
         break;
     }
   } else if (jcr->dir_impl->HasSelectedJobs) {
+    UpdateJobEnd(jcr, TermCode);
+
     switch (jcr->getJobStatus()) {
       case JS_Terminated:
         TermMsg = T_("%s OK");
@@ -1884,6 +2016,7 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
         break;
     }
   } else {
+    UpdateJobEnd(jcr, TermCode);
     TermMsg = T_("%s -- no files to %s");
   }
 

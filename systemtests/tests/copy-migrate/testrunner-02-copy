@@ -12,6 +12,8 @@ TestName=02-copy
 . "${BAREOS_SCRIPTS_DIR}"/functions
 
 copy_log="$tmp/copy_log.out"
+copied_joblog="$tmp/copied_joblog.out"
+copy_metadata="$tmp/copy_metadata.out"
 query_results="$tmp/query_results.out"
 
 start_test
@@ -30,6 +32,28 @@ label volume=TestCopyVolume001 storage=File2 pool=FullCopy
 run copy yes
 wait
 messages
+@$out $copied_joblog
+list joblog jobid=4
+@$out $copy_metadata
+sqlquery
+SELECT type,
+       priorjobid,
+       CASE
+         WHEN starttime = (SELECT starttime FROM job WHERE jobid=1) THEN 'yes'
+         ELSE 'no'
+       END AS copied_starttime_matches_source,
+       CASE
+         WHEN endtime = (SELECT endtime FROM job WHERE jobid=1) THEN 'yes'
+         ELSE 'no'
+       END AS copied_endtime_matches_source
+FROM job WHERE jobid=4;
+SELECT count(*) FROM job
+WHERE jobid = 3
+  AND jobfiles > 0
+  AND jobbytes > 0
+  AND volsessionid > 0
+  AND volsessiontime > 0;
+.
 @$out $query_results
 sqlquery
 SELECT type FROM job WHERE jobid=4;
@@ -62,6 +86,34 @@ expect_grep "JobId 3: BeforeJob: prevjobid=1 newjobid=4" \
 expect_grep "JobId 3: AfterJob: prevjobid=1 newjobid=4" \
   "$copy_log" \
   "After runscript does not return expected previous jobid (%O) and new jobid (%N)."
+
+expect_grep "Source JobId:.*1" \
+  "$copy_log" \
+  "Copy summary does not identify the source backup job."
+
+expect_grep "Copied JobId:.*4" \
+  "$copy_log" \
+  "Copy summary does not identify the copied backup job."
+
+expect_grep "Copy Control JobId:.*3" \
+  "$copy_log" \
+  "Copy summary does not identify the copy control job."
+
+expect_grep "Copied from source JobId 1 Job=backup-bareos-fd.* by Copy control JobId 3 Job=copy.*" \
+  "$copied_joblog" \
+  "Copied backup joblog does not contain provenance for the copy operation."
+
+expect_grep "Start Backup JobId 1" \
+  "$copied_joblog" \
+  "Copied backup joblog does not retain the original source job log."
+
+expect_grep "|.*C.*|.*1.*|.*yes.*|.*yes.*|" \
+  "$copy_metadata" \
+  "Copied backup job should preserve the source start and end timestamps."
+
+expect_grep "|     1 |" \
+  "$copy_metadata" \
+  "Copy worker job should persist execution counters in the Job table."
 
 cat <<END_OF_DATA >"$tmp/bconcmds"
 @$out $query_results
