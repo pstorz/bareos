@@ -3,7 +3,7 @@
 
    Copyright (C) 2004-2012 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2016 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -1683,10 +1683,9 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
     mig_jcr->dir_impl->jr.RealEndTime = 0;
     mig_jcr->dir_impl->jr.PriorJobId = jcr->dir_impl->previous_jr->JobId;
 
-    if (jcr->is_JobStatus(JS_Terminated)
-        && (jcr->JobErrors || jcr->dir_impl->SDErrors)) {
-      TermCode = JS_Warnings;
-    }
+    MaybeConvertTerminatedJobToWarnings(
+        mig_jcr, TermCode, T_("non-fatal job errors"), jcr->JobErrors,
+        jcr->dir_impl->SDErrors);
 
     UpdateJobEnd(mig_jcr, TermCode);
 

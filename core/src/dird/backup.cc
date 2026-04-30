@@ -768,10 +768,9 @@ void NativeBackupCleanup(JobControlRecord* jcr, int TermCode)
 
   Dmsg2(100, "Enter backup_cleanup %d %c\n", TermCode, TermCode);
 
-  if (jcr->is_JobStatus(JS_Terminated)
-      && (jcr->JobErrors || jcr->dir_impl->SDErrors || jcr->JobWarnings)) {
-    TermCode = JS_Warnings;
-  }
+  MaybeConvertTerminatedJobToWarnings(jcr, TermCode, T_("non-fatal FD errors"),
+                                      jcr->JobErrors, jcr->dir_impl->SDErrors,
+                                      true, jcr->JobWarnings);
 
   UpdateJobEnd(jcr, TermCode);
 

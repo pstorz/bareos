@@ -1,7 +1,7 @@
 /*
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2018-2024 Bareos GmbH & Co. KG
+   Copyright (C) 2018-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -50,6 +50,13 @@ void GetJobStorage(UnifiedStorageResource* store,
                    RunResource* run);
 void InitJcrJobRecord(JobControlRecord* jcr);
 void UpdateJobEnd(JobControlRecord* jcr, int TermCode);
+void MaybeConvertTerminatedJobToWarnings(JobControlRecord* jcr,
+                                         int& TermCode,
+                                         const char* job_errors_label,
+                                         uint32_t job_errors,
+                                         uint32_t sd_errors,
+                                         bool include_job_warnings = false,
+                                         uint32_t job_warnings = 0);
 bool SetupJob(JobControlRecord* jcr, bool suppress_output = false);
 void ExecuteJob(JobControlRecord* jcr);
 void CreateClones(JobControlRecord* jcr);

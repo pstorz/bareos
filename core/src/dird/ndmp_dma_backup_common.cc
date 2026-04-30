@@ -1,7 +1,7 @@
 /*
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -259,10 +259,9 @@ void NdmpBackupCleanup(JobControlRecord* jcr, int TermCode)
 
   Dmsg2(100, "Enter NdmpBackupCleanup %d %c\n", TermCode, TermCode);
 
-  if (jcr->is_JobStatus(JS_Terminated)
-      && (jcr->JobErrors || jcr->dir_impl->SDErrors || jcr->JobWarnings)) {
-    TermCode = JS_Warnings;
-  }
+  MaybeConvertTerminatedJobToWarnings(jcr, TermCode, T_("non-fatal FD errors"),
+                                      jcr->JobErrors, jcr->dir_impl->SDErrors,
+                                      true, jcr->JobWarnings);
 
   UpdateJobEnd(jcr, TermCode);
 

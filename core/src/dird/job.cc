@@ -414,6 +414,37 @@ void UpdateJobEnd(JobControlRecord* jcr, int TermCode)
   UpdateJobEndRecord(jcr);
 }
 
+void MaybeConvertTerminatedJobToWarnings(JobControlRecord* jcr,
+                                         int& TermCode,
+                                         const char* job_errors_label,
+                                         uint32_t job_errors,
+                                         uint32_t sd_errors,
+                                         bool include_job_warnings,
+                                         uint32_t job_warnings)
+{
+  if (TermCode != JS_Terminated) { return; }
+
+  if (!job_errors && !sd_errors && (!include_job_warnings || !job_warnings)) {
+    return;
+  }
+
+  if (include_job_warnings) {
+    Jmsg(jcr, M_INFO, 0,
+         T_("Converting job status from \"%s\" to \"%s\" because %s=%u, SD "
+            "errors=%u, warning messages=%u.\n"),
+         job_status_to_str(JS_Terminated), job_status_to_str(JS_Warnings),
+         job_errors_label, job_errors, sd_errors, job_warnings);
+  } else {
+    Jmsg(jcr, M_INFO, 0,
+         T_("Converting job status from \"%s\" to \"%s\" because %s=%u and SD "
+            "errors=%u.\n"),
+         job_status_to_str(JS_Terminated), job_status_to_str(JS_Warnings),
+         job_errors_label, job_errors, sd_errors);
+  }
+
+  TermCode = JS_Warnings;
+}
+
 /**
  * This is the engine called by jobq.c:JobqAdd() when we were pulled from the
  * work queue.

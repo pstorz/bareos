@@ -431,10 +431,8 @@ void NativeVbackupCleanup(JobControlRecord* jcr, int TermCode, int JobLevel)
   jcr->JobFiles = jcr->dir_impl->SDJobFiles;
   jcr->JobBytes = jcr->dir_impl->SDJobBytes;
 
-  if (jcr->getJobStatus() == JS_Terminated
-      && (jcr->JobErrors || jcr->dir_impl->SDErrors)) {
-    TermCode = JS_Warnings;
-  }
+  MaybeConvertTerminatedJobToWarnings(jcr, TermCode, T_("non-fatal job errors"),
+                                      jcr->JobErrors, jcr->dir_impl->SDErrors);
 
   UpdateJobEnd(jcr, TermCode);
 

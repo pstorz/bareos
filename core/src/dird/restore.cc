@@ -436,7 +436,14 @@ void NativeRestoreCleanup(JobControlRecord* jcr, int TermCode)
          T_("File count mismatch: expected=%" PRIu32 " , restored=%" PRIu32
             "\n"),
          jcr->dir_impl->ExpectedFiles, jcr->JobFiles);
-    if (TermCode == JS_Terminated) { TermCode = JS_Warnings; }
+    if (TermCode == JS_Terminated) {
+      Jmsg(jcr, M_INFO, 0,
+           T_("Converting job status from \"%s\" to \"%s\" because expected "
+              "files=%" PRIu32 " and restored files=%" PRIu32 " differ.\n"),
+           job_status_to_str(JS_Terminated), job_status_to_str(JS_Warnings),
+           jcr->dir_impl->ExpectedFiles, jcr->JobFiles);
+      TermCode = JS_Warnings;
+    }
   }
 
   switch (TermCode) {
