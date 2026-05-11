@@ -116,6 +116,7 @@ char** ShellReadlineCompletion(const char* text, int start, int)
   const auto words = ParseCommandWords(line.substr(0, start));
   if (words.size() != 1 || words[0] != "cd") { return nullptr; }
 
+  rl_attempted_completion_over = 1;
   shell_completion_matches = bconfig::CompleteShellPath(
       *shell_completion_environment, *shell_completion_path, text, true);
   if (shell_completion_matches.empty()) { return nullptr; }
