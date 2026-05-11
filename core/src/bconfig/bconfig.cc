@@ -170,6 +170,13 @@ const EnvironmentResource* FindComponentResource(const Environment& environment,
   return nullptr;
 }
 
+bool PasswordsMatch(const s_password& left, const s_password& right)
+{
+  if (left.encoding != right.encoding) { return false; }
+  if (!left.value || !right.value) { return false; }
+  return std::string_view(left.value) == right.value;
+}
+
 void AppendSingleRelation(
     const LoadedComponent& component,
     const EnvironmentResource& source_resource,
@@ -324,6 +331,61 @@ void CollectDirectorStorageRelations(
   }
 }
 
+void CollectDirectorAuthenticationRelations(
+    Environment& environment,
+    const std::unordered_map<const BareosResource*, const EnvironmentResource*>&
+        resource_lookup)
+{
+  IdGenerator relation_ids("rel");
+  for (size_t i = 0; i < environment.relations().size(); ++i) {
+    relation_ids.Next();
+  }
+
+  for (const auto& component : environment.components()) {
+    if (component->kind != ComponentKind::kDirector
+        || component->name.empty()) {
+      continue;
+    }
+
+    const auto* filed_director = FindComponentResource(
+        environment, ComponentKind::kFileDaemon, "Director", component->name);
+    const auto* stored_director
+        = FindComponentResource(environment, ComponentKind::kStorageDaemon,
+                                "Director", component->name);
+
+    for (const auto& resource : component->resources) {
+      if (resource.type == "Client" && resource.resource && filed_director) {
+        auto* client = dynamic_cast<const directordaemon::ClientResource*>(
+            resource.resource);
+        auto* remote_director
+            = dynamic_cast<const filedaemon::DirectorResource*>(
+                filed_director->resource);
+        if (client && remote_director
+            && PasswordsMatch(client->password_, remote_director->password_)) {
+          AppendSingleRelation(*component, resource,
+                               {"Authentication/Password"},
+                               filed_director->resource, resource_lookup,
+                               relation_ids, environment.relations());
+        }
+      } else if (resource.type == "Storage" && resource.resource
+                 && stored_director) {
+        auto* storage = dynamic_cast<const directordaemon::StorageResource*>(
+            resource.resource);
+        auto* remote_director
+            = dynamic_cast<const storagedaemon::DirectorResource*>(
+                stored_director->resource);
+        if (storage && remote_director
+            && PasswordsMatch(storage->password_, remote_director->password_)) {
+          AppendSingleRelation(*component, resource,
+                               {"Authentication/Password"},
+                               stored_director->resource, resource_lookup,
+                               relation_ids, environment.relations());
+        }
+      }
+    }
+  }
+}
+
 }  // namespace
 
 LoadedComponent::~LoadedComponent() = default;
@@ -389,6 +451,7 @@ std::unique_ptr<Environment> LoadEnvironment(const char* config_path)
   CollectEnvironmentRelations(*environment, resource_lookup);
   CollectScheduleRelations(*environment, resource_lookup);
   CollectDirectorStorageRelations(*environment, resource_lookup);
+  CollectDirectorAuthenticationRelations(*environment, resource_lookup);
 
   return environment;
 }

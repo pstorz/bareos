@@ -97,6 +97,30 @@ TEST(Bconfig, CollectsResolvedEnvironmentRelations)
                && entry.target_name == "FileStorage";
       });
   EXPECT_NE(storage_device_relation, environment->relations().end());
+
+  const auto client_auth_relation = std::find_if(
+      environment->relations().begin(), environment->relations().end(),
+      [](const auto& entry) {
+        return entry.component_id == "director" && entry.source_type == "Client"
+               && entry.source_name == "bareos-fd"
+               && entry.directive == "Authentication/Password"
+               && entry.target_type == "Director"
+               && entry.target_name == "bareos-dir"
+               && entry.target_component_id == "file-daemon";
+      });
+  EXPECT_NE(client_auth_relation, environment->relations().end());
+
+  const auto storage_auth_relation = std::find_if(
+      environment->relations().begin(), environment->relations().end(),
+      [](const auto& entry) {
+        return entry.component_id == "director"
+               && entry.source_type == "Storage" && entry.source_name == "File"
+               && entry.directive == "Authentication/Password"
+               && entry.target_type == "Director"
+               && entry.target_name == "bareos-dir"
+               && entry.target_component_id == "storage-daemon";
+      });
+  EXPECT_NE(storage_auth_relation, environment->relations().end());
 }
 
 TEST(Bconfig, InspectionModeSkipsRuntimeHostnameResolution)
@@ -255,6 +279,48 @@ TEST(Bconfig, CollectsDirectorStorageAutochangerRelations)
                               && entry.target_name == "TapeLibrary";
                      });
   EXPECT_NE(relation, environment->relations().end());
+
+  fs::remove_all(temp_dir);
+}
+
+TEST(Bconfig, AuthenticationRelationsRequireMatchingSecrets)
+{
+  namespace fs = std::filesystem;
+
+  auto fixture = fs::path("configs/bareos-configparser-tests");
+  auto temp_root = fs::temp_directory_path() / fs::path("bconfig-auth-XXXXXX");
+  std::string temp_template = temp_root.string();
+  ASSERT_NE(nullptr, mkdtemp(temp_template.data()));
+  fs::path temp_dir(temp_template);
+
+  fs::copy(fixture, temp_dir, fs::copy_options::recursive);
+
+  auto filed_director_conf
+      = temp_dir / "bareos-fd.d" / "director" / "bareos-dir.conf";
+  std::ofstream out(filed_director_conf);
+  ASSERT_TRUE(out.is_open());
+  out << "Director {\n"
+         "  Name = bareos-dir\n"
+         "  Password = \"different-fd-password\"\n"
+         "  Description = \"Allow the configured Director to access this file "
+         "daemon.\"\n"
+         "}\n";
+  out.close();
+
+  auto environment = bconfig::LoadEnvironment(temp_dir.c_str());
+
+  ASSERT_NE(nullptr, environment);
+  const auto relation = std::find_if(
+      environment->relations().begin(), environment->relations().end(),
+      [](const auto& entry) {
+        return entry.component_id == "director" && entry.source_type == "Client"
+               && entry.source_name == "bareos-fd"
+               && entry.directive == "Authentication/Password"
+               && entry.target_type == "Director"
+               && entry.target_name == "bareos-dir"
+               && entry.target_component_id == "file-daemon";
+      });
+  EXPECT_EQ(relation, environment->relations().end());
 
   fs::remove_all(temp_dir);
 }
