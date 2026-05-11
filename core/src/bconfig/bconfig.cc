@@ -21,6 +21,7 @@
 
 #include "bconfig/bconfig.h"
 
+#include <filesystem>
 #include <unordered_map>
 
 #include <memory>
@@ -35,12 +36,17 @@
 #include "lib/bareos_resource.h"
 #include "lib/parse_conf.h"
 #include "lib/resource_item.h"
+#include "qt-tray-monitor/tray_conf.h"
 #include "stored/stored_conf.h"
 #include "stored/stored_globals.h"
+
+ConfigurationParser* my_config = nullptr;
 
 namespace bconfig {
 
 namespace {
+
+namespace fs = std::filesystem;
 
 class IdGenerator {
  public:
@@ -64,6 +70,9 @@ struct ComponentDefinition {
   const char* id;
   const char* display_name;
   const char* primary_resource_type;
+  const char* default_config_filename;
+  const char* include_dir_name;
+  bool optional;
   ConfigurationParser* (*init)(const char* config_path, int exit_code);
   void (*prepare)();
   void (*bind_parser)(ConfigurationParser*);
@@ -127,16 +136,49 @@ void BindConsoleParser(ConfigurationParser* parser)
   console::my_config = parser;
 }
 
+void PrepareTrayMonitor()
+{
+  InitRuntime();
+  ::my_config = nullptr;
+}
+
+void BindTrayMonitorParser(ConfigurationParser* parser)
+{
+  ::my_config = parser;
+}
+
 const ComponentDefinition kComponents[] = {
     {ComponentKind::kDirector, "director", "Bareos Director", "Director",
+     directordaemon::default_config_filename.c_str(), "bareos-dir.d", false,
      directordaemon::InitDirConfig, PrepareDirector, BindDirectorParser},
     {ComponentKind::kStorageDaemon, "storage-daemon", "Bareos Storage Daemon",
-     "Storage", storagedaemon::InitSdConfig, PrepareStorage, BindStorageParser},
+     "Storage", storagedaemon::default_config_filename.c_str(), "bareos-sd.d",
+     false, storagedaemon::InitSdConfig, PrepareStorage, BindStorageParser},
     {ComponentKind::kFileDaemon, "file-daemon", "Bareos File Daemon", "Client",
+     filedaemon::default_config_filename.c_str(), "bareos-fd.d", false,
      filedaemon::InitFdConfig, PrepareFileDaemon, BindFileDaemonParser},
     {ComponentKind::kConsole, "console", "Bareos Console", "Console",
+     console::default_config_filename.c_str(), "bconsole.d", true,
      console::InitConsConfig, PrepareConsole, BindConsoleParser},
+    {ComponentKind::kTrayMonitor, "tray-monitor", "Bareos Tray Monitor",
+     "Monitor", "tray-monitor.conf", "tray-monitor.d", true, InitTmonConfig,
+     PrepareTrayMonitor, BindTrayMonitorParser},
 };
+
+bool ComponentConfigExists(const ComponentDefinition& definition,
+                           const char* config_path)
+{
+  const fs::path base_path
+      = config_path ? fs::path(config_path)
+                    : fs::path(ConfigurationParser::GetDefaultConfigDir());
+
+  if (!fs::exists(base_path)) { return false; }
+  if (!fs::is_directory(base_path)) { return true; }
+
+  const auto config_file = base_path / definition.default_config_filename;
+  const auto include_dir = base_path / definition.include_dir_name;
+  return fs::exists(config_file) || fs::exists(include_dir);
+}
 
 void CollectComponentResources(LoadedComponent& component,
                                IdGenerator& resource_ids)
@@ -466,6 +508,86 @@ void CollectConsoleAuthenticationRelations(
   }
 }
 
+void CollectTrayMonitorAuthenticationRelations(
+    Environment& environment,
+    const std::unordered_map<const BareosResource*, const EnvironmentResource*>&
+        resource_lookup)
+{
+  IdGenerator relation_ids("rel");
+  for (size_t i = 0; i < environment.relations().size(); ++i) {
+    relation_ids.Next();
+  }
+
+  for (const auto& component : environment.components()) {
+    if (component->kind != ComponentKind::kTrayMonitor
+        || component->name.empty()) {
+      continue;
+    }
+
+    const auto* director_console = FindComponentResource(
+        environment, ComponentKind::kDirector, "Console", component->name);
+    const auto* filed_director = FindComponentResource(
+        environment, ComponentKind::kFileDaemon, "Director", component->name);
+    const auto* stored_director
+        = FindComponentResource(environment, ComponentKind::kStorageDaemon,
+                                "Director", component->name);
+
+    const MonitorResource* monitor = nullptr;
+    for (const auto& resource : component->resources) {
+      if (resource.type == "Monitor" && resource.resource) {
+        monitor = dynamic_cast<const MonitorResource*>(resource.resource);
+        if (monitor) { break; }
+      }
+    }
+
+    if (!monitor) { continue; }
+
+    for (const auto& resource : component->resources) {
+      if (resource.type == "Monitor" && resource.resource && director_console) {
+        auto* remote_console
+            = dynamic_cast<const directordaemon::ConsoleResource*>(
+                director_console->resource);
+        if (!remote_console) { continue; }
+        if (!PasswordsMatch(monitor->password, remote_console->password_)) {
+          continue;
+        }
+
+        AppendSingleRelation(*component, resource, {"Authentication/Password"},
+                             director_console->resource, resource_lookup,
+                             relation_ids, environment.relations());
+      } else if (resource.type == "Client" && resource.resource
+                 && filed_director) {
+        auto* client = dynamic_cast<const ClientResource*>(resource.resource);
+        auto* remote_director
+            = dynamic_cast<const filedaemon::DirectorResource*>(
+                filed_director->resource);
+        if (!client || !remote_director) { continue; }
+        if (!PasswordsMatch(client->password, remote_director->password_)) {
+          continue;
+        }
+
+        AppendSingleRelation(*component, resource, {"Authentication/Password"},
+                             filed_director->resource, resource_lookup,
+                             relation_ids, environment.relations());
+      } else if (resource.type == "Storage" && resource.resource
+                 && stored_director) {
+        auto* storage = dynamic_cast<const StorageResource*>(resource.resource);
+        auto* remote_director
+            = dynamic_cast<const storagedaemon::DirectorResource*>(
+                stored_director->resource);
+        if (!storage || !remote_director) { continue; }
+        if (!PasswordsMatch(storage->password, remote_director->password_)) {
+          continue;
+        }
+
+        AppendSingleRelation(*component, resource, {"Authentication/Password"},
+                             stored_director->resource, resource_lookup,
+                             relation_ids, environment.relations());
+      }
+    }
+  }
+}
+
 }  // namespace
 
 LoadedComponent::~LoadedComponent() = default;
@@ -485,6 +607,11 @@ std::unique_ptr<Environment> LoadEnvironment(const char* config_path)
       resource_lookup;
 
   for (const auto& definition : kComponents) {
+    if (definition.optional
+        && !ComponentConfigExists(definition, config_path)) {
+      continue;
+    }
+
     definition.prepare();
 
     auto parser = std::unique_ptr<ConfigurationParser>(
@@ -533,6 +660,7 @@ std::unique_ptr<Environment> LoadEnvironment(const char* config_path)
   CollectDirectorStorageRelations(*environment, resource_lookup);
   CollectDirectorAuthenticationRelations(*environment, resource_lookup);
   CollectConsoleAuthenticationRelations(*environment, resource_lookup);
+  CollectTrayMonitorAuthenticationRelations(*environment, resource_lookup);
 
   return environment;
 }
@@ -565,6 +693,8 @@ std::string FormatComponentKind(ComponentKind component)
       return "file-daemon";
     case ComponentKind::kConsole:
       return "console";
+    case ComponentKind::kTrayMonitor:
+      return "tray-monitor";
   }
 
   return "unknown";

@@ -389,3 +389,170 @@ TEST(Bconfig, CollectsAnonymousConsoleAuthenticationRelation)
 
   fs::remove_all(temp_dir);
 }
+
+TEST(Bconfig, LoadsTrayMonitorComponentWhenConfigPresent)
+{
+  namespace fs = std::filesystem;
+
+  auto fixture = fs::path("configs/bareos-configparser-tests");
+  auto temp_root = fs::temp_directory_path() / fs::path("bconfig-tray-XXXXXX");
+  std::string temp_template = temp_root.string();
+  ASSERT_NE(nullptr, mkdtemp(temp_template.data()));
+  fs::path temp_dir(temp_template);
+
+  fs::copy(fixture, temp_dir, fs::copy_options::recursive);
+
+  auto tray_conf = temp_dir / "tray-monitor.conf";
+  std::ofstream out(tray_conf);
+  ASSERT_TRUE(out.is_open());
+  out << "Monitor {\n"
+         "  Name = bareos-mon\n"
+         "  Password = \"mon_password\"\n"
+         "}\n"
+         "\n"
+         "Director {\n"
+         "  Name = bareos-dir\n"
+         "  Address = localhost\n"
+         "  Port = 42001\n"
+         "}\n"
+         "\n"
+         "Client {\n"
+         "  Name = bareos-fd\n"
+         "  Address = localhost\n"
+         "  Password = \"fd_password\"\n"
+         "  Port = 42002\n"
+         "}\n"
+         "\n"
+         "Storage {\n"
+         "  Name = File\n"
+         "  Address = localhost\n"
+         "  Password = \"sd_password\"\n"
+         "  Port = 42003\n"
+         "}\n";
+  out.close();
+
+  auto environment = bconfig::LoadEnvironment(temp_dir.c_str());
+
+  ASSERT_NE(nullptr, environment);
+  EXPECT_NE(nullptr, bconfig::FindResource(*environment, "tray-monitor",
+                                           "Monitor", "bareos-mon"));
+  EXPECT_NE(nullptr, bconfig::FindResource(*environment, "tray-monitor",
+                                           "Director", "bareos-dir"));
+  EXPECT_NE(nullptr, bconfig::FindResource(*environment, "tray-monitor",
+                                           "Client", "bareos-fd"));
+  EXPECT_NE(nullptr, bconfig::FindResource(*environment, "tray-monitor",
+                                           "Storage", "File"));
+
+  fs::remove_all(temp_dir);
+}
+
+TEST(Bconfig, CollectsTrayMonitorAuthenticationRelations)
+{
+  namespace fs = std::filesystem;
+
+  auto fixture = fs::path("configs/bareos-configparser-tests");
+  auto temp_root
+      = fs::temp_directory_path() / fs::path("bconfig-tray-auth-XXXXXX");
+  std::string temp_template = temp_root.string();
+  ASSERT_NE(nullptr, mkdtemp(temp_template.data()));
+  fs::path temp_dir(temp_template);
+
+  fs::copy(fixture, temp_dir, fs::copy_options::recursive);
+
+  auto tray_conf = temp_dir / "tray-monitor.conf";
+  std::ofstream tray_out(tray_conf);
+  ASSERT_TRUE(tray_out.is_open());
+  tray_out << "Monitor {\n"
+              "  Name = bareos-mon\n"
+              "  Password = \"mon_password\"\n"
+              "}\n"
+              "\n"
+              "Director {\n"
+              "  Name = bareos-dir\n"
+              "  Address = localhost\n"
+              "  Port = 42001\n"
+              "}\n"
+              "\n"
+              "Client {\n"
+              "  Name = bareos-fd\n"
+              "  Address = localhost\n"
+              "  Password = \"fd_password\"\n"
+              "  Port = 42002\n"
+              "}\n"
+              "\n"
+              "Storage {\n"
+              "  Name = File\n"
+              "  Address = localhost\n"
+              "  Password = \"sd_password\"\n"
+              "  Port = 42003\n"
+              "}\n";
+  tray_out.close();
+
+  auto filed_director_conf
+      = temp_dir / "bareos-fd.d" / "director" / "bareos-mon.conf";
+  std::ofstream filed_out(filed_director_conf);
+  ASSERT_TRUE(filed_out.is_open());
+  filed_out << "Director {\n"
+               "  Name = bareos-mon\n"
+               "  Password = \"fd_password\"\n"
+               "  Description = \"Allow tray monitor access to this file "
+               "daemon.\"\n"
+               "}\n";
+  filed_out.close();
+
+  auto stored_director_conf
+      = temp_dir / "bareos-sd.d" / "director" / "bareos-mon.conf";
+  std::ofstream stored_out(stored_director_conf);
+  ASSERT_TRUE(stored_out.is_open());
+  stored_out << "Director {\n"
+                "  Name = bareos-mon\n"
+                "  Password = \"sd_password\"\n"
+                "  Description = \"Allow tray monitor access to this storage "
+                "daemon.\"\n"
+                "}\n";
+  stored_out.close();
+
+  auto environment = bconfig::LoadEnvironment(temp_dir.c_str());
+
+  ASSERT_NE(nullptr, environment);
+  const auto director_relation = std::find_if(environment->relations().begin(),
+                                              environment->relations().end(),
+                                              [](const auto& entry) {
+                                                return entry.component_id == "tray-monitor"
+               && entry.source_type == "Monitor"
+               && entry.source_name == "bareos-mon"
+               && entry.directive == "Authentication/Password"
+               && entry.target_type == "Console"
+               && entry.target_name == "bareos-mon"
+               && entry.target_component_id == "director";
+                                              });
+  EXPECT_NE(director_relation, environment->relations().end());
+
+  const auto client_relation = std::find_if(environment->relations().begin(),
+                                            environment->relations().end(),
+                                            [](const auto& entry) {
+                                              return entry.component_id == "tray-monitor"
+               && entry.source_type == "Client"
+               && entry.source_name == "bareos-fd"
+               && entry.directive == "Authentication/Password"
+               && entry.target_type == "Director"
+               && entry.target_name == "bareos-mon"
+               && entry.target_component_id == "file-daemon";
+                                            });
+  EXPECT_NE(client_relation, environment->relations().end());
+
+  const auto storage_relation = std::find_if(environment->relations().begin(),
+                                             environment->relations().end(),
+                                             [](const auto& entry) {
+                                               return entry.component_id == "tray-monitor"
+               && entry.source_type == "Storage"
+               && entry.source_name == "File"
+               && entry.directive == "Authentication/Password"
+               && entry.target_type == "Director"
+               && entry.target_name == "bareos-mon"
+               && entry.target_component_id == "storage-daemon";
+                                             });
+  EXPECT_NE(storage_relation, environment->relations().end());
+
+  fs::remove_all(temp_dir);
+}

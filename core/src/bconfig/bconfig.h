@@ -37,7 +37,8 @@ enum class ComponentKind
   kDirector,
   kStorageDaemon,
   kFileDaemon,
-  kConsole
+  kConsole,
+  kTrayMonitor
 };
 
 struct EnvironmentResource {

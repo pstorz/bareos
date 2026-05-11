@@ -20,7 +20,7 @@
 
 include(BareosWindowsResource)
 
-add_library(bareosbconfig STATIC bconfig.cc)
+add_library(bareosbconfig STATIC bconfig.cc ../qt-tray-monitor/tray_conf.cc)
 add_library(Bareos::BConfig ALIAS bareosbconfig)
 target_link_libraries(
   bareosbconfig PUBLIC Bareos::Console Bareos::Dir Bareos::FD Bareos::Lib
