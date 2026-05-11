@@ -317,6 +317,8 @@ class ConfigurationParser {
   void ClearWarnings();
   bool HasWarnings() const;
   const BStringList& GetWarnings() const;
+  void SetInspectionMode(bool enabled) { inspection_mode_ = enabled; }
+  bool IsInspectionMode() const { return inspection_mode_; }
 
  private:
   ConfigurationParser(const ConfigurationParser&) = delete;
@@ -344,6 +346,7 @@ class ConfigurationParser {
   ParseConfigBeforeCb_t ParseConfigBeforeCb_{nullptr};
   ParseConfigReadyCb_t ParseConfigReadyCb_{nullptr};
   bool parser_first_run_{true};
+  bool inspection_mode_{false};
   BStringList warnings_;
 
 

@@ -112,20 +112,20 @@ const ComponentDefinition kComponents[] = {
     {ComponentKind::kDirector, "director", "Bareos Director", "Director",
      directordaemon::InitDirConfig, PrepareDirector, BindDirectorParser},
     {ComponentKind::kStorageDaemon, "storage-daemon", "Bareos Storage Daemon",
-     "Storage",
-     storagedaemon::InitSdConfig, PrepareStorage, BindStorageParser},
+     "Storage", storagedaemon::InitSdConfig, PrepareStorage, BindStorageParser},
     {ComponentKind::kFileDaemon, "file-daemon", "Bareos File Daemon", "Client",
      filedaemon::InitFdConfig, PrepareFileDaemon, BindFileDaemonParser},
 };
 
-void CollectComponentResources(LoadedComponent& component, IdGenerator& resource_ids)
+void CollectComponentResources(LoadedComponent& component,
+                               IdGenerator& resource_ids)
 {
   for (int rcode = 0; rcode < component.parser->r_num_; ++rcode) {
     const auto* table = &component.parser->resource_definitions_[rcode];
     if (!table->name) { continue; }
 
-    for (auto* resource = component.parser->GetNextRes(rcode, nullptr); resource;
-         resource = component.parser->GetNextRes(rcode, resource)) {
+    for (auto* resource = component.parser->GetNextRes(rcode, nullptr);
+         resource; resource = component.parser->GetNextRes(rcode, resource)) {
       component.resources.push_back(EnvironmentResource{
           resource_ids.Next(),
           component.kind,
@@ -169,10 +169,11 @@ std::unique_ptr<Environment> LoadEnvironment(const char* config_path)
       continue;
     }
 
+    parser->SetInspectionMode(true);
     definition.bind_parser(parser.get());
     if (!parser->ParseConfig()) {
-      environment->issues_.push_back(
-          {definition.kind, definition.id, "configuration could not be parsed"});
+      environment->issues_.push_back({definition.kind, definition.id,
+                                      "configuration could not be parsed"});
       continue;
     }
 
@@ -183,7 +184,8 @@ std::unique_ptr<Environment> LoadEnvironment(const char* config_path)
     component->kind = definition.kind;
     component->component_id = definition.id;
     component->display_name = definition.display_name;
-    component->name = parser->own_resource_ ? GetResourceName(parser->own_resource_) : "";
+    component->name
+        = parser->own_resource_ ? GetResourceName(parser->own_resource_) : "";
     component->parser = std::move(parser);
     CollectComponentResources(*component, resource_ids);
     if (component->name.empty()) {

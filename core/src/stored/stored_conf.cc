@@ -538,7 +538,7 @@ static void GuessMissingDeviceTypes(ConfigurationParser& config)
       // Check that device is available
       if (stat(d->archive_device_string, &statp) < 0) {
         BErrNo be;
-        if (config.err_type_ == M_INFO) {
+        if (config.IsInspectionMode()) {
           config.AddWarning(fmt::format(
               fmt::runtime(T_("Unable to stat path '{}' for device {}: ERR={}. "
                               "Consider setting Device Type if device is not "
@@ -560,7 +560,7 @@ static void GuessMissingDeviceTypes(ConfigurationParser& config)
       } else if (S_ISFIFO(statp.st_mode)) {
         d->device_type = DeviceType::B_FIFO_DEV;
       } else if (!BitIsSet(CAP_REQMOUNT, d->cap_bits)) {
-        if (config.err_type_ == M_INFO) {
+        if (config.IsInspectionMode()) {
           config.AddWarning(fmt::format(
               "cannot deduce Device Type from '{}'. Must be tape or directory, "
               "st_mode={:04o}",
@@ -592,7 +592,7 @@ static void CheckAndLoadDeviceBackends(ConfigurationParser& config)
       if (!ImplementationFactory<Device>::IsRegistered(d->device_type)) {
 #if defined(HAVE_DYNAMIC_SD_BACKENDS)
         if (!storage_res || storage_res->backend_directories.empty()) {
-          if (config.err_type_ == M_INFO) {
+          if (config.IsInspectionMode()) {
             config.AddWarning(fmt::format(
                 "Backend Directory not set. Cannot load dynamic backend {}",
                 d->device_type.c_str()));
@@ -605,7 +605,7 @@ static void CheckAndLoadDeviceBackends(ConfigurationParser& config)
         }
         if (!LoadStorageBackend(d->device_type,
                                 storage_res->backend_directories)) {
-          if (config.err_type_ == M_INFO) {
+          if (config.IsInspectionMode()) {
             config.AddWarning(
                 fmt::format("Could not load storage backend {} for device {}.",
                             d->device_type.c_str(), d->resource_name_));
@@ -616,7 +616,7 @@ static void CheckAndLoadDeviceBackends(ConfigurationParser& config)
           }
         }
 #else
-        if (config.err_type_ == M_INFO) {
+        if (config.IsInspectionMode()) {
           config.AddWarning(
               fmt::format("Backend {} for device {} not available.",
                           d->device_type.c_str(), d->resource_name_));
@@ -634,6 +634,7 @@ static void CheckAndLoadDeviceBackends(ConfigurationParser& config)
 static void ConfigReadyCallback(ConfigurationParser& config)
 {
   MultiplyConfiguredDevices(config);
+  if (config.IsInspectionMode()) { return; }
   GuessMissingDeviceTypes(config);
   CheckAndLoadDeviceBackends(config);
 }

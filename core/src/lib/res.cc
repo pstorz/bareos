@@ -1329,18 +1329,11 @@ void ConfigurationParser::StoreAddresses(lexer* lc,
     if (token != BCT_EOB) {
       scan_err(lc, T_("Expected a end of block }, got: %s"), lc->str);
     }
-    if (pass == 1
+    if (pass == 1 && !IsInspectionMode()
         && !AddAddress(GetItemVariablePointer<dlist<IPADDR>**>(*item),
                        IPADDR::R_MULTIPLE, htons(port), family, hostname_str,
                        port_str, errmsg, sizeof(errmsg))) {
-      if (err_type_ == M_INFO) {
-        char warning[2048];
-        Bsnprintf(
-            warning, sizeof(warning),
-            T_("Can't add hostname(%s) and port(%s) to addrlist (%s)"),
-            hostname_str, port_str, errmsg);
-        AddWarning(warning);
-      } else {
+      {
         scan_err(lc, T_("Can't add hostname(%s) and port(%s) to addrlist (%s)"),
                  hostname_str, port_str, errmsg);
       }
@@ -1369,17 +1362,12 @@ void ConfigurationParser::StoreAddressesAddress(lexer* lc,
     scan_err(lc, T_("Expected an IP number or a hostname, got: %s"), lc->str);
   }
 
-  if (pass == 1
+  if (pass == 1 && !IsInspectionMode()
       && !AddAddress(GetItemVariablePointer<dlist<IPADDR>**>(*item),
                      IPADDR::R_SINGLE_ADDR, htons(port),
                      strchr(lc->str, ':') ? AF_INET6 : AF_INET, lc->str, 0,
                      errmsg, sizeof(errmsg))) {
-    if (err_type_ == M_INFO) {
-      char warning[2048];
-      Bsnprintf(warning, sizeof(warning),
-                T_("can't add port (%s) to (%s)"), lc->str, errmsg);
-      AddWarning(warning);
-    } else {
+    {
       scan_err(lc, T_("can't add port (%s) to (%s)"), lc->str, errmsg);
     }
   }
@@ -1409,30 +1397,20 @@ void ConfigurationParser::StoreAddressesPort(lexer* lc,
   }
 
   if (has_address) {
-    if (pass == 1
+    if (pass == 1 && !IsInspectionMode()
         && !AddAddress(GetItemVariablePointer<dlist<IPADDR>**>(*item),
                        IPADDR::R_SINGLE_PORT, htons(port), AF_INET, 0, lc->str,
                        errmsg, sizeof(errmsg))) {
-      if (err_type_ == M_INFO) {
-        char warning[2048];
-        Bsnprintf(warning, sizeof(warning),
-                  T_("can't add port (%s) to (%s)"), lc->str, errmsg);
-        AddWarning(warning);
-      } else {
+      {
         scan_err(lc, T_("can't add port (%s) to (%s)"), lc->str, errmsg);
       }
     }
   } else {
-    if (pass == 1
+    if (pass == 1 && !IsInspectionMode()
         && !AddAddress(GetItemVariablePointer<dlist<IPADDR>**>(*item),
                        IPADDR::R_SINGLE, htons(port), 0, 0, lc->str, errmsg,
                        sizeof(errmsg))) {
-      if (err_type_ == M_INFO) {
-        char warning[2048];
-        Bsnprintf(warning, sizeof(warning),
-                  T_("can't add port (%s) to (%s)"), lc->str, errmsg);
-        AddWarning(warning);
-      } else {
+      {
         scan_err(lc, T_("can't add port (%s) to (%s)"), lc->str, errmsg);
       }
     }
