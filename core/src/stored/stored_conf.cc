@@ -538,11 +538,19 @@ static void GuessMissingDeviceTypes(ConfigurationParser& config)
       // Check that device is available
       if (stat(d->archive_device_string, &statp) < 0) {
         BErrNo be;
-        Jmsg2(nullptr, M_ERROR_TERM, 0,
-              T_("Unable to stat path '%s' for device %s: ERR=%s\n"
-                 "Consider setting Device Type if device is not available when "
-                 "daemon starts.\n"),
-              d->archive_device_string, d->resource_name_, be.bstrerror());
+        if (config.err_type_ == M_INFO) {
+          config.AddWarning(fmt::format(
+              fmt::runtime(T_("Unable to stat path '{}' for device {}: ERR={}. "
+                              "Consider setting Device Type if device is not "
+                              "available when daemon starts.")),
+              d->archive_device_string, d->resource_name_, be.bstrerror()));
+        } else {
+          Jmsg2(nullptr, M_ERROR_TERM, 0,
+                T_("Unable to stat path '%s' for device %s: ERR=%s\n"
+                   "Consider setting Device Type if device is not available "
+                   "when daemon starts.\n"),
+                d->archive_device_string, d->resource_name_, be.bstrerror());
+        }
         return;
       }
       if (S_ISDIR(statp.st_mode)) {
@@ -552,10 +560,17 @@ static void GuessMissingDeviceTypes(ConfigurationParser& config)
       } else if (S_ISFIFO(statp.st_mode)) {
         d->device_type = DeviceType::B_FIFO_DEV;
       } else if (!BitIsSet(CAP_REQMOUNT, d->cap_bits)) {
-        Jmsg2(nullptr, M_ERROR_TERM, 0,
-              "cannot deduce Device Type from '%s'. Must be tape or directory, "
-              "st_mode=%04o\n",
-              d->archive_device_string, (statp.st_mode & ~S_IFMT));
+        if (config.err_type_ == M_INFO) {
+          config.AddWarning(fmt::format(
+              "cannot deduce Device Type from '{}'. Must be tape or directory, "
+              "st_mode={:04o}",
+              d->archive_device_string, (statp.st_mode & ~S_IFMT)));
+        } else {
+          Jmsg2(nullptr, M_ERROR_TERM, 0,
+                "cannot deduce Device Type from '%s'. Must be tape or "
+                "directory, st_mode=%04o\n",
+                d->archive_device_string, (statp.st_mode & ~S_IFMT));
+        }
         return;
       }
     }
@@ -577,20 +592,39 @@ static void CheckAndLoadDeviceBackends(ConfigurationParser& config)
       if (!ImplementationFactory<Device>::IsRegistered(d->device_type)) {
 #if defined(HAVE_DYNAMIC_SD_BACKENDS)
         if (!storage_res || storage_res->backend_directories.empty()) {
-          Jmsg2(nullptr, M_ERROR_TERM, 0,
-                "Backend Directory not set. Cannot load dynamic backend %s\n",
-                d->device_type.c_str());
+          if (config.err_type_ == M_INFO) {
+            config.AddWarning(fmt::format(
+                "Backend Directory not set. Cannot load dynamic backend {}",
+                d->device_type.c_str()));
+          } else {
+            Jmsg2(nullptr, M_ERROR_TERM, 0,
+                  "Backend Directory not set. Cannot load dynamic backend %s\n",
+                  d->device_type.c_str());
+          }
+          continue;
         }
         if (!LoadStorageBackend(d->device_type,
                                 storage_res->backend_directories)) {
-          Jmsg2(nullptr, M_ERROR_TERM, 0,
-                "Could not load storage backend %s for device %s.\n",
-                d->device_type.c_str(), d->resource_name_);
+          if (config.err_type_ == M_INFO) {
+            config.AddWarning(
+                fmt::format("Could not load storage backend {} for device {}.",
+                            d->device_type.c_str(), d->resource_name_));
+          } else {
+            Jmsg2(nullptr, M_ERROR_TERM, 0,
+                  "Could not load storage backend %s for device %s.\n",
+                  d->device_type.c_str(), d->resource_name_);
+          }
         }
 #else
-        Jmsg2(nullptr, M_ERROR_TERM, 0,
-              "Backend %s for device %s not available.\n",
-              d->device_type.c_str(), d->resource_name_);
+        if (config.err_type_ == M_INFO) {
+          config.AddWarning(
+              fmt::format("Backend {} for device {} not available.",
+                          d->device_type.c_str(), d->resource_name_));
+        } else {
+          Jmsg2(nullptr, M_ERROR_TERM, 0,
+                "Backend %s for device %s not available.\n",
+                d->device_type.c_str(), d->resource_name_);
+        }
 #endif
       }
     }

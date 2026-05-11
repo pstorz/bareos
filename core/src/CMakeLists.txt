@@ -32,6 +32,7 @@ add_subdirectory(fastlz)
 add_subdirectory(filed)
 
 if(NOT client-only)
+  add_subdirectory(bconfig)
   add_subdirectory(tools)
   add_subdirectory(cats)
   if(NOT HAVE_WIN32 AND ndmp)

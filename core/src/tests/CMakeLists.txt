@@ -206,6 +206,12 @@ if(NOT client-only)
   )
 
   bareos_add_test(
+    bconfig_test
+    LINK_LIBRARIES Bareos::BConfig Bareos::Dir Bareos::FD Bareos::Lib
+                   Bareos::LibSD Bareos::Findlib Bareos::SQL GTest::gtest_main
+  )
+
+  bareos_add_test(
     berrno_test LINK_LIBRARIES Bareos::Lib Bareos::Dir Bareos::Findlib
                                Bareos::SQL GTest::gtest_main
   )
