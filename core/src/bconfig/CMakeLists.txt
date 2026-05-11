@@ -23,8 +23,8 @@ include(BareosWindowsResource)
 add_library(bareosbconfig STATIC bconfig.cc)
 add_library(Bareos::BConfig ALIAS bareosbconfig)
 target_link_libraries(
-  bareosbconfig
-  PUBLIC Bareos::Dir Bareos::FD Bareos::Lib Bareos::LibSD Bareos::Findlib
+  bareosbconfig PUBLIC Bareos::Console Bareos::Dir Bareos::FD Bareos::Lib
+                       Bareos::LibSD Bareos::Findlib
 )
 
 add_executable(bconfig bconfig_tool.cc)

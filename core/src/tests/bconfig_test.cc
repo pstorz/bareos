@@ -35,12 +35,13 @@ TEST(Bconfig, LoadsWholeEnvironmentFromConfigRoot)
 
   ASSERT_NE(nullptr, environment);
   EXPECT_FALSE(environment->id().empty());
-  EXPECT_EQ(environment->components().size(), 3U);
+  EXPECT_EQ(environment->components().size(), 4U);
   EXPECT_TRUE(environment->issues().empty());
-  ASSERT_EQ(environment->components().size(), 3U);
+  ASSERT_EQ(environment->components().size(), 4U);
   EXPECT_EQ(environment->components()[0]->name, "bareos-dir");
   EXPECT_EQ(environment->components()[1]->name, "bareos-sd");
   EXPECT_EQ(environment->components()[2]->name, "backup-bareos-test-fd");
+  EXPECT_EQ(environment->components()[3]->name, "bareos-mon");
 
   EXPECT_NE(nullptr, bconfig::FindResource(*environment, "director", "Director",
                                            "bareos-dir"));
@@ -48,6 +49,8 @@ TEST(Bconfig, LoadsWholeEnvironmentFromConfigRoot)
                                            "Storage", "bareos-sd"));
   EXPECT_NE(nullptr, bconfig::FindResource(*environment, "file-daemon",
                                            "Client", "backup-bareos-test-fd"));
+  EXPECT_NE(nullptr, bconfig::FindResource(*environment, "console", "Console",
+                                           "bareos-mon"));
 }
 
 TEST(Bconfig, CollectsStableResourceIdsAcrossEnvironment)
@@ -121,6 +124,18 @@ TEST(Bconfig, CollectsResolvedEnvironmentRelations)
                && entry.target_component_id == "storage-daemon";
       });
   EXPECT_NE(storage_auth_relation, environment->relations().end());
+
+  const auto console_auth_relation = std::find_if(
+      environment->relations().begin(), environment->relations().end(),
+      [](const auto& entry) {
+        return entry.component_id == "console" && entry.source_type == "Console"
+               && entry.source_name == "bareos-mon"
+               && entry.directive == "Authentication/Password"
+               && entry.target_type == "Console"
+               && entry.target_name == "bareos-mon"
+               && entry.target_component_id == "director";
+      });
+  EXPECT_NE(console_auth_relation, environment->relations().end());
 }
 
 TEST(Bconfig, InspectionModeSkipsRuntimeHostnameResolution)
@@ -321,6 +336,56 @@ TEST(Bconfig, AuthenticationRelationsRequireMatchingSecrets)
                && entry.target_component_id == "file-daemon";
       });
   EXPECT_EQ(relation, environment->relations().end());
+
+  fs::remove_all(temp_dir);
+}
+
+TEST(Bconfig, CollectsAnonymousConsoleAuthenticationRelation)
+{
+  namespace fs = std::filesystem;
+
+  auto fixture = fs::path("configs/bareos-configparser-tests");
+  auto temp_root
+      = fs::temp_directory_path() / fs::path("bconfig-console-auth-XXXXXX");
+  std::string temp_template = temp_root.string();
+  ASSERT_NE(nullptr, mkdtemp(temp_template.data()));
+  fs::path temp_dir(temp_template);
+
+  fs::copy(fixture, temp_dir, fs::copy_options::recursive);
+
+  auto bconsole_conf = temp_dir / "bconsole.conf";
+  std::ofstream out(bconsole_conf);
+  ASSERT_TRUE(out.is_open());
+  out << "Director {\n"
+         "  Name = bareos-dir\n"
+         "  Password = \"dir_password\"\n"
+         "  Port = 42001\n"
+         "  Address = localhost\n"
+         "}\n"
+         "\n"
+         "Console {\n"
+         "  Name = bareos-mon\n"
+         "  Description = \"Restricted console used by tray-monitor to get the "
+         "status of the director.\"\n"
+         "  Password = \"mon_password\"\n"
+         "}\n";
+  out.close();
+
+  auto environment = bconfig::LoadEnvironment(temp_dir.c_str());
+
+  ASSERT_NE(nullptr, environment);
+  const auto relation
+      = std::find_if(environment->relations().begin(),
+                     environment->relations().end(), [](const auto& entry) {
+                       return entry.component_id == "console"
+                              && entry.source_type == "Director"
+                              && entry.source_name == "bareos-dir"
+                              && entry.directive == "Authentication/Password"
+                              && entry.target_type == "Director"
+                              && entry.target_name == "bareos-dir"
+                              && entry.target_component_id == "director";
+                     });
+  EXPECT_NE(relation, environment->relations().end());
 
   fs::remove_all(temp_dir);
 }

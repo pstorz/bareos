@@ -25,6 +25,7 @@
 
 #include <memory>
 
+#include "console/console_conf.h"
 #include "console/console_globals.h"
 #include "dird/dird_conf.h"
 #include "dird/dird_globals.h"
@@ -97,6 +98,15 @@ void PrepareFileDaemon()
   filedaemon::me = nullptr;
 }
 
+void PrepareConsole()
+{
+  InitRuntime();
+  console::my_config = nullptr;
+  console::me = nullptr;
+  console::console_resource = nullptr;
+  console::director_resource = nullptr;
+}
+
 void BindDirectorParser(ConfigurationParser* parser)
 {
   directordaemon::my_config = parser;
@@ -112,6 +122,11 @@ void BindFileDaemonParser(ConfigurationParser* parser)
   filedaemon::my_config = parser;
 }
 
+void BindConsoleParser(ConfigurationParser* parser)
+{
+  console::my_config = parser;
+}
+
 const ComponentDefinition kComponents[] = {
     {ComponentKind::kDirector, "director", "Bareos Director", "Director",
      directordaemon::InitDirConfig, PrepareDirector, BindDirectorParser},
@@ -119,6 +134,8 @@ const ComponentDefinition kComponents[] = {
      "Storage", storagedaemon::InitSdConfig, PrepareStorage, BindStorageParser},
     {ComponentKind::kFileDaemon, "file-daemon", "Bareos File Daemon", "Client",
      filedaemon::InitFdConfig, PrepareFileDaemon, BindFileDaemonParser},
+    {ComponentKind::kConsole, "console", "Bareos Console", "Console",
+     console::InitConsConfig, PrepareConsole, BindConsoleParser},
 };
 
 void CollectComponentResources(LoadedComponent& component,
@@ -386,6 +403,69 @@ void CollectDirectorAuthenticationRelations(
   }
 }
 
+void CollectConsoleAuthenticationRelations(
+    Environment& environment,
+    const std::unordered_map<const BareosResource*, const EnvironmentResource*>&
+        resource_lookup)
+{
+  IdGenerator relation_ids("rel");
+  for (size_t i = 0; i < environment.relations().size(); ++i) {
+    relation_ids.Next();
+  }
+
+  for (const auto& component : environment.components()) {
+    if (component->kind != ComponentKind::kConsole) { continue; }
+
+    for (const auto& resource : component->resources) {
+      if (resource.type == "Console" && resource.resource) {
+        auto* console_resource
+            = dynamic_cast<const console::ConsoleResource*>(resource.resource);
+        if (!console_resource) { continue; }
+
+        const auto* director_console = FindComponentResource(
+            environment, ComponentKind::kDirector, "Console", resource.name);
+        if (!director_console) { continue; }
+
+        auto* remote_console
+            = dynamic_cast<const directordaemon::ConsoleResource*>(
+                director_console->resource);
+        if (!remote_console) { continue; }
+
+        if (!PasswordsMatch(console_resource->password_,
+                            remote_console->password_)) {
+          continue;
+        }
+
+        AppendSingleRelation(*component, resource, {"Authentication/Password"},
+                             director_console->resource, resource_lookup,
+                             relation_ids, environment.relations());
+      } else if (resource.type == "Director" && resource.resource) {
+        auto* console_director
+            = dynamic_cast<const console::DirectorResource*>(resource.resource);
+        if (!console_director) { continue; }
+
+        const auto* director_resource = FindComponentResource(
+            environment, ComponentKind::kDirector, "Director", resource.name);
+        if (!director_resource) { continue; }
+
+        auto* remote_director
+            = dynamic_cast<const directordaemon::DirectorResource*>(
+                director_resource->resource);
+        if (!remote_director) { continue; }
+
+        if (!PasswordsMatch(console_director->password_,
+                            remote_director->password_)) {
+          continue;
+        }
+
+        AppendSingleRelation(*component, resource, {"Authentication/Password"},
+                             director_resource->resource, resource_lookup,
+                             relation_ids, environment.relations());
+      }
+    }
+  }
+}
+
 }  // namespace
 
 LoadedComponent::~LoadedComponent() = default;
@@ -452,6 +532,7 @@ std::unique_ptr<Environment> LoadEnvironment(const char* config_path)
   CollectScheduleRelations(*environment, resource_lookup);
   CollectDirectorStorageRelations(*environment, resource_lookup);
   CollectDirectorAuthenticationRelations(*environment, resource_lookup);
+  CollectConsoleAuthenticationRelations(*environment, resource_lookup);
 
   return environment;
 }
@@ -482,6 +563,8 @@ std::string FormatComponentKind(ComponentKind component)
       return "storage-daemon";
     case ComponentKind::kFileDaemon:
       return "file-daemon";
+    case ComponentKind::kConsole:
+      return "console";
   }
 
   return "unknown";
