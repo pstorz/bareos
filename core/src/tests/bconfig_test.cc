@@ -23,10 +23,41 @@
 #include "include/bareos.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 
 #include "bconfig/bconfig.h"
+
+namespace {
+
+std::string RunBconfigShell(const std::string& script,
+                            const std::string& config_path)
+{
+  namespace fs = std::filesystem;
+
+  auto temp_path = fs::temp_directory_path() / "bconfig-shell-input.txt";
+  std::ofstream input(temp_path);
+  input << script;
+  input.close();
+
+  const std::string command = "../bconfig/bconfig shell --config " + config_path
+                              + " < " + temp_path.string();
+  FILE* pipe = popen(command.c_str(), "r");
+  EXPECT_NE(nullptr, pipe);
+  if (!pipe) { return {}; }
+
+  std::string output;
+  std::array<char, 256> buffer{};
+  while (fgets(buffer.data(), buffer.size(), pipe)) { output += buffer.data(); }
+
+  pclose(pipe);
+  fs::remove(temp_path);
+  return output;
+}
+
+}  // namespace
 
 TEST(Bconfig, LoadsWholeEnvironmentFromConfigRoot)
 {
@@ -555,4 +586,22 @@ TEST(Bconfig, CollectsTrayMonitorAuthenticationRelations)
   EXPECT_NE(storage_relation, environment->relations().end());
 
   fs::remove_all(temp_dir);
+}
+
+TEST(Bconfig, ShellNavigatesFilesystemView)
+{
+  const auto output = RunBconfigShell(
+      "pwd\nls\ncd director/Storage/File\npwd\nls\ncat config\ncat relations\n",
+      "configs/bareos-configparser-tests");
+
+  EXPECT_NE(output.find("/\n"), std::string::npos);
+  EXPECT_NE(output.find("director/"), std::string::npos);
+  EXPECT_NE(output.find("/director/Storage/File\n"), std::string::npos);
+  EXPECT_NE(output.find("config\n"), std::string::npos);
+  EXPECT_NE(output.find("relations\n"), std::string::npos);
+  EXPECT_NE(output.find("Storage {\n"), std::string::npos);
+  EXPECT_NE(output.find("Name = \"File\""), std::string::npos);
+  EXPECT_NE(output.find("Authentication/Password -> storage-daemon:Director/"
+                        "bareos-dir"),
+            std::string::npos);
 }
