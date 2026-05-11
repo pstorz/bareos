@@ -591,7 +591,8 @@ TEST(Bconfig, CollectsTrayMonitorAuthenticationRelations)
 TEST(Bconfig, ShellNavigatesFilesystemView)
 {
   const auto output = RunBconfigShell(
-      "pwd\nls\ncd director/Storage/File\npwd\nls\ncat config\ncat relations\n",
+      "pwd\ndir\ncd director/Storage/File\npwd\ndir\ncat config\ncat "
+      "relations\n",
       "configs/bareos-configparser-tests");
 
   EXPECT_NE(output.find("/\n"), std::string::npos);
@@ -625,4 +626,15 @@ TEST(Bconfig, ShellCompletesCdPaths)
   const auto filtered_files = bconfig::CompleteShellPath(
       *environment, std::vector<std::string>{"director"}, "su", true);
   EXPECT_TRUE(filtered_files.empty());
+
+  const auto cat_files = bconfig::CompleteShellPath(
+      *environment, std::vector<std::string>{"director"}, "su", false);
+  ASSERT_EQ(cat_files.size(), 1U);
+  EXPECT_EQ(cat_files[0], "summary");
+
+  const auto resource_files = bconfig::CompleteShellPath(
+      *environment, std::vector<std::string>{"director", "Storage", "File"},
+      "re", false);
+  ASSERT_EQ(resource_files.size(), 1U);
+  EXPECT_EQ(resource_files[0], "relations");
 }

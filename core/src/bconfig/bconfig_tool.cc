@@ -114,11 +114,19 @@ char** ShellReadlineCompletion(const char* text, int start, int)
 
   const std::string line = rl_line_buffer ? rl_line_buffer : "";
   const auto words = ParseCommandWords(line.substr(0, start));
-  if (words.size() != 1 || words[0] != "cd") { return nullptr; }
+  if (words.size() != 1) { return nullptr; }
+
+  bool directories_only = false;
+  if (words[0] == "cd") {
+    directories_only = true;
+  } else if (words[0] != "cat") {
+    return nullptr;
+  }
 
   rl_attempted_completion_over = 1;
   shell_completion_matches = bconfig::CompleteShellPath(
-      *shell_completion_environment, *shell_completion_path, text, true);
+      *shell_completion_environment, *shell_completion_path, text,
+      directories_only);
   if (shell_completion_matches.empty()) { return nullptr; }
 
   rl_completion_append_character = '\0';
@@ -468,8 +476,8 @@ int RunShell(const bconfig::Environment& environment)
   const bool interactive = BCONFIG_ISATTY(BCONFIG_FILENO(stdin));
 
   if (interactive) {
-    std::cout << "Read-only bconfig shell. Commands: pwd, ls, cd, cat, help, "
-                 "exit\n";
+    std::cout << "Read-only bconfig shell. Commands: pwd, ls, dir, cd, cat, "
+                 "help, exit\n";
     using_history();
     shell_completion_environment = &environment;
     shell_completion_path = &current_path;
@@ -488,7 +496,8 @@ int RunShell(const bconfig::Environment& environment)
     const auto& command = words[0];
     if (command == "exit" || command == "quit") { return 0; }
     if (command == "help") {
-      std::cout << "pwd\nls [path]\ncd [path]\ncat <path>\nhelp\nexit\n";
+      std::cout
+          << "pwd\nls [path]\ndir [path]\ncd [path]\ncat <path>\nhelp\nexit\n";
       continue;
     }
     if (command == "pwd") {
@@ -506,12 +515,12 @@ int RunShell(const bconfig::Environment& environment)
       current_path = segments;
       continue;
     }
-    if (command == "ls") {
+    if (command == "ls" || command == "dir") {
       const std::string target = words.size() > 1 ? words[1] : ".";
       const auto segments = NormalizePath(current_path, target);
       const auto entry = ResolveShellEntry(environment, segments);
       if (!IsDirectory(entry.kind)) {
-        std::cout << "ls: " << entry.error << '\n';
+        std::cout << command << ": " << entry.error << '\n';
         continue;
       }
 
