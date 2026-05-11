@@ -21,15 +21,19 @@
 
 #include "bconfig/bconfig.h"
 
+#include <unordered_map>
+
 #include <memory>
 
 #include "console/console_globals.h"
 #include "dird/dird_conf.h"
 #include "dird/dird_globals.h"
+#include "lib/alist.h"
 #include "filed/filed_conf.h"
 #include "filed/filed_globals.h"
 #include "lib/bareos_resource.h"
 #include "lib/parse_conf.h"
+#include "lib/resource_item.h"
 #include "stored/stored_conf.h"
 #include "stored/stored_globals.h"
 
@@ -142,6 +146,184 @@ void CollectComponentResources(LoadedComponent& component,
   }
 }
 
+template <typename T>
+const T* MemberPointer(const BareosResource* resource, const ResourceItem& item)
+{
+  auto* base = reinterpret_cast<const char*>(resource);
+  return reinterpret_cast<const T*>(base + item.offset);
+}
+
+const EnvironmentResource* FindComponentResource(const Environment& environment,
+                                                 ComponentKind component_kind,
+                                                 std::string_view type_name,
+                                                 std::string_view resource_name)
+{
+  for (const auto& component : environment.components()) {
+    if (component->kind != component_kind) { continue; }
+    for (const auto& resource : component->resources) {
+      if (resource.type == type_name && resource.name == resource_name) {
+        return &resource;
+      }
+    }
+  }
+
+  return nullptr;
+}
+
+void AppendSingleRelation(
+    const LoadedComponent& component,
+    const EnvironmentResource& source_resource,
+    std::string_view directive_name,
+    const BareosResource* target_resource,
+    const std::unordered_map<const BareosResource*, const EnvironmentResource*>&
+        resource_lookup,
+    IdGenerator& relation_ids,
+    std::vector<EnvironmentRelation>& relations)
+{
+  if (!target_resource) { return; }
+
+  auto target = resource_lookup.find(target_resource);
+  if (target == resource_lookup.end()) { return; }
+
+  relations.push_back(EnvironmentRelation{
+      relation_ids.Next(),
+      component.component_id,
+      source_resource.id,
+      source_resource.type,
+      source_resource.name,
+      std::string(directive_name),
+      target->second->id,
+      target->second->component_id,
+      target->second->type,
+      target->second->name,
+  });
+}
+
+void CollectEnvironmentRelations(
+    Environment& environment,
+    const std::unordered_map<const BareosResource*, const EnvironmentResource*>&
+        resource_lookup)
+{
+  IdGenerator relation_ids("rel");
+
+  for (const auto& component : environment.components()) {
+    for (const auto& resource : component->resources) {
+      const auto* table
+          = component->parser->GetResourceTable(resource.type.c_str());
+      if (!table || !table->items) { continue; }
+
+      for (int index = 0; table->items[index].name; ++index) {
+        const auto& item = table->items[index];
+        if (item.type == CFG_TYPE_RES) {
+          auto target_resource
+              = *MemberPointer<BareosResource*>(resource.resource, item);
+          AppendSingleRelation(*component, resource, item.name, target_resource,
+                               resource_lookup, relation_ids,
+                               environment.relations());
+        } else if (item.type == CFG_TYPE_ALIST_RES) {
+          auto list = *MemberPointer<alist<BareosResource*>*>(resource.resource,
+                                                              item);
+          int list_index = 0;
+          BareosResource* target_resource = nullptr;
+          foreach_alist_index (list_index, target_resource, list) {
+            AppendSingleRelation(*component, resource, item.name,
+                                 target_resource, resource_lookup, relation_ids,
+                                 environment.relations());
+          }
+        }
+      }
+    }
+  }
+}
+
+void CollectScheduleRelations(
+    Environment& environment,
+    const std::unordered_map<const BareosResource*, const EnvironmentResource*>&
+        resource_lookup)
+{
+  IdGenerator relation_ids("rel");
+  for (size_t i = 0; i < environment.relations().size(); ++i) {
+    relation_ids.Next();
+  }
+
+  for (const auto& component : environment.components()) {
+    if (component->kind != ComponentKind::kDirector) { continue; }
+
+    for (const auto& resource : component->resources) {
+      if (resource.type != "Schedule" || !resource.resource) { continue; }
+
+      auto* schedule = dynamic_cast<const directordaemon::ScheduleResource*>(
+          resource.resource);
+      if (!schedule) { continue; }
+
+      for (auto* run = schedule->run; run; run = run->next) {
+        AppendSingleRelation(*component, resource, {"Run/Pool"}, run->pool,
+                             resource_lookup, relation_ids,
+                             environment.relations());
+        AppendSingleRelation(*component, resource, {"Run/FullPool"},
+                             run->full_pool, resource_lookup, relation_ids,
+                             environment.relations());
+        AppendSingleRelation(*component, resource, {"Run/VFullPool"},
+                             run->vfull_pool, resource_lookup, relation_ids,
+                             environment.relations());
+        AppendSingleRelation(*component, resource, {"Run/IncrementalPool"},
+                             run->inc_pool, resource_lookup, relation_ids,
+                             environment.relations());
+        AppendSingleRelation(*component, resource, {"Run/DifferentialPool"},
+                             run->diff_pool, resource_lookup, relation_ids,
+                             environment.relations());
+        AppendSingleRelation(*component, resource, {"Run/NextPool"},
+                             run->next_pool, resource_lookup, relation_ids,
+                             environment.relations());
+        AppendSingleRelation(*component, resource, {"Run/Storage"},
+                             run->storage, resource_lookup, relation_ids,
+                             environment.relations());
+        AppendSingleRelation(*component, resource, {"Run/Messages"}, run->msgs,
+                             resource_lookup, relation_ids,
+                             environment.relations());
+      }
+    }
+  }
+}
+
+void CollectDirectorStorageRelations(
+    Environment& environment,
+    const std::unordered_map<const BareosResource*, const EnvironmentResource*>&
+        resource_lookup)
+{
+  IdGenerator relation_ids("rel");
+  for (size_t i = 0; i < environment.relations().size(); ++i) {
+    relation_ids.Next();
+  }
+
+  for (const auto& component : environment.components()) {
+    if (component->kind != ComponentKind::kDirector) { continue; }
+
+    for (const auto& resource : component->resources) {
+      if (resource.type != "Storage" || !resource.resource) { continue; }
+
+      auto* storage = dynamic_cast<const directordaemon::StorageResource*>(
+          resource.resource);
+      if (!storage) { continue; }
+
+      for (const auto& device : storage->devices) {
+        const auto* target = FindComponentResource(
+            environment, ComponentKind::kStorageDaemon, "Device", device.name);
+        if (!target) {
+          target = FindComponentResource(environment,
+                                         ComponentKind::kStorageDaemon,
+                                         "Autochanger", device.name);
+        }
+        if (!target) { continue; }
+
+        AppendSingleRelation(*component, resource, {"Device"}, target->resource,
+                             resource_lookup, relation_ids,
+                             environment.relations());
+      }
+    }
+  }
+}
+
 }  // namespace
 
 LoadedComponent::~LoadedComponent() = default;
@@ -157,6 +339,8 @@ std::unique_ptr<Environment> LoadEnvironment(const char* config_path)
   environment->id_ = environment_ids.Next();
   environment->config_path_
       = config_path ? config_path : ConfigurationParser::GetDefaultConfigDir();
+  std::unordered_map<const BareosResource*, const EnvironmentResource*>
+      resource_lookup;
 
   for (const auto& definition : kComponents) {
     definition.prepare();
@@ -196,8 +380,15 @@ std::unique_ptr<Environment> LoadEnvironment(const char* config_path)
           });
       if (it != component->resources.end()) { component->name = it->name; }
     }
+    for (const auto& resource : component->resources) {
+      resource_lookup.emplace(resource.resource, &resource);
+    }
     environment->components_.push_back(std::move(component));
   }
+
+  CollectEnvironmentRelations(*environment, resource_lookup);
+  CollectScheduleRelations(*environment, resource_lookup);
+  CollectDirectorStorageRelations(*environment, resource_lookup);
 
   return environment;
 }

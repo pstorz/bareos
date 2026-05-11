@@ -70,6 +70,35 @@ TEST(Bconfig, CollectsStableResourceIdsAcrossEnvironment)
   EXPECT_GT(resource_count, 0U);
 }
 
+TEST(Bconfig, CollectsResolvedEnvironmentRelations)
+{
+  auto environment
+      = bconfig::LoadEnvironment("configs/bareos-configparser-tests");
+
+  ASSERT_NE(nullptr, environment);
+  EXPECT_FALSE(environment->relations().empty());
+
+  const auto relation = std::find_if(
+      environment->relations().begin(), environment->relations().end(),
+      [](const auto& entry) {
+        return entry.component_id == "director" && entry.source_type == "Job"
+               && entry.source_name == "backup-bareos-fd"
+               && entry.directive == "Client" && entry.target_type == "Client"
+               && entry.target_name == "bareos-fd";
+      });
+  EXPECT_NE(relation, environment->relations().end());
+
+  const auto storage_device_relation = std::find_if(
+      environment->relations().begin(), environment->relations().end(),
+      [](const auto& entry) {
+        return entry.component_id == "director"
+               && entry.source_type == "Storage" && entry.source_name == "File"
+               && entry.directive == "Device" && entry.target_type == "Device"
+               && entry.target_name == "FileStorage";
+      });
+  EXPECT_NE(storage_device_relation, environment->relations().end());
+}
+
 TEST(Bconfig, InspectionModeSkipsRuntimeHostnameResolution)
 {
   namespace fs = std::filesystem;
@@ -106,6 +135,126 @@ TEST(Bconfig, InspectionModeSkipsRuntimeHostnameResolution)
   EXPECT_TRUE(environment->issues().empty());
   EXPECT_NE(nullptr, bconfig::FindResource(*environment, "director", "Director",
                                            "bareos-dir"));
+
+  fs::remove_all(temp_dir);
+}
+
+TEST(Bconfig, CollectsSchedulerOverrideRelations)
+{
+  namespace fs = std::filesystem;
+
+  auto fixture = fs::path("configs/bareos-configparser-tests");
+  auto temp_root
+      = fs::temp_directory_path() / fs::path("bconfig-schedule-XXXXXX");
+  std::string temp_template = temp_root.string();
+  ASSERT_NE(nullptr, mkdtemp(temp_template.data()));
+  fs::path temp_dir(temp_template);
+
+  fs::copy(fixture, temp_dir, fs::copy_options::recursive);
+
+  auto schedule_conf
+      = temp_dir / "bareos-dir.d" / "schedule" / "WeeklyCycle.conf";
+  std::ofstream out(schedule_conf);
+  ASSERT_TRUE(out.is_open());
+  out << "Schedule {\n"
+         "  Name = \"WeeklyCycle\"\n"
+         "  Run = Full Pool=Full Storage=File Messages=Standard 1st sat at "
+         "21:00\n"
+         "}\n";
+  out.close();
+
+  auto environment = bconfig::LoadEnvironment(temp_dir.c_str());
+
+  ASSERT_NE(nullptr, environment);
+  const auto pool_relation = std::find_if(
+      environment->relations().begin(), environment->relations().end(),
+      [](const auto& entry) {
+        return entry.source_type == "Schedule"
+               && entry.source_name == "WeeklyCycle"
+               && entry.directive == "Run/Pool" && entry.target_type == "Pool"
+               && entry.target_name == "Full";
+      });
+  EXPECT_NE(pool_relation, environment->relations().end());
+
+  const auto storage_relation = std::find_if(
+      environment->relations().begin(), environment->relations().end(),
+      [](const auto& entry) {
+        return entry.source_type == "Schedule"
+               && entry.source_name == "WeeklyCycle"
+               && entry.directive == "Run/Storage"
+               && entry.target_type == "Storage" && entry.target_name == "File";
+      });
+  EXPECT_NE(storage_relation, environment->relations().end());
+
+  const auto messages_relation
+      = std::find_if(environment->relations().begin(),
+                     environment->relations().end(), [](const auto& entry) {
+                       return entry.source_type == "Schedule"
+                              && entry.source_name == "WeeklyCycle"
+                              && entry.directive == "Run/Messages"
+                              && entry.target_type == "Messages"
+                              && entry.target_name == "Standard";
+                     });
+  EXPECT_NE(messages_relation, environment->relations().end());
+
+  fs::remove_all(temp_dir);
+}
+
+TEST(Bconfig, CollectsDirectorStorageAutochangerRelations)
+{
+  namespace fs = std::filesystem;
+
+  auto fixture = fs::path("configs/bareos-configparser-tests");
+  auto temp_root
+      = fs::temp_directory_path() / fs::path("bconfig-autochanger-XXXXXX");
+  std::string temp_template = temp_root.string();
+  ASSERT_NE(nullptr, mkdtemp(temp_template.data()));
+  fs::path temp_dir(temp_template);
+
+  fs::copy(fixture, temp_dir, fs::copy_options::recursive);
+  fs::create_directories(temp_dir / "bareos-sd.d" / "autochanger");
+
+  auto storage_conf
+      = temp_dir / "bareos-dir.d" / "storage" / "TapeLibrary.conf";
+  std::ofstream storage_out(storage_conf);
+  ASSERT_TRUE(storage_out.is_open());
+  storage_out << "Storage {\n"
+                 "  Name = TapeLibrary\n"
+                 "  Address = localhost\n"
+                 "  Password = \"sd_password\"\n"
+                 "  Device = TapeLibrary\n"
+                 "  AutoChanger = yes\n"
+                 "  Media Type = File\n"
+                 "  Port = 42003\n"
+                 "}\n";
+  storage_out.close();
+
+  auto autochanger_conf
+      = temp_dir / "bareos-sd.d" / "autochanger" / "TapeLibrary.conf";
+  std::ofstream autochanger_out(autochanger_conf);
+  ASSERT_TRUE(autochanger_out.is_open());
+  autochanger_out << "Autochanger {\n"
+                     "  Name = TapeLibrary\n"
+                     "  Device = FileStorage\n"
+                     "  Changer Device = /dev/null\n"
+                     "  Changer Command = \"/bin/true\"\n"
+                     "}\n";
+  autochanger_out.close();
+
+  auto environment = bconfig::LoadEnvironment(temp_dir.c_str());
+
+  ASSERT_NE(nullptr, environment);
+  const auto relation
+      = std::find_if(environment->relations().begin(),
+                     environment->relations().end(), [](const auto& entry) {
+                       return entry.component_id == "director"
+                              && entry.source_type == "Storage"
+                              && entry.source_name == "TapeLibrary"
+                              && entry.directive == "Device"
+                              && entry.target_type == "Autochanger"
+                              && entry.target_name == "TapeLibrary";
+                     });
+  EXPECT_NE(relation, environment->relations().end());
 
   fs::remove_all(temp_dir);
 }

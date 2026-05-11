@@ -55,6 +55,19 @@ struct EnvironmentIssue {
   std::string message;
 };
 
+struct EnvironmentRelation {
+  std::string id;
+  std::string component_id;
+  std::string source_resource_id;
+  std::string source_type;
+  std::string source_name;
+  std::string directive;
+  std::string target_resource_id;
+  std::string target_component_id;
+  std::string target_type;
+  std::string target_name;
+};
+
 struct LoadedComponent {
   std::string id;
   ComponentKind kind{};
@@ -73,13 +86,21 @@ class Environment {
 
   const std::string& id() const { return id_; }
   const std::string& config_path() const { return config_path_; }
-  std::vector<std::unique_ptr<LoadedComponent>>& components() { return components_; }
+  std::vector<std::unique_ptr<LoadedComponent>>& components()
+  {
+    return components_;
+  }
   const std::vector<std::unique_ptr<LoadedComponent>>& components() const
   {
     return components_;
   }
   std::vector<EnvironmentIssue>& issues() { return issues_; }
   const std::vector<EnvironmentIssue>& issues() const { return issues_; }
+  std::vector<EnvironmentRelation>& relations() { return relations_; }
+  const std::vector<EnvironmentRelation>& relations() const
+  {
+    return relations_;
+  }
 
  private:
   friend std::unique_ptr<Environment> LoadEnvironment(const char* config_path);
@@ -88,6 +109,7 @@ class Environment {
   std::string config_path_;
   std::vector<std::unique_ptr<LoadedComponent>> components_;
   std::vector<EnvironmentIssue> issues_;
+  std::vector<EnvironmentRelation> relations_;
 };
 
 std::unique_ptr<Environment> LoadEnvironment(const char* config_path);

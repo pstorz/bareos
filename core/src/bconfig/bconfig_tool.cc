@@ -40,6 +40,7 @@ int RunInspectSummary(const bconfig::Environment& environment)
   }
 
   std::cout << "Resources: " << resource_count << "\n";
+  std::cout << "Relations: " << environment.relations().size() << "\n";
   std::cout << "Issues: " << environment.issues().size() << "\n";
   std::cout << "Components:\n";
 
@@ -50,9 +51,7 @@ int RunInspectSummary(const bconfig::Environment& environment)
     }
 
     std::cout << "  " << component->component_id;
-    if (!component->name.empty()) {
-      std::cout << " name=" << component->name;
-    }
+    if (!component->name.empty()) { std::cout << " name=" << component->name; }
     std::cout << ": " << component->resources.size() << " resources\n";
     for (const auto& [type, count] : counts) {
       std::cout << "    " << type << ": " << count << "\n";
@@ -64,6 +63,21 @@ int RunInspectSummary(const bconfig::Environment& environment)
     for (const auto& issue : environment.issues()) {
       std::cout << "  [" << issue.component_id << "] " << issue.message << "\n";
     }
+  }
+
+  return 0;
+}
+
+int RunInspectRelations(const bconfig::Environment& environment)
+{
+  std::cout << "Id | Component | Source Type | Source Name | Directive | "
+               "Target Type | "
+               "Target Name\n";
+  for (const auto& relation : environment.relations()) {
+    std::cout << relation.id << " | " << relation.component_id << " | "
+              << relation.source_type << " | " << relation.source_name << " | "
+              << relation.directive << " | " << relation.target_type << " | "
+              << relation.target_name << "\n";
   }
 
   return 0;
@@ -99,12 +113,17 @@ int main(int argc, char** argv)
                         "Config file or config root for the whole environment");
   };
 
-  auto* summary = inspect->add_subcommand("summary", "Show environment summary");
+  auto* summary
+      = inspect->add_subcommand("summary", "Show environment summary");
   add_common_options(summary);
 
   auto* resources
       = inspect->add_subcommand("resources", "List environment resources");
   add_common_options(resources);
+
+  auto* relations = inspect->add_subcommand(
+      "relations", "List resolved environment relations");
+  add_common_options(relations);
 
   ParseBareosApp(app, argc, argv);
 
@@ -113,6 +132,7 @@ int main(int argc, char** argv)
 
   if (*summary) { return RunInspectSummary(*environment); }
   if (*resources) { return RunInspectResources(*environment); }
+  if (*relations) { return RunInspectRelations(*environment); }
 
   return 1;
 }
