@@ -19,6 +19,7 @@
 #   02110-1301, USA.
 
 include(BareosWindowsResource)
+find_package(Readline REQUIRED)
 
 add_library(bareosbconfig STATIC bconfig.cc ../qt-tray-monitor/tray_conf.cc)
 add_library(Bareos::BConfig ALIAS bareosbconfig)
@@ -29,6 +30,8 @@ target_link_libraries(
 
 add_executable(bconfig bconfig_tool.cc)
 bareos_windows_resource(bconfig bconfigres.rc.in)
-target_link_libraries(bconfig PRIVATE Bareos::BConfig CLI11::CLI11)
+target_link_libraries(
+  bconfig PRIVATE Bareos::BConfig Readline::Readline CLI11::CLI11
+)
 
 install(TARGETS bconfig DESTINATION "${sbindir}")

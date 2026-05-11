@@ -605,3 +605,24 @@ TEST(Bconfig, ShellNavigatesFilesystemView)
                         "bareos-dir"),
             std::string::npos);
 }
+
+TEST(Bconfig, ShellCompletesCdPaths)
+{
+  auto environment
+      = bconfig::LoadEnvironment("configs/bareos-configparser-tests");
+  ASSERT_NE(nullptr, environment);
+
+  const auto root_matches
+      = bconfig::CompleteShellPath(*environment, {}, "di", true);
+  ASSERT_EQ(root_matches.size(), 1U);
+  EXPECT_EQ(root_matches[0], "director/");
+
+  const auto component_matches = bconfig::CompleteShellPath(
+      *environment, std::vector<std::string>{"director"}, "St", true);
+  ASSERT_EQ(component_matches.size(), 1U);
+  EXPECT_EQ(component_matches[0], "Storage/");
+
+  const auto filtered_files = bconfig::CompleteShellPath(
+      *environment, std::vector<std::string>{"director"}, "su", true);
+  EXPECT_TRUE(filtered_files.empty());
+}

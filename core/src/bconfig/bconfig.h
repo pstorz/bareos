@@ -119,6 +119,11 @@ const EnvironmentResource* FindResource(const Environment& environment,
                                         std::string_view component_id,
                                         std::string_view type_name,
                                         std::string_view resource_name);
+std::vector<std::string> CompleteShellPath(
+    const Environment& environment,
+    const std::vector<std::string>& current,
+    std::string_view raw_path,
+    bool directories_only);
 std::string FormatComponentKind(ComponentKind component);
 
 }  // namespace bconfig

@@ -22,9 +22,9 @@
 #include "bconfig/bconfig.h"
 
 #include <filesystem>
-#include <unordered_map>
-
 #include <memory>
+#include <set>
+#include <unordered_map>
 
 #include "console/console_conf.h"
 #include "console/console_globals.h"
@@ -227,6 +227,110 @@ const EnvironmentResource* FindComponentResource(const Environment& environment,
   }
 
   return nullptr;
+}
+
+const LoadedComponent* FindShellComponent(const Environment& environment,
+                                          std::string_view component_id)
+{
+  for (const auto& component : environment.components()) {
+    if (component->component_id == component_id) { return component.get(); }
+  }
+
+  return nullptr;
+}
+
+const EnvironmentResource* FindShellResource(const LoadedComponent& component,
+                                             std::string_view type_name,
+                                             std::string_view resource_name)
+{
+  for (const auto& resource : component.resources) {
+    if (resource.type == type_name && resource.name == resource_name) {
+      return &resource;
+    }
+  }
+
+  return nullptr;
+}
+
+std::vector<std::string> NormalizeShellPath(
+    const std::vector<std::string>& current,
+    std::string_view raw_path)
+{
+  std::vector<std::string> segments;
+  if (raw_path.empty() || raw_path.front() != '/') { segments = current; }
+
+  std::string current_segment;
+  auto flush_segment = [&]() {
+    if (current_segment.empty() || current_segment == ".") {
+      current_segment.clear();
+      return;
+    }
+    if (current_segment == "..") {
+      if (!segments.empty()) { segments.pop_back(); }
+      current_segment.clear();
+      return;
+    }
+    segments.push_back(current_segment);
+    current_segment.clear();
+  };
+
+  for (char ch : raw_path) {
+    if (ch == '/') {
+      flush_segment();
+      continue;
+    }
+    current_segment.push_back(ch);
+  }
+  flush_segment();
+
+  return segments;
+}
+
+bool CollectShellDirectoryEntries(const Environment& environment,
+                                  const std::vector<std::string>& segments,
+                                  bool directories_only,
+                                  std::set<std::string>& entries)
+{
+  if (segments.empty()) {
+    for (const auto& component : environment.components()) {
+      entries.insert(component->component_id + "/");
+    }
+    return true;
+  }
+  if (segments.size() > 3) { return false; }
+
+  const auto* component = FindShellComponent(environment, segments[0]);
+  if (!component) { return false; }
+  if (segments.size() == 1) {
+    if (!directories_only) { entries.insert("summary"); }
+    for (const auto& resource : component->resources) {
+      entries.insert(resource.type + "/");
+    }
+    return true;
+  }
+
+  if (segments[1] == "summary") { return false; }
+
+  const std::string& type_name = segments[1];
+  bool has_type = std::any_of(
+      component->resources.begin(), component->resources.end(),
+      [&](const auto& resource) { return resource.type == type_name; });
+  if (!has_type) { return false; }
+  if (segments.size() == 2) {
+    for (const auto& resource : component->resources) {
+      if (resource.type == type_name) { entries.insert(resource.name + "/"); }
+    }
+    return true;
+  }
+
+  const auto* resource = FindShellResource(*component, type_name, segments[2]);
+  if (!resource) { return false; }
+  (void)resource;
+  if (!directories_only) {
+    entries.insert("config");
+    entries.insert("relations");
+  }
+  return true;
 }
 
 bool PasswordsMatch(const s_password& left, const s_password& right)
@@ -680,6 +784,41 @@ const EnvironmentResource* FindResource(const Environment& environment,
   }
 
   return nullptr;
+}
+
+std::vector<std::string> CompleteShellPath(
+    const Environment& environment,
+    const std::vector<std::string>& current,
+    std::string_view raw_path,
+    bool directories_only)
+{
+  const std::string raw(raw_path);
+  std::string base_prefix;
+  std::string fragment = raw;
+  std::vector<std::string> parent_segments = current;
+
+  const auto slash = raw.find_last_of('/');
+  if (slash != std::string::npos) {
+    base_prefix = raw.substr(0, slash + 1);
+    fragment = raw.substr(slash + 1);
+    const std::string parent_path = slash == 0 ? "/" : raw.substr(0, slash);
+    parent_segments = NormalizeShellPath(current, parent_path);
+  } else if (!raw.empty() && raw.front() == '/') {
+    parent_segments = NormalizeShellPath(current, "/");
+  }
+
+  std::set<std::string> entries;
+  if (!CollectShellDirectoryEntries(environment, parent_segments,
+                                    directories_only, entries)) {
+    return {};
+  }
+
+  std::vector<std::string> matches;
+  for (const auto& entry : entries) {
+    if (entry.rfind(fragment, 0) != 0) { continue; }
+    matches.push_back(base_prefix + entry);
+  }
+  return matches;
 }
 
 std::string FormatComponentKind(ComponentKind component)

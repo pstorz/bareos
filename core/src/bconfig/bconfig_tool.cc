@@ -24,6 +24,8 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <set>
@@ -40,6 +42,9 @@
 #  define BCONFIG_ISATTY isatty
 #  define BCONFIG_FILENO fileno
 #endif
+
+#include <readline/history.h>
+#include <readline/readline.h>
 
 #include "lib/cli.h"
 #include "lib/bareos_resource.h"
@@ -68,6 +73,8 @@ struct ShellEntry {
   std::string error;
 };
 
+std::vector<std::string> ParseCommandWords(const std::string& line);
+
 ShellEntry MakeShellEntry(ShellEntryKind kind,
                           const bconfig::LoadedComponent* component = nullptr,
                           const bconfig::EnvironmentResource* resource
@@ -77,6 +84,45 @@ ShellEntry MakeShellEntry(ShellEntryKind kind,
 {
   return ShellEntry{kind, component, resource, std::move(type_name),
                     std::move(error)};
+}
+
+const bconfig::Environment* shell_completion_environment = nullptr;
+const std::vector<std::string>* shell_completion_path = nullptr;
+std::vector<std::string> shell_completion_matches;
+
+char* DuplicateReadlineString(const std::string& value)
+{
+  auto* copy = static_cast<char*>(std::malloc(value.size() + 1));
+  if (!copy) { return nullptr; }
+  std::memcpy(copy, value.c_str(), value.size() + 1);
+  return copy;
+}
+
+char* ShellCompletionGenerator(const char*, int state)
+{
+  static size_t index = 0;
+  if (state == 0) { index = 0; }
+  if (index >= shell_completion_matches.size()) { return nullptr; }
+  return DuplicateReadlineString(shell_completion_matches[index++]);
+}
+
+char** ShellReadlineCompletion(const char* text, int start, int)
+{
+  if (!shell_completion_environment || !shell_completion_path) {
+    return nullptr;
+  }
+
+  const std::string line = rl_line_buffer ? rl_line_buffer : "";
+  const auto words = ParseCommandWords(line.substr(0, start));
+  if (words.size() != 1 || words[0] != "cd") { return nullptr; }
+
+  shell_completion_matches = bconfig::CompleteShellPath(
+      *shell_completion_environment, *shell_completion_path, text, true);
+  if (shell_completion_matches.empty()) { return nullptr; }
+
+  rl_completion_append_character = '\0';
+  rl_completion_suppress_append = 1;
+  return rl_completion_matches(text, ShellCompletionGenerator);
 }
 
 int RunInspectSummary(const bconfig::Environment& environment)
@@ -395,6 +441,26 @@ std::string RenderResourceRelations(
   return output.str();
 }
 
+bool ReadShellLine(const std::string& prompt,
+                   bool interactive,
+                   std::string& line)
+{
+  if (!interactive) { return static_cast<bool>(std::getline(std::cin, line)); }
+
+  char* raw_line = readline(prompt.c_str());
+  if (!raw_line) { return false; }
+  line = raw_line;
+  if (!line.empty()) {
+    auto* last_history_item
+        = history_length > 0 ? history_get(history_length) : nullptr;
+    if (!last_history_item || line != last_history_item->line) {
+      add_history(raw_line);
+    }
+  }
+  std::free(raw_line);
+  return true;
+}
+
 int RunShell(const bconfig::Environment& environment)
 {
   std::vector<std::string> current_path;
@@ -403,15 +469,17 @@ int RunShell(const bconfig::Environment& environment)
   if (interactive) {
     std::cout << "Read-only bconfig shell. Commands: pwd, ls, cd, cat, help, "
                  "exit\n";
+    using_history();
+    shell_completion_environment = &environment;
+    shell_completion_path = &current_path;
+    rl_attempted_completion_function = ShellReadlineCompletion;
+    rl_filename_completion_desired = 0;
   }
 
   std::string line;
   while (true) {
-    if (interactive) {
-      std::cout << "bconfig:" << FormatPath(current_path) << "$ " << std::flush;
-    }
-
-    if (!std::getline(std::cin, line)) { return 0; }
+    const std::string prompt = "bconfig:" + FormatPath(current_path) + "$ ";
+    if (!ReadShellLine(prompt, interactive, line)) { return 0; }
 
     const auto words = ParseCommandWords(line);
     if (words.empty()) { continue; }
