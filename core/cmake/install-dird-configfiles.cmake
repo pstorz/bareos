@@ -1,6 +1,6 @@
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2017-2019 Bareos GmbH & Co. KG
+#   Copyright (C) 2017-2026 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -20,4 +20,9 @@
 include(${CMAKE_CURRENT_LIST_DIR}/BareosInstallConfigFiles.cmake)
 bareosinstallconfigfiles(
   "${configtemplatedir}" "bareos-dir.d" "${PLUGINS}" "${BACKENDS}" "${SRC_DIR}"
+)
+
+bareos_install_single_config_file(
+  "${SRC_DIR}/src/defaultconfigs/bareos-dir/subscription.json.example"
+  "${configtemplatedir}" ""
 )

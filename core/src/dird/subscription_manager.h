@@ -121,6 +121,17 @@ class SubscriptionContractManager {
 void LoadSubscriptionContract();
 void RefreshSubscriptionContractIfChanged();
 SubscriptionContractSnapshot GetSubscriptionContractSnapshot();
+bool SubscriptionContractIsAuthoritative(
+    const SubscriptionContractSnapshot& snapshot);
+uint64_t GetEffectiveSubscriptionUnits(
+    const SubscriptionContractSnapshot& snapshot,
+    uint64_t legacy_subscriptions);
+const char* GetSubscriptionUnitSource(
+    const SubscriptionContractSnapshot& snapshot);
+const char* SubscriptionContractLoadStateToString(
+    SubscriptionContractLoadState state);
+const char* SubscriptionContractValidityToString(
+    subscription::ContractValidity validity);
 
 }  // namespace directordaemon
 

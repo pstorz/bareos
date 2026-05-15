@@ -405,4 +405,66 @@ SubscriptionContractSnapshot GetSubscriptionContractSnapshot()
   return g_subscription_contract_manager.GetSnapshot();
 }
 
+bool SubscriptionContractIsAuthoritative(
+    const SubscriptionContractSnapshot& snapshot)
+{
+  return snapshot.load_state == SubscriptionContractLoadState::kValid
+         && snapshot.contract.has_value();
+}
+
+uint64_t GetEffectiveSubscriptionUnits(
+    const SubscriptionContractSnapshot& snapshot,
+    uint64_t legacy_subscriptions)
+{
+  if (SubscriptionContractIsAuthoritative(snapshot)) {
+    return snapshot.contract->backup_units;
+  }
+
+  return legacy_subscriptions;
+}
+
+const char* GetSubscriptionUnitSource(
+    const SubscriptionContractSnapshot& snapshot)
+{
+  return SubscriptionContractIsAuthoritative(snapshot) ? "contract" : "legacy";
+}
+
+const char* SubscriptionContractLoadStateToString(
+    SubscriptionContractLoadState state)
+{
+  switch (state) {
+    case SubscriptionContractLoadState::kNotConfigured:
+      return "not-configured";
+    case SubscriptionContractLoadState::kFileMissing:
+      return "file-missing";
+    case SubscriptionContractLoadState::kReadError:
+      return "read-error";
+    case SubscriptionContractLoadState::kParseError:
+      return "parse-error";
+    case SubscriptionContractLoadState::kSignatureInvalid:
+      return "signature-invalid";
+    case SubscriptionContractLoadState::kKeyUnknown:
+      return "key-unknown";
+    case SubscriptionContractLoadState::kValid:
+      return "valid";
+  }
+
+  return "unknown";
+}
+
+const char* SubscriptionContractValidityToString(
+    subscription::ContractValidity validity)
+{
+  switch (validity) {
+    case subscription::ContractValidity::kValid:
+      return "valid";
+    case subscription::ContractValidity::kExpiringSoon:
+      return "expiring-soon";
+    case subscription::ContractValidity::kExpired:
+      return "expired";
+  }
+
+  return "unknown";
+}
+
 }  // namespace directordaemon

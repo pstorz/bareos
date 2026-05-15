@@ -38,6 +38,7 @@
 #include "dird/sd_cmds.h"
 #include "dird/scheduler.h"
 #include "dird/storage.h"
+#include "dird/subscription_manager.h"
 
 #include "cats/sql_pooling.h"
 #include "dird/ua_db.h"
@@ -473,8 +474,12 @@ static bool show_scheduled_preview(UaContext*,
   return true;
 }
 
-std::string get_subscription_status_checksum_source_text(UaContext* ua,
-                                                         const char* timestamp)
+std::string get_subscription_status_checksum_source_text(
+    UaContext* ua,
+    const char* timestamp,
+    uint32_t summary_units,
+    uint64_t effective_units,
+    const SubscriptionContractSnapshot& snapshot)
 {
   const std::string salt("SECRETSALT");
   PoolMem subscriptions(PM_MESSAGE);
@@ -485,12 +490,121 @@ std::string get_subscription_status_checksum_source_text(UaContext* ua,
       query,
       ua->db->get_predefined_query(
           BareosDb::SQL_QUERY::subscription_with_clause_0),
-      me->subscriptions);
+      summary_units);
   ua->db->ListSqlQuery(ua->jcr, query.c_str(), &output_text, VERT_LIST, false);
-  std::string checksum_source
-      = salt + "\n" + timestamp + "\n" + subscriptions.c_str();
+
+  PoolMem contract_state(PM_MESSAGE);
+  Mmsg(contract_state,
+       "subscription-source=%s\n"
+       "legacy-configured-subscriptions=%u\n"
+       "effective-configured-subscriptions=%llu\n"
+       "subscription-contract-state=%s\n"
+       "subscription-contract-explicitly-configured=%s\n"
+       "subscription-contract-file=%s\n",
+       GetSubscriptionUnitSource(snapshot), me->subscriptions,
+       static_cast<unsigned long long>(effective_units),
+       SubscriptionContractLoadStateToString(snapshot.load_state),
+       snapshot.explicitly_configured ? "true" : "false",
+       snapshot.file_path.c_str());
+  if (!snapshot.detail.empty()) {
+    Mmsg(query, "subscription-contract-detail=%s\n", snapshot.detail.c_str());
+    PmStrcat(contract_state, query.c_str());
+  }
+  if (snapshot.contract) {
+    Mmsg(query, "subscription-contract-customer-name=%s\n",
+         snapshot.contract->customer_name.c_str());
+    PmStrcat(contract_state, query.c_str());
+    Mmsg(query, "subscription-contract-backup-units=%llu\n",
+         static_cast<unsigned long long>(snapshot.contract->backup_units));
+    PmStrcat(contract_state, query.c_str());
+    Mmsg(query, "subscription-contract-key-id=%s\n",
+         snapshot.contract->key_id.c_str());
+    PmStrcat(contract_state, query.c_str());
+    auto expiration_date
+        = subscription::FormatSubscriptionContractExpirationDate(
+            snapshot.contract->expiration_date);
+    Mmsg(query, "subscription-contract-expiration-date=%s\n",
+         expiration_date.c_str());
+    PmStrcat(contract_state, query.c_str());
+    if (snapshot.validity) {
+      Mmsg(query, "subscription-contract-validity=%s\n",
+           SubscriptionContractValidityToString(*snapshot.validity));
+      PmStrcat(contract_state, query.c_str());
+    }
+    if (snapshot.contract->support) {
+      Mmsg(query, "subscription-contract-support-level=%s\n",
+           snapshot.contract->support->level.c_str());
+      PmStrcat(contract_state, query.c_str());
+      Mmsg(query, "subscription-contract-rear-support=%s\n",
+           snapshot.contract->support->rear_support ? "true" : "false");
+      PmStrcat(contract_state, query.c_str());
+    }
+  }
+  std::string checksum_source = salt + "\n" + timestamp + "\n"
+                                + subscriptions.c_str() + "\n"
+                                + contract_state.c_str();
   Dmsg1(500, "status_subscription summary=%s\n", checksum_source.c_str());
   return checksum_source;
+}
+
+static void OutputSubscriptionContractStatus(
+    UaContext* ua,
+    const SubscriptionContractSnapshot& snapshot,
+    uint64_t effective_units)
+{
+  ua->send->Decoration(T_("\nSubscription contract status:\n"));
+  ua->send->ObjectStart("subscription-contract");
+  ua->send->ObjectKeyValue("subscription-source", "Subscription source: ",
+                           GetSubscriptionUnitSource(snapshot), "%s\n");
+  ua->send->ObjectKeyValue("legacy-configured-subscriptions",
+                           "Legacy configured subscriptions: ",
+                           static_cast<uint64_t>(me->subscriptions), "%llu\n");
+  ua->send->ObjectKeyValue(
+      "effective-configured-subscriptions",
+      "Effective configured subscriptions: ", effective_units, "%llu\n");
+  ua->send->ObjectKeyValue(
+      "state", "Subscription contract state: ",
+      SubscriptionContractLoadStateToString(snapshot.load_state), "%s\n");
+  ua->send->ObjectKeyValueBool("explicitly-configured",
+                               "Subscription contract explicitly configured: ",
+                               snapshot.explicitly_configured, "%s\n");
+  ua->send->ObjectKeyValue("file", "Subscription contract file: ",
+                           snapshot.file_path.c_str(), "%s\n");
+  if (!snapshot.detail.empty()) {
+    ua->send->ObjectKeyValue("detail", "Subscription contract detail: ",
+                             snapshot.detail.c_str(), "%s\n");
+  }
+
+  if (snapshot.contract) {
+    ua->send->ObjectKeyValue("customer-name",
+                             "Subscription contract customer name: ",
+                             snapshot.contract->customer_name.c_str(), "%s\n");
+    ua->send->ObjectKeyValue("backup-units",
+                             "Subscription contract backup units: ",
+                             snapshot.contract->backup_units, "%llu\n");
+    ua->send->ObjectKeyValue("key-id", "Subscription contract key id: ",
+                             snapshot.contract->key_id.c_str(), "%s\n");
+    auto expiration_date
+        = subscription::FormatSubscriptionContractExpirationDate(
+            snapshot.contract->expiration_date);
+    ua->send->ObjectKeyValue("expiration-date",
+                             "Subscription contract expiration date: ",
+                             expiration_date.c_str(), "%s\n");
+    if (snapshot.validity) {
+      ua->send->ObjectKeyValue(
+          "validity", "Subscription contract validity: ",
+          SubscriptionContractValidityToString(*snapshot.validity), "%s\n");
+    }
+    if (snapshot.contract->support) {
+      ua->send->ObjectKeyValue(
+          "support-level", "Subscription contract support level: ",
+          snapshot.contract->support->level.c_str(), "%s\n");
+      ua->send->ObjectKeyValueBool(
+          "rear-support", "Subscription contract ReaR support: ",
+          snapshot.contract->support->rear_support, "%s\n");
+    }
+  }
+  ua->send->ObjectEnd("subscription-contract");
 }
 
 /**
@@ -513,6 +627,19 @@ static bool DoSubscriptionStatus(UaContext* ua)
     ua->ErrorMsg("Failed to open db.\n");
     return false;
   }
+
+  RefreshSubscriptionContractIfChanged();
+  auto subscription_snapshot = GetSubscriptionContractSnapshot();
+  uint64_t effective_units
+      = GetEffectiveSubscriptionUnits(subscription_snapshot, me->subscriptions);
+  if (effective_units > std::numeric_limits<uint32_t>::max()) {
+    ua->ErrorMsg(
+        "Effective configured subscriptions value %llu exceeds the "
+        "supported status report range.\n",
+        static_cast<unsigned long long>(effective_units));
+    return false;
+  }
+  uint32_t summary_units = static_cast<uint32_t>(effective_units);
 
   const bool kw_detail = (FindArg(ua, NT_("detail")) > 0);
   const bool kw_unknown = (FindArg(ua, NT_("unknown")) > 0);
@@ -612,11 +739,12 @@ static bool DoSubscriptionStatus(UaContext* ua)
       query,
       ua->db->get_predefined_query(
           BareosDb::SQL_QUERY::subscription_with_clause_0),
-      me->subscriptions);
+      summary_units);
   ua->db->ListSqlQuery(ua->jcr, query.c_str(), ua->send, VERT_LIST,
                        "unit-summary", true, BareosDb::CollapseMode::Collapse);
-  std::string checksum_source
-      = get_subscription_status_checksum_source_text(ua, now);
+  OutputSubscriptionContractStatus(ua, subscription_snapshot, effective_units);
+  std::string checksum_source = get_subscription_status_checksum_source_text(
+      ua, now, summary_units, effective_units, subscription_snapshot);
   auto checksum = compute_hash(checksum_source);
   if (checksum) {
     ua->send->ObjectKeyValue("checksum", "Checksum: ", checksum->c_str(),

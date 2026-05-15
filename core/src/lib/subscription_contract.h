@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
+#include <openssl/types.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -72,9 +73,20 @@ struct SubscriptionContract {
 };
 
 result<SubscriptionContract> ParseSubscriptionContract(std::string_view input);
+result<SubscriptionContract> ParseSubscriptionContractForSigning(
+    std::string_view input);
 std::string CanonicalizeSubscriptionContract(
     const SubscriptionContract& contract);
 std::string FormatSubscriptionContractExpirationDate(const CivilDate& date);
+result<std::string> SerializeSubscriptionContract(
+    const SubscriptionContract& contract,
+    bool compact = false);
+result<std::vector<std::uint8_t>> SignSubscriptionContract(
+    const SubscriptionContract& contract,
+    EVP_PKEY* private_key);
+result<std::vector<std::uint8_t>> SignSubscriptionContract(
+    const SubscriptionContract& contract,
+    std::string_view private_key_pem);
 result<bool> VerifySubscriptionContractSignature(
     const SubscriptionContract& contract,
     std::string_view public_key_pem);

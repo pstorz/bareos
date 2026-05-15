@@ -230,6 +230,27 @@ result<std::vector<std::uint8_t>> DecodeBase64Signature(std::string_view input)
   return result<std::vector<std::uint8_t>>{std::move(decoded)};
 }
 
+result<std::string> EncodeBase64Signature(
+    const std::vector<std::uint8_t>& signature)
+{
+  if (signature.size() != kEd25519SignatureSize) {
+    return ErrorResult<std::string>("signature must contain exactly %d bytes",
+                                    static_cast<int>(kEd25519SignatureSize));
+  }
+
+  std::string encoded(BASE64_SIZE(signature.size()), '\0');
+  int written = BinToBase64(
+      encoded.data(), static_cast<int>(encoded.size()),
+      reinterpret_cast<char*>(const_cast<std::uint8_t*>(signature.data())),
+      static_cast<int>(signature.size()), true);
+  if (written <= 0) {
+    return ErrorResult<std::string>("failed to base64 encode signature");
+  }
+
+  encoded.resize(static_cast<std::size_t>(written));
+  return result<std::string>{std::move(encoded)};
+}
+
 result<std::string_view> GetRequiredJsonString(json_t* root, const char* key)
 {
   json_t* value = json_object_get(root, key);
@@ -323,9 +344,16 @@ result<std::optional<SubscriptionContract::Support>> ParseSupport(json_t* root)
   return result<std::optional<SubscriptionContract::Support>>{
       std::optional<SubscriptionContract::Support>{std::move(parsed)}};
 }
-}  // namespace
 
-result<SubscriptionContract> ParseSubscriptionContract(std::string_view input)
+enum class SignatureRequirement
+{
+  kRequired,
+  kOptional
+};
+
+result<SubscriptionContract> ParseSubscriptionContractImpl(
+    std::string_view input,
+    SignatureRequirement signature_requirement)
 {
   if (input.empty()) {
     return ErrorResult<SubscriptionContract>("subscription contract is empty");
@@ -427,19 +455,33 @@ result<SubscriptionContract> ParseSubscriptionContract(std::string_view input)
   }
   contract.key_id = std::string(*key_id_result.value());
 
-  auto signature_result = GetRequiredJsonString(root.get(), "signature");
-  if (signature_result.holds_error()) {
-    return ErrorResult<SubscriptionContract>(
-        "%s", signature_result.error_unchecked().c_str());
+  if (signature_requirement == SignatureRequirement::kRequired) {
+    auto signature_result = GetRequiredJsonString(root.get(), "signature");
+    if (signature_result.holds_error()) {
+      return ErrorResult<SubscriptionContract>(
+          "%s", signature_result.error_unchecked().c_str());
+    }
+    auto decoded_signature = DecodeBase64Signature(*signature_result.value());
+    if (decoded_signature.holds_error()) {
+      return ErrorResult<SubscriptionContract>(
+          "%s", decoded_signature.error_unchecked().c_str());
+    }
+    contract.signature = std::move(decoded_signature.value_unchecked());
   }
-  auto decoded_signature = DecodeBase64Signature(*signature_result.value());
-  if (decoded_signature.holds_error()) {
-    return ErrorResult<SubscriptionContract>(
-        "%s", decoded_signature.error_unchecked().c_str());
-  }
-  contract.signature = std::move(decoded_signature.value_unchecked());
 
   return result<SubscriptionContract>{std::move(contract)};
+}
+}  // namespace
+
+result<SubscriptionContract> ParseSubscriptionContract(std::string_view input)
+{
+  return ParseSubscriptionContractImpl(input, SignatureRequirement::kRequired);
+}
+
+result<SubscriptionContract> ParseSubscriptionContractForSigning(
+    std::string_view input)
+{
+  return ParseSubscriptionContractImpl(input, SignatureRequirement::kOptional);
 }
 
 std::string FormatSubscriptionContractExpirationDate(const CivilDate& date)
@@ -448,6 +490,68 @@ std::string FormatSubscriptionContractExpirationDate(const CivilDate& date)
   Bsnprintf(buffer, sizeof(buffer), "%04d-%02d-%02d", date.year, date.month,
             date.day);
   return buffer;
+}
+
+result<std::string> SerializeSubscriptionContract(
+    const SubscriptionContract& contract,
+    bool compact)
+{
+  auto signature = EncodeBase64Signature(contract.signature);
+  if (signature.holds_error()) {
+    return ErrorResult<std::string>("%s", signature.error_unchecked().c_str());
+  }
+
+  JsonPtr document{json_object()};
+  if (!document) {
+    return ErrorResult<std::string>(
+        "failed to allocate subscription contract JSON object");
+  }
+
+  json_object_set_new(document.get(), "format_version",
+                      json_integer(contract.format_version));
+  json_object_set_new(document.get(), "customer_name",
+                      json_stringn(contract.customer_name.data(),
+                                   contract.customer_name.size()));
+  json_object_set_new(document.get(), "backup_units",
+                      json_integer(contract.backup_units));
+  if (contract.support) {
+    json_t* support = json_object();
+    if (!support) {
+      return ErrorResult<std::string>(
+          "failed to allocate subscription support JSON object");
+    }
+    json_object_set_new(support, "level",
+                        json_stringn(contract.support->level.data(),
+                                     contract.support->level.size()));
+    json_object_set_new(support, "rear_support",
+                        json_boolean(contract.support->rear_support));
+    json_object_set_new(document.get(), "support", support);
+  } else {
+    json_object_set_new(document.get(), "support", json_null());
+  }
+  auto expiration_date
+      = FormatSubscriptionContractExpirationDate(contract.expiration_date);
+  json_object_set_new(
+      document.get(), "expiration_date",
+      json_stringn(expiration_date.data(), expiration_date.size()));
+  json_object_set_new(
+      document.get(), "key_id",
+      json_stringn(contract.key_id.data(), contract.key_id.size()));
+  json_object_set_new(document.get(), "signature",
+                      json_stringn(signature.value_unchecked().data(),
+                                   signature.value_unchecked().size()));
+
+  char* dumped
+      = json_dumps(document.get(),
+                   JSON_SORT_KEYS | (compact ? JSON_COMPACT : JSON_INDENT(2)));
+  if (!dumped) {
+    return ErrorResult<std::string>(
+        "failed to serialize subscription contract JSON");
+  }
+
+  std::string serialized(dumped);
+  free(dumped);
+  return result<std::string>{std::move(serialized)};
 }
 
 std::string CanonicalizeSubscriptionContract(
@@ -535,6 +639,92 @@ result<bool> VerifySubscriptionContractSignature(
 
   return ErrorResult<bool>("OpenSSL signature verification failed: %s",
                            OpenSslErrorString().c_str());
+}
+
+result<std::vector<std::uint8_t>> SignSubscriptionContract(
+    const SubscriptionContract& contract,
+    EVP_PKEY* private_key)
+{
+  if (!private_key) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "private key must not be null");
+  }
+  if (EVP_PKEY_base_id(private_key) != EVP_PKEY_ED25519) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "private key does not contain an Ed25519 key");
+  }
+
+  EvpMdCtxPtr ctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+  if (!ctx) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "failed to allocate OpenSSL digest context");
+  }
+
+  if (EVP_DigestSignInit(ctx.get(), nullptr, nullptr, nullptr, private_key)
+      <= 0) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "failed to initialize Ed25519 signing: %s",
+        OpenSslErrorString().c_str());
+  }
+
+  auto canonical = CanonicalizeSubscriptionContract(contract);
+  size_t signature_size = 0;
+  if (EVP_DigestSign(ctx.get(), nullptr, &signature_size,
+                     reinterpret_cast<const unsigned char*>(canonical.data()),
+                     canonical.size())
+      <= 0) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "OpenSSL signature generation failed: %s",
+        OpenSslErrorString().c_str());
+  }
+
+  std::vector<std::uint8_t> signature(signature_size);
+  if (EVP_DigestSign(ctx.get(), signature.data(), &signature_size,
+                     reinterpret_cast<const unsigned char*>(canonical.data()),
+                     canonical.size())
+      <= 0) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "OpenSSL signature generation failed: %s",
+        OpenSslErrorString().c_str());
+  }
+
+  signature.resize(signature_size);
+
+  if (signature.size() != kEd25519SignatureSize) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "generated signature has unexpected size %d",
+        static_cast<int>(signature.size()));
+  }
+
+  return result<std::vector<std::uint8_t>>{std::move(signature)};
+}
+
+result<std::vector<std::uint8_t>> SignSubscriptionContract(
+    const SubscriptionContract& contract,
+    std::string_view private_key_pem)
+{
+  if (private_key_pem.empty()) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "private key PEM must not be empty");
+  }
+
+  BioPtr bio(BIO_new_mem_buf(private_key_pem.data(),
+                             static_cast<int>(private_key_pem.size())),
+             BIO_free);
+  if (!bio) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "failed to allocate OpenSSL BIO");
+  }
+
+  EvpPkeyPtr private_key(
+      PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr),
+      EVP_PKEY_free);
+  if (!private_key) {
+    return ErrorResult<std::vector<std::uint8_t>>(
+        "failed to read private key PEM: %s", OpenSslErrorString().c_str());
+  }
+
+  return SignSubscriptionContract(contract, private_key.get());
 }
 
 ContractValidity EvaluateSubscriptionContractValidity(

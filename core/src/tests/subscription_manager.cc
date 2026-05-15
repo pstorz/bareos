@@ -371,3 +371,61 @@ TEST_F(SubscriptionManagerTest, WarningCallbackOnlyRunsOnStateTransitions)
             directordaemon::SubscriptionContractLoadState::kFileMissing);
   ASSERT_EQ(warnings.size(), 1U);
 }
+
+TEST_F(SubscriptionManagerTest, EffectiveUnitsUseContractWhenAuthoritative)
+{
+  directordaemon::SubscriptionContractSnapshot snapshot;
+  snapshot.load_state = directordaemon::SubscriptionContractLoadState::kValid;
+  snapshot.contract = MakeUnsignedContract();
+
+  EXPECT_TRUE(directordaemon::SubscriptionContractIsAuthoritative(snapshot));
+  EXPECT_EQ(directordaemon::GetEffectiveSubscriptionUnits(snapshot, 10), 40U);
+  EXPECT_STREQ(directordaemon::GetSubscriptionUnitSource(snapshot), "contract");
+}
+
+TEST_F(SubscriptionManagerTest, EffectiveUnitsFallBackToLegacyWhenInvalid)
+{
+  directordaemon::SubscriptionContractSnapshot snapshot;
+  snapshot.load_state
+      = directordaemon::SubscriptionContractLoadState::kSignatureInvalid;
+
+  EXPECT_FALSE(directordaemon::SubscriptionContractIsAuthoritative(snapshot));
+  EXPECT_EQ(directordaemon::GetEffectiveSubscriptionUnits(snapshot, 10), 10U);
+  EXPECT_STREQ(directordaemon::GetSubscriptionUnitSource(snapshot), "legacy");
+}
+
+TEST_F(SubscriptionManagerTest, StateAndValidityStringsAreStable)
+{
+  EXPECT_STREQ(
+      directordaemon::SubscriptionContractLoadStateToString(
+          directordaemon::SubscriptionContractLoadState::kNotConfigured),
+      "not-configured");
+  EXPECT_STREQ(directordaemon::SubscriptionContractLoadStateToString(
+                   directordaemon::SubscriptionContractLoadState::kFileMissing),
+               "file-missing");
+  EXPECT_STREQ(directordaemon::SubscriptionContractLoadStateToString(
+                   directordaemon::SubscriptionContractLoadState::kReadError),
+               "read-error");
+  EXPECT_STREQ(directordaemon::SubscriptionContractLoadStateToString(
+                   directordaemon::SubscriptionContractLoadState::kParseError),
+               "parse-error");
+  EXPECT_STREQ(
+      directordaemon::SubscriptionContractLoadStateToString(
+          directordaemon::SubscriptionContractLoadState::kSignatureInvalid),
+      "signature-invalid");
+  EXPECT_STREQ(directordaemon::SubscriptionContractLoadStateToString(
+                   directordaemon::SubscriptionContractLoadState::kKeyUnknown),
+               "key-unknown");
+  EXPECT_STREQ(directordaemon::SubscriptionContractLoadStateToString(
+                   directordaemon::SubscriptionContractLoadState::kValid),
+               "valid");
+  EXPECT_STREQ(directordaemon::SubscriptionContractValidityToString(
+                   subscription::ContractValidity::kValid),
+               "valid");
+  EXPECT_STREQ(directordaemon::SubscriptionContractValidityToString(
+                   subscription::ContractValidity::kExpiringSoon),
+               "expiring-soon");
+  EXPECT_STREQ(directordaemon::SubscriptionContractValidityToString(
+                   subscription::ContractValidity::kExpired),
+               "expired");
+}

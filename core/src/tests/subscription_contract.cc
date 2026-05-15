@@ -119,6 +119,20 @@ std::string PublicKeyPem(EVP_PKEY* key)
   return std::string(memory->data, memory->length);
 }
 
+std::string PrivateKeyPem(EVP_PKEY* key)
+{
+  BioPtr bio(BIO_new(BIO_s_mem()), BIO_free);
+  EXPECT_NE(bio, nullptr);
+  EXPECT_GT(PEM_write_bio_PrivateKey(bio.get(), key, nullptr, nullptr, 0,
+                                     nullptr, nullptr),
+            0);
+
+  BUF_MEM* memory = nullptr;
+  BIO_get_mem_ptr(bio.get(), &memory);
+  EXPECT_NE(memory, nullptr);
+  return std::string(memory->data, memory->length);
+}
+
 std::string EncodeBase64(const std::vector<std::uint8_t>& data)
 {
   std::string out(BASE64_SIZE(data.size()), '\0');
@@ -308,6 +322,66 @@ TEST_F(SubscriptionContractTest, VerifiesEd25519SignatureRoundTrip)
 
   auto verified = subscription::VerifySubscriptionContractSignature(
       parsed.value_unchecked(), PublicKeyPem(key.get()));
+  ASSERT_FALSE(verified.holds_error()) << verified.error_unchecked().c_str();
+  EXPECT_TRUE(verified.value_unchecked());
+}
+
+TEST_F(SubscriptionContractTest, ParsesUnsignedContractForSigning)
+{
+  auto contract = MakeUnsignedContract();
+  auto file = R"({
+  "format_version": 1,
+  "customer_name": "Example Customer GmbH",
+  "backup_units": 40,
+  "support": {
+    "level": "Standard",
+    "rear_support": true
+  },
+  "expiration_date": "2027-12-31",
+  "key_id": "main-2026"
+})";
+
+  auto parsed = subscription::ParseSubscriptionContractForSigning(file);
+  ASSERT_FALSE(parsed.holds_error()) << parsed.error_unchecked().c_str();
+  EXPECT_EQ(parsed.value_unchecked().customer_name, contract.customer_name);
+  EXPECT_TRUE(parsed.value_unchecked().signature.empty());
+}
+
+TEST_F(SubscriptionContractTest, SignsContractRoundTrip)
+{
+  auto key = GenerateEd25519Key();
+  auto contract = MakeUnsignedContract();
+
+  auto signature = subscription::SignSubscriptionContract(contract, key.get());
+  ASSERT_FALSE(signature.holds_error()) << signature.error_unchecked().c_str();
+  contract.signature = std::move(signature.value_unchecked());
+
+  auto serialized = subscription::SerializeSubscriptionContract(contract);
+  ASSERT_FALSE(serialized.holds_error())
+      << serialized.error_unchecked().c_str();
+
+  auto parsed
+      = subscription::ParseSubscriptionContract(serialized.value_unchecked());
+  ASSERT_FALSE(parsed.holds_error()) << parsed.error_unchecked().c_str();
+
+  auto verified = subscription::VerifySubscriptionContractSignature(
+      parsed.value_unchecked(), PublicKeyPem(key.get()));
+  ASSERT_FALSE(verified.holds_error()) << verified.error_unchecked().c_str();
+  EXPECT_TRUE(verified.value_unchecked());
+}
+
+TEST_F(SubscriptionContractTest, SignsContractFromPrivateKeyPem)
+{
+  auto key = GenerateEd25519Key();
+  auto contract = MakeUnsignedContract();
+
+  auto signature = subscription::SignSubscriptionContract(
+      contract, PrivateKeyPem(key.get()));
+  ASSERT_FALSE(signature.holds_error()) << signature.error_unchecked().c_str();
+  contract.signature = std::move(signature.value_unchecked());
+
+  auto verified = subscription::VerifySubscriptionContractSignature(
+      contract, PublicKeyPem(key.get()));
   ASSERT_FALSE(verified.holds_error()) << verified.error_unchecked().c_str();
   EXPECT_TRUE(verified.value_unchecked());
 }

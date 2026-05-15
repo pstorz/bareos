@@ -1742,6 +1742,31 @@ status subscriptions
    The value for the configured units can be set in
    :config:option:`dir/director/Subscriptions`.
 
+   To run this check automatically once a week, create an Admin Job that
+   executes the console command after the regular backup cycle:
+
+   .. code-block:: bareosconfig
+      :caption: Weekly Admin Job for status subscriptions
+
+      Job {
+         Name = SubscriptionStatusWeekly
+         JobDefs = DefaultJob
+         Schedule = "WeeklyCycleAfterBackup"
+         Type = Admin
+         Priority = 200
+
+         RunScript {
+            Runs When = Before
+            Runs On Client = no
+            Console = "status subscriptions all"
+         }
+      }
+
+   This example uses a high numeric :config:option:`dir/job/Priority`\  value so
+   the Admin Job runs after the regular backup jobs. Adjust the schedule, the
+   priority, or the console command if you prefer a different reporting cadence
+   or only want a subset of the subscription report.
+
    To get data aggregated only per client (instead of per client and plugin),
    you can use the keyword ``clients`` (e.g.
    :bcommand:`status subscriptions clients`).
