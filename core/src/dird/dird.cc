@@ -37,6 +37,7 @@
 #include "dird/scheduler.h"
 #include "dird/socket_server.h"
 #include "dird/stats.h"
+#include "dird/subscription_manager.h"
 #include "lib/daemon.h"
 #include "lib/berrno.h"
 #include "lib/edit.h"
@@ -301,6 +302,8 @@ int main(int argc, char* argv[])
     TerminateDird(BEXIT_SUCCESS);
     return BEXIT_SUCCESS;
   }
+
+  LoadSubscriptionContract();
 
   if (!test_config) {
     ReadStateFile(me->working_directory, "bareos-dir",

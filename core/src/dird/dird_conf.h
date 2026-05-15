@@ -108,6 +108,7 @@ class DirectorResource
   char* working_directory = nullptr;    /* WorkingDirectory */
   char* scripts_directory = nullptr;    /* ScriptsDirectory */
   char* plugin_directory = nullptr;     /* Plugin Directory */
+  char* subscription_file = nullptr; /* Optional subscription contract file */
   alist<const char*>* plugin_names = nullptr; /* Plugin names to load */
   MessagesResource* messages = nullptr;       /* Daemon message handler */
   uint32_t MaxConcurrentJobs = 0; /* Max concurrent jobs for whole director */

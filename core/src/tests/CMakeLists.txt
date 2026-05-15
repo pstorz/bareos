@@ -437,6 +437,13 @@ bareos_add_test(
 )
 
 bareos_add_test(
+  subscription_manager
+  ADDITIONAL_SOURCES init_openssl.cc
+  LINK_LIBRARIES Bareos::Dir Bareos::Lib GTest::gtest_main OpenSSL::SSL
+                 OpenSSL::Crypto
+)
+
+bareos_add_test(
   test_acl_entry_syntax LINK_LIBRARIES Bareos::Lib GTest::gtest_main
 )
 

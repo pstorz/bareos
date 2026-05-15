@@ -128,6 +128,7 @@ static const ResourceItem dir_items[] = {
   { "WorkingDirectory", CFG_TYPE_DIR, ITEM(res_dir, working_directory), {config::DefaultValue{PATH_BAREOS_WORKINGDIR}, config::PlatformSpecific{}}},
   { "PluginDirectory", CFG_TYPE_DIR, ITEM(res_dir, plugin_directory), {config::IntroducedIn{14, 2, 0}, config::Description{"Plugins are loaded from this directory. To load only specific plugins, use 'Plugin Names'."}}},
   { "PluginNames", CFG_TYPE_PLUGIN_NAMES, ITEM(res_dir, plugin_names), {config::IntroducedIn{14, 2, 0}, config::Description{"List of plugins, that should get loaded from 'Plugin Directory' (only basenames, '-dir.so' is added automatically). If empty, all plugins will get loaded."}}},
+  { "SubscriptionFile", CFG_TYPE_DIR, ITEM(res_dir, subscription_file), {config::Description{"Optional path to the signed subscription contract JSON file. If omitted, the director will look for the packaged default path."}}},
   { "ScriptsDirectory", CFG_TYPE_DIR, ITEM(res_dir, scripts_directory), {config::DefaultValue{PATH_BAREOS_SCRIPTDIR}, config::Description{"Path to directory containing script files"}, config::PlatformSpecific{}}},
   { "Subscriptions", CFG_TYPE_PINT32, ITEM(res_dir, subscriptions), {config::IntroducedIn{12, 4, 4}, config::DefaultValue{"0"}}},
   { "MaximumConcurrentJobs", CFG_TYPE_PINT32, ITEM(res_dir, MaxConcurrentJobs), {config::DefaultValue{"1"}}},
