@@ -35,19 +35,27 @@
 
 namespace subscription {
 constexpr uint64_t kCurrentSubscriptionContractFormatVersion = 1;
+constexpr std::string_view kSubscriptionContractFileType
+    = "bareos-subscription-file";
 constexpr std::size_t kMaxSubscriptionContractFileSize = 16 * 1024;
 constexpr std::size_t kEd25519SignatureSize = 64;
 constexpr int kExpirationWarningDays = 60;
 
-struct CivilDate {
+struct ContractDateTime {
   int year{};
   int month{};
   int day{};
+  int hour{};
+  int minute{};
+  int second{};
+  bool date_only{};
 };
 
-inline bool operator==(const CivilDate& lhs, const CivilDate& rhs)
+inline bool operator==(const ContractDateTime& lhs, const ContractDateTime& rhs)
 {
-  return lhs.year == rhs.year && lhs.month == rhs.month && lhs.day == rhs.day;
+  return lhs.year == rhs.year && lhs.month == rhs.month && lhs.day == rhs.day
+         && lhs.hour == rhs.hour && lhs.minute == rhs.minute
+         && lhs.second == rhs.second && lhs.date_only == rhs.date_only;
 }
 
 enum class ContractValidity
@@ -58,16 +66,19 @@ enum class ContractValidity
 };
 
 struct SubscriptionContract {
-  struct Support {
-    std::string level;
-    bool rear_support{};
-  };
-
   uint64_t format_version{kCurrentSubscriptionContractFormatVersion};
-  std::string customer_name;
+  std::optional<std::string> file_type{
+      std::string(kSubscriptionContractFileType)};
+  std::optional<std::string> customer_name;
+  std::optional<std::string> customer_contact_name;
+  std::optional<std::string> customer_contact_address;
+  std::optional<std::string> customer_contact_email;
+  std::optional<std::string> issued_by;
+  std::optional<ContractDateTime> issued_at;
   uint64_t backup_units{};
-  std::optional<Support> support;
-  CivilDate expiration_date{};
+  std::optional<std::string> support_level;
+  std::optional<bool> support_rear;
+  ContractDateTime expiration_date{};
   std::string key_id;
   std::vector<std::uint8_t> signature;
 };
@@ -77,7 +88,8 @@ result<SubscriptionContract> ParseSubscriptionContractForSigning(
     std::string_view input);
 std::string CanonicalizeSubscriptionContract(
     const SubscriptionContract& contract);
-std::string FormatSubscriptionContractExpirationDate(const CivilDate& date);
+std::string FormatSubscriptionContractDateTime(
+    const ContractDateTime& date_time);
 result<std::string> SerializeSubscriptionContract(
     const SubscriptionContract& contract,
     bool compact = false);
@@ -91,7 +103,7 @@ result<bool> VerifySubscriptionContractSignature(
     const SubscriptionContract& contract,
     std::string_view public_key_pem);
 ContractValidity EvaluateSubscriptionContractValidity(
-    const CivilDate& expiration_date,
+    const ContractDateTime& expiration_date,
     std::time_t now,
     int warning_days = kExpirationWarningDays);
 }  // namespace subscription

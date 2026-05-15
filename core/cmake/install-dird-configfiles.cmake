@@ -23,6 +23,6 @@ bareosinstallconfigfiles(
 )
 
 bareos_install_single_config_file(
-  "${SRC_DIR}/src/defaultconfigs/bareos-dir/subscription.json.example"
+  "${SRC_DIR}/src/defaultconfigs/bareos-dir/subscription.bsub.example"
   "${configtemplatedir}" ""
 )

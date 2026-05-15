@@ -511,18 +511,50 @@ std::string get_subscription_status_checksum_source_text(
     PmStrcat(contract_state, query.c_str());
   }
   if (snapshot.contract) {
-    Mmsg(query, "subscription-contract-customer-name=%s\n",
-         snapshot.contract->customer_name.c_str());
-    PmStrcat(contract_state, query.c_str());
+    if (snapshot.contract->customer_name) {
+      Mmsg(query, "subscription-contract-customer-name=%s\n",
+           snapshot.contract->customer_name->c_str());
+      PmStrcat(contract_state, query.c_str());
+    }
+    if (snapshot.contract->customer_contact_name) {
+      Mmsg(query, "subscription-contract-customer-contact-name=%s\n",
+           snapshot.contract->customer_contact_name->c_str());
+      PmStrcat(contract_state, query.c_str());
+    }
+    if (snapshot.contract->customer_contact_address) {
+      Mmsg(query, "subscription-contract-customer-contact-address=%s\n",
+           snapshot.contract->customer_contact_address->c_str());
+      PmStrcat(contract_state, query.c_str());
+    }
+    if (snapshot.contract->customer_contact_email) {
+      Mmsg(query, "subscription-contract-customer-contact-email=%s\n",
+           snapshot.contract->customer_contact_email->c_str());
+      PmStrcat(contract_state, query.c_str());
+    }
+    if (snapshot.contract->file_type) {
+      Mmsg(query, "subscription-contract-file-type=%s\n",
+           snapshot.contract->file_type->c_str());
+      PmStrcat(contract_state, query.c_str());
+    }
+    if (snapshot.contract->issued_by) {
+      Mmsg(query, "subscription-contract-issued-by=%s\n",
+           snapshot.contract->issued_by->c_str());
+      PmStrcat(contract_state, query.c_str());
+    }
+    if (snapshot.contract->issued_at) {
+      auto issued_at = subscription::FormatSubscriptionContractDateTime(
+          *snapshot.contract->issued_at);
+      Mmsg(query, "subscription-contract-issued-at=%s\n", issued_at.c_str());
+      PmStrcat(contract_state, query.c_str());
+    }
     Mmsg(query, "subscription-contract-backup-units=%llu\n",
          static_cast<unsigned long long>(snapshot.contract->backup_units));
     PmStrcat(contract_state, query.c_str());
     Mmsg(query, "subscription-contract-key-id=%s\n",
          snapshot.contract->key_id.c_str());
     PmStrcat(contract_state, query.c_str());
-    auto expiration_date
-        = subscription::FormatSubscriptionContractExpirationDate(
-            snapshot.contract->expiration_date);
+    auto expiration_date = subscription::FormatSubscriptionContractDateTime(
+        snapshot.contract->expiration_date);
     Mmsg(query, "subscription-contract-expiration-date=%s\n",
          expiration_date.c_str());
     PmStrcat(contract_state, query.c_str());
@@ -531,12 +563,14 @@ std::string get_subscription_status_checksum_source_text(
            SubscriptionContractValidityToString(*snapshot.validity));
       PmStrcat(contract_state, query.c_str());
     }
-    if (snapshot.contract->support) {
+    if (snapshot.contract->support_level) {
       Mmsg(query, "subscription-contract-support-level=%s\n",
-           snapshot.contract->support->level.c_str());
+           snapshot.contract->support_level->c_str());
       PmStrcat(contract_state, query.c_str());
-      Mmsg(query, "subscription-contract-rear-support=%s\n",
-           snapshot.contract->support->rear_support ? "true" : "false");
+    }
+    if (snapshot.contract->support_rear.has_value()) {
+      Mmsg(query, "subscription-contract-support-rear=%s\n",
+           *snapshot.contract->support_rear ? "true" : "false");
       PmStrcat(contract_state, query.c_str());
     }
   }
@@ -576,17 +610,50 @@ static void OutputSubscriptionContractStatus(
   }
 
   if (snapshot.contract) {
-    ua->send->ObjectKeyValue("customer-name",
-                             "Subscription contract customer name: ",
-                             snapshot.contract->customer_name.c_str(), "%s\n");
+    if (snapshot.contract->customer_name) {
+      ua->send->ObjectKeyValue(
+          "customer-name", "Subscription contract customer name: ",
+          snapshot.contract->customer_name->c_str(), "%s\n");
+    }
+    if (snapshot.contract->customer_contact_name) {
+      ua->send->ObjectKeyValue(
+          "customer-contact-name",
+          "Subscription contract customer contact name: ",
+          snapshot.contract->customer_contact_name->c_str(), "%s\n");
+    }
+    if (snapshot.contract->customer_contact_address) {
+      ua->send->ObjectKeyValue(
+          "customer-contact-address",
+          "Subscription contract customer contact address: ",
+          snapshot.contract->customer_contact_address->c_str(), "%s\n");
+    }
+    if (snapshot.contract->customer_contact_email) {
+      ua->send->ObjectKeyValue(
+          "customer-contact-email",
+          "Subscription contract customer contact email: ",
+          snapshot.contract->customer_contact_email->c_str(), "%s\n");
+    }
+    if (snapshot.contract->file_type) {
+      ua->send->ObjectKeyValue("file-type", "Subscription contract file type: ",
+                               snapshot.contract->file_type->c_str(), "%s\n");
+    }
+    if (snapshot.contract->issued_by) {
+      ua->send->ObjectKeyValue("issued-by", "Subscription contract issued by: ",
+                               snapshot.contract->issued_by->c_str(), "%s\n");
+    }
+    if (snapshot.contract->issued_at) {
+      auto issued_at = subscription::FormatSubscriptionContractDateTime(
+          *snapshot.contract->issued_at);
+      ua->send->ObjectKeyValue("issued-at", "Subscription contract issued at: ",
+                               issued_at.c_str(), "%s\n");
+    }
     ua->send->ObjectKeyValue("backup-units",
                              "Subscription contract backup units: ",
                              snapshot.contract->backup_units, "%llu\n");
     ua->send->ObjectKeyValue("key-id", "Subscription contract key id: ",
                              snapshot.contract->key_id.c_str(), "%s\n");
-    auto expiration_date
-        = subscription::FormatSubscriptionContractExpirationDate(
-            snapshot.contract->expiration_date);
+    auto expiration_date = subscription::FormatSubscriptionContractDateTime(
+        snapshot.contract->expiration_date);
     ua->send->ObjectKeyValue("expiration-date",
                              "Subscription contract expiration date: ",
                              expiration_date.c_str(), "%s\n");
@@ -595,13 +662,15 @@ static void OutputSubscriptionContractStatus(
           "validity", "Subscription contract validity: ",
           SubscriptionContractValidityToString(*snapshot.validity), "%s\n");
     }
-    if (snapshot.contract->support) {
+    if (snapshot.contract->support_level) {
       ua->send->ObjectKeyValue(
           "support-level", "Subscription contract support level: ",
-          snapshot.contract->support->level.c_str(), "%s\n");
-      ua->send->ObjectKeyValueBool(
-          "rear-support", "Subscription contract ReaR support: ",
-          snapshot.contract->support->rear_support, "%s\n");
+          snapshot.contract->support_level->c_str(), "%s\n");
+    }
+    if (snapshot.contract->support_rear.has_value()) {
+      ua->send->ObjectKeyValueBool("support-rear",
+                                   "Subscription contract ReaR support: ",
+                                   *snapshot.contract->support_rear, "%s\n");
     }
   }
   ua->send->ObjectEnd("subscription-contract");

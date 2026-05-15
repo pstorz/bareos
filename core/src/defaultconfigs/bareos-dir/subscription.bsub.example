@@ -1,0 +1,16 @@
+{
+  "format_version": 1,
+  "file_type": "bareos-subscription-file",
+  "customer_name": "Replace with Bareos-issued contract",
+  "customer_contact_name": "Replace with Bareos-issued contact",
+  "customer_contact_address": "Replace with Bareos-issued contact address",
+  "customer_contact_email": "replace-with-bareos-contact@example.com",
+  "issued_by": "Replace with Bareos issuer",
+  "issued_at": "2099-01-01T00:00:00Z",
+  "backup_units": 10,
+  "support_level": "Replace with Bareos-issued contract",
+  "support_rear": false,
+  "expiration_date": "2099-12-31T00:00:00Z",
+  "key_id": "replace-with-bareos-key-id",
+  "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+}

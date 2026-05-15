@@ -51,7 +51,7 @@ struct JsonDeleter {
 };
 using JsonPtr = std::unique_ptr<json_t, JsonDeleter>;
 
-std::int64_t DaysFromCivil(const subscription::CivilDate& date)
+std::int64_t DaysFromCivil(const subscription::ContractDateTime& date)
 {
   int year = date.year;
   unsigned month = static_cast<unsigned>(date.month);
@@ -68,9 +68,12 @@ std::int64_t DaysFromCivil(const subscription::CivilDate& date)
          + static_cast<std::int64_t>(doe) - 719468;
 }
 
-std::time_t ToUnixTime(const subscription::CivilDate& date)
+std::time_t ToUnixTime(const subscription::ContractDateTime& date)
 {
-  return static_cast<std::time_t>(DaysFromCivil(date) * 86400);
+  return static_cast<std::time_t>(DaysFromCivil(date) * 86400
+                                  + static_cast<std::int64_t>(date.hour) * 3600
+                                  + static_cast<std::int64_t>(date.minute) * 60
+                                  + static_cast<std::int64_t>(date.second));
 }
 
 EvpPkeyPtr GenerateEd25519Key()
@@ -147,11 +150,18 @@ std::string EncodeBase64(const std::vector<std::uint8_t>& data)
 subscription::SubscriptionContract MakeUnsignedContract()
 {
   subscription::SubscriptionContract contract;
+  contract.file_type = std::string(subscription::kSubscriptionContractFileType);
   contract.customer_name = "Example Customer GmbH";
+  contract.customer_contact_name = "Example Contact";
+  contract.customer_contact_address = "Example Street 1, 12345 Example City";
+  contract.customer_contact_email = "contact@example.com";
+  contract.issued_by = "Bareos GmbH & Co. KG";
+  contract.issued_at
+      = subscription::ContractDateTime{2026, 5, 15, 15, 0, 0, false};
   contract.backup_units = 40;
-  contract.support
-      = subscription::SubscriptionContract::Support{"Standard", true};
-  contract.expiration_date = {2027, 12, 31};
+  contract.support_level = "Standard";
+  contract.support_rear = true;
+  contract.expiration_date = {2027, 12, 31, 0, 0, 0, false};
   contract.key_id = "main-2026";
   return contract;
 }
@@ -162,23 +172,53 @@ std::string RenderFile(const subscription::SubscriptionContract& contract,
   JsonPtr json{json_object()};
   json_object_set_new(json.get(), "format_version",
                       json_integer(contract.format_version));
-  json_object_set_new(json.get(), "customer_name",
-                      json_stringn(contract.customer_name.data(),
-                                   contract.customer_name.size()));
+  json_object_set_new(
+      json.get(), "file_type",
+      json_stringn(contract.file_type->data(), contract.file_type->size()));
+  if (contract.customer_name) {
+    json_object_set_new(json.get(), "customer_name",
+                        json_stringn(contract.customer_name->data(),
+                                     contract.customer_name->size()));
+  }
+  if (contract.customer_contact_name) {
+    json_object_set_new(json.get(), "customer_contact_name",
+                        json_stringn(contract.customer_contact_name->data(),
+                                     contract.customer_contact_name->size()));
+  }
+  if (contract.customer_contact_address) {
+    json_object_set_new(
+        json.get(), "customer_contact_address",
+        json_stringn(contract.customer_contact_address->data(),
+                     contract.customer_contact_address->size()));
+  }
+  if (contract.customer_contact_email) {
+    json_object_set_new(json.get(), "customer_contact_email",
+                        json_stringn(contract.customer_contact_email->data(),
+                                     contract.customer_contact_email->size()));
+  }
   json_object_set_new(json.get(), "backup_units",
                       json_integer(contract.backup_units));
-  if (contract.support) {
-    JsonPtr support{json_object()};
-    json_object_set_new(support.get(), "level",
-                        json_stringn(contract.support->level.data(),
-                                     contract.support->level.size()));
-    json_object_set_new(support.get(), "rear_support",
-                        json_boolean(contract.support->rear_support));
-    json_object_set_new(json.get(), "support", support.release());
-  } else {
-    json_object_set_new(json.get(), "support", json_null());
+  if (contract.issued_by) {
+    json_object_set_new(
+        json.get(), "issued_by",
+        json_stringn(contract.issued_by->data(), contract.issued_by->size()));
   }
-  auto expiration_date = subscription::FormatSubscriptionContractExpirationDate(
+  if (contract.issued_at) {
+    auto issued_at
+        = subscription::FormatSubscriptionContractDateTime(*contract.issued_at);
+    json_object_set_new(json.get(), "issued_at",
+                        json_stringn(issued_at.data(), issued_at.size()));
+  }
+  if (contract.support_level) {
+    json_object_set_new(json.get(), "support_level",
+                        json_stringn(contract.support_level->data(),
+                                     contract.support_level->size()));
+  }
+  if (contract.support_rear.has_value()) {
+    json_object_set_new(json.get(), "support_rear",
+                        json_boolean(*contract.support_rear));
+  }
+  auto expiration_date = subscription::FormatSubscriptionContractDateTime(
       contract.expiration_date);
   json_object_set_new(
       json.get(), "expiration_date",
@@ -217,28 +257,54 @@ TEST_F(SubscriptionContractTest, ParseCanonicalizesRecognizedFields)
 
   EXPECT_EQ(parsed.value_unchecked().format_version,
             subscription::kCurrentSubscriptionContractFormatVersion);
+  ASSERT_TRUE(parsed.value_unchecked().file_type.has_value());
+  EXPECT_EQ(parsed.value_unchecked().file_type, contract.file_type);
   EXPECT_EQ(parsed.value_unchecked().customer_name, contract.customer_name);
+  ASSERT_TRUE(parsed.value_unchecked().customer_contact_name.has_value());
+  EXPECT_EQ(parsed.value_unchecked().customer_contact_name,
+            contract.customer_contact_name);
+  ASSERT_TRUE(parsed.value_unchecked().customer_contact_address.has_value());
+  EXPECT_EQ(parsed.value_unchecked().customer_contact_address,
+            contract.customer_contact_address);
+  ASSERT_TRUE(parsed.value_unchecked().customer_contact_email.has_value());
+  EXPECT_EQ(parsed.value_unchecked().customer_contact_email,
+            contract.customer_contact_email);
+  ASSERT_TRUE(parsed.value_unchecked().issued_by.has_value());
+  EXPECT_EQ(parsed.value_unchecked().issued_by, contract.issued_by);
+  ASSERT_TRUE(parsed.value_unchecked().issued_at.has_value());
+  EXPECT_EQ(parsed.value_unchecked().issued_at, contract.issued_at);
   EXPECT_EQ(parsed.value_unchecked().backup_units, contract.backup_units);
-  ASSERT_TRUE(parsed.value_unchecked().support.has_value());
-  EXPECT_EQ(parsed.value_unchecked().support->level, contract.support->level);
-  EXPECT_EQ(parsed.value_unchecked().support->rear_support,
-            contract.support->rear_support);
+  ASSERT_TRUE(parsed.value_unchecked().support_level.has_value());
+  EXPECT_EQ(parsed.value_unchecked().support_level, contract.support_level);
+  ASSERT_TRUE(parsed.value_unchecked().support_rear.has_value());
+  EXPECT_EQ(parsed.value_unchecked().support_rear, contract.support_rear);
   EXPECT_EQ(parsed.value_unchecked().expiration_date, contract.expiration_date);
   EXPECT_EQ(parsed.value_unchecked().key_id, contract.key_id);
   EXPECT_EQ(parsed.value_unchecked().signature, raw_signature);
 
   EXPECT_EQ(
       subscription::CanonicalizeSubscriptionContract(parsed.value_unchecked()),
-      "{\"backup_units\":40,\"customer_name\":\"Example Customer GmbH\","
-      "\"expiration_date\":\"2027-12-31\",\"format_version\":1,"
-      "\"key_id\":\"main-2026\",\"support\":{\"level\":\"Standard\","
-      "\"rear_support\":true}}");
+      "{\"backup_units\":40,\"customer_contact_address\":\"Example Street 1, "
+      "12345 Example City\",\"customer_contact_email\":\"contact@example.com\","
+      "\"customer_contact_name\":\"Example Contact\",\"customer_name\":"
+      "\"Example Customer GmbH\",\"expiration_date\":\"2027-12-31T00:00:00Z\","
+      "\"file_type\":\"bareos-subscription-file\",\"format_version\":1,"
+      "\"issued_at\":\"2026-05-15T15:00:00Z\",\"issued_by\":"
+      "\"Bareos GmbH & Co. KG\",\"key_id\":\"main-2026\","
+      "\"support_level\":\"Standard\",\"support_rear\":true}");
 }
 
-TEST_F(SubscriptionContractTest, MissingSupportCanonicalizesAsNull)
+TEST_F(SubscriptionContractTest, OptionalMetadataCanBeOmitted)
 {
   auto contract = MakeUnsignedContract();
-  contract.support.reset();
+  contract.customer_name.reset();
+  contract.customer_contact_name.reset();
+  contract.customer_contact_address.reset();
+  contract.customer_contact_email.reset();
+  contract.issued_by.reset();
+  contract.issued_at.reset();
+  contract.support_level.reset();
+  contract.support_rear.reset();
   auto file
       = RenderFile(contract, EncodeBase64(std::vector<std::uint8_t>(
                                  subscription::kEd25519SignatureSize, 0x11)));
@@ -246,22 +312,24 @@ TEST_F(SubscriptionContractTest, MissingSupportCanonicalizesAsNull)
   auto parsed = subscription::ParseSubscriptionContract(file);
   ASSERT_FALSE(parsed.holds_error()) << parsed.error_unchecked().c_str();
 
-  EXPECT_FALSE(parsed.value_unchecked().support.has_value());
   EXPECT_EQ(
       subscription::CanonicalizeSubscriptionContract(parsed.value_unchecked()),
-      "{\"backup_units\":40,\"customer_name\":\"Example Customer GmbH\","
-      "\"expiration_date\":\"2027-12-31\",\"format_version\":1,"
-      "\"key_id\":\"main-2026\",\"support\":null}");
+      "{\"backup_units\":40,\"expiration_date\":\"2027-12-31T00:00:00Z\","
+      "\"file_type\":\"bareos-subscription-file\",\"format_version\":1,"
+      "\"key_id\":\"main-2026\"}");
 }
 
 TEST_F(SubscriptionContractTest, RejectsDuplicateRecognizedField)
 {
   auto file = R"({
   "format_version": 1,
+  "file_type": "bareos-subscription-file",
   "customer_name": "Example Customer GmbH",
   "backup_units": 40,
   "backup_units": 99,
-  "expiration_date": "2027-12-31",
+  "issued_by": "Bareos GmbH & Co. KG",
+  "issued_at": "2026-05-15T15:00:00Z",
+  "expiration_date": "2027-12-31T00:00:00Z",
   "key_id": "main-2026",
   "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
 })";
@@ -280,9 +348,68 @@ TEST_F(SubscriptionContractTest, RejectsInvalidUtf8CustomerName)
   invalid_name.push_back(static_cast<char>(0xc3));
   invalid_name.push_back(static_cast<char>(0x28));
 
-  std::string file = "{\"format_version\":1,\"customer_name\":\"";
+  std::string file
+      = "{\"format_version\":1,\"file_type\":\"bareos-subscription-file\","
+        "\"customer_name\":\"";
   file += invalid_name;
-  file += "\",\"backup_units\":40,\"expiration_date\":\"2027-12-31\","
+  file += "\",\"issued_by\":\"Bareos GmbH & Co. KG\","
+          "\"issued_at\":\"2026-05-15T15:00:00Z\","
+          "\"backup_units\":40,\"expiration_date\":\"2027-12-31T00:00:00Z\","
+          "\"key_id\":\"main-2026\",\"signature\":\"";
+  file += encoded;
+  file += "\"}";
+
+  auto parsed = subscription::ParseSubscriptionContract(file);
+  ASSERT_TRUE(parsed.holds_error());
+  EXPECT_NE(std::string(parsed.error_unchecked().c_str())
+                .find("failed to parse subscription contract JSON"),
+            std::string::npos);
+}
+
+TEST_F(SubscriptionContractTest, RejectsInvalidUtf8CustomerContactName)
+{
+  auto encoded = EncodeBase64(
+      std::vector<std::uint8_t>(subscription::kEd25519SignatureSize, 0x34));
+  std::string invalid_name("Broken ");
+  invalid_name.push_back(static_cast<char>(0xc3));
+  invalid_name.push_back(static_cast<char>(0x28));
+
+  std::string file
+      = "{\"format_version\":1,\"file_type\":\"bareos-subscription-file\","
+        "\"customer_name\":\"Example Customer GmbH\","
+        "\"customer_contact_name\":\"";
+  file += invalid_name;
+  file += "\",\"issued_by\":\"Bareos GmbH & Co. KG\","
+          "\"issued_at\":\"2026-05-15T15:00:00Z\","
+          "\"backup_units\":40,\"expiration_date\":\"2027-12-31T00:00:00Z\","
+          "\"key_id\":\"main-2026\",\"signature\":\"";
+  file += encoded;
+  file += "\"}";
+
+  auto parsed = subscription::ParseSubscriptionContract(file);
+  ASSERT_TRUE(parsed.holds_error());
+  EXPECT_NE(std::string(parsed.error_unchecked().c_str())
+                .find("failed to parse subscription contract JSON"),
+            std::string::npos);
+}
+
+TEST_F(SubscriptionContractTest, RejectsInvalidUtf8CustomerContactEmail)
+{
+  auto encoded = EncodeBase64(
+      std::vector<std::uint8_t>(subscription::kEd25519SignatureSize, 0x35));
+  std::string invalid_email("broken");
+  invalid_email.push_back(static_cast<char>(0xc3));
+  invalid_email.push_back(static_cast<char>(0x28));
+  invalid_email += "@example.com";
+
+  std::string file
+      = "{\"format_version\":1,\"file_type\":\"bareos-subscription-file\","
+        "\"customer_name\":\"Example Customer GmbH\","
+        "\"customer_contact_email\":\"";
+  file += invalid_email;
+  file += "\",\"issued_by\":\"Bareos GmbH & Co. KG\","
+          "\"issued_at\":\"2026-05-15T15:00:00Z\","
+          "\"backup_units\":40,\"expiration_date\":\"2027-12-31T00:00:00Z\","
           "\"key_id\":\"main-2026\",\"signature\":\"";
   file += encoded;
   file += "\"}";
@@ -331,20 +458,60 @@ TEST_F(SubscriptionContractTest, ParsesUnsignedContractForSigning)
   auto contract = MakeUnsignedContract();
   auto file = R"({
   "format_version": 1,
+  "file_type": "bareos-subscription-file",
   "customer_name": "Example Customer GmbH",
+  "customer_contact_name": "Example Contact",
+  "customer_contact_address": "Example Street 1, 12345 Example City",
+  "customer_contact_email": "contact@example.com",
+  "issued_by": "Bareos GmbH & Co. KG",
+  "issued_at": "2026-05-15T15:00:00Z",
   "backup_units": 40,
-  "support": {
-    "level": "Standard",
-    "rear_support": true
-  },
-  "expiration_date": "2027-12-31",
+  "support_level": "Standard",
+  "support_rear": true,
+  "expiration_date": "2027-12-31T00:00:00Z",
   "key_id": "main-2026"
 })";
 
   auto parsed = subscription::ParseSubscriptionContractForSigning(file);
   ASSERT_FALSE(parsed.holds_error()) << parsed.error_unchecked().c_str();
   EXPECT_EQ(parsed.value_unchecked().customer_name, contract.customer_name);
+  EXPECT_EQ(parsed.value_unchecked().customer_contact_name,
+            contract.customer_contact_name);
+  EXPECT_EQ(parsed.value_unchecked().customer_contact_address,
+            contract.customer_contact_address);
+  EXPECT_EQ(parsed.value_unchecked().customer_contact_email,
+            contract.customer_contact_email);
+  EXPECT_EQ(parsed.value_unchecked().issued_by, contract.issued_by);
+  EXPECT_EQ(parsed.value_unchecked().issued_at, contract.issued_at);
+  EXPECT_EQ(parsed.value_unchecked().support_level, contract.support_level);
+  EXPECT_EQ(parsed.value_unchecked().support_rear, contract.support_rear);
   EXPECT_TRUE(parsed.value_unchecked().signature.empty());
+}
+
+TEST_F(SubscriptionContractTest, RejectsLegacySupportObject)
+{
+  auto encoded = EncodeBase64(
+      std::vector<std::uint8_t>(subscription::kEd25519SignatureSize, 0x45));
+  auto file = R"({
+  "format_version": 1,
+  "file_type": "bareos-subscription-file",
+  "backup_units": 40,
+  "support": {
+    "level": "Standard",
+    "rear_support": true
+  },
+  "expiration_date": "2027-12-31T00:00:00Z",
+  "key_id": "main-2026",
+  "signature": ")";
+  std::string rendered(file);
+  rendered += encoded;
+  rendered += "\"\n}";
+
+  auto parsed = subscription::ParseSubscriptionContract(rendered);
+  ASSERT_TRUE(parsed.holds_error());
+  EXPECT_NE(
+      std::string(parsed.error_unchecked().c_str()).find("no longer supported"),
+      std::string::npos);
 }
 
 TEST_F(SubscriptionContractTest, SignsContractRoundTrip)
@@ -406,33 +573,34 @@ TEST_F(SubscriptionContractTest, DetectsSignatureMismatch)
 
 TEST_F(SubscriptionContractTest, EvaluatesExpirationStates)
 {
-  subscription::CivilDate expiration{2027, 5, 15};
+  subscription::ContractDateTime expiration{2027, 5, 15, 0, 0, 0, false};
 
   EXPECT_EQ(subscription::EvaluateSubscriptionContractValidity(
-                expiration, ToUnixTime({2027, 3, 15})),
+                expiration, ToUnixTime({2027, 3, 15, 0, 0, 0, false})),
             subscription::ContractValidity::kValid);
   EXPECT_EQ(subscription::EvaluateSubscriptionContractValidity(
-                expiration, ToUnixTime({2027, 4, 1})),
+                expiration, ToUnixTime({2027, 3, 16, 0, 0, 0, false})),
             subscription::ContractValidity::kExpiringSoon);
   EXPECT_EQ(subscription::EvaluateSubscriptionContractValidity(
-                expiration, ToUnixTime({2027, 5, 16})),
+                expiration, ToUnixTime({2027, 5, 15, 0, 0, 1, false})),
             subscription::ContractValidity::kExpired);
 }
 
 TEST_F(SubscriptionContractTest, AcceptsUnknownSupportLevelName)
 {
   auto contract = MakeUnsignedContract();
-  contract.support
-      = subscription::SubscriptionContract::Support{"Partner Gold Plus", false};
+  contract.support_level = "Partner Gold Plus";
+  contract.support_rear = false;
   auto file
       = RenderFile(contract, EncodeBase64(std::vector<std::uint8_t>(
                                  subscription::kEd25519SignatureSize, 0x55)));
 
   auto parsed = subscription::ParseSubscriptionContract(file);
   ASSERT_FALSE(parsed.holds_error()) << parsed.error_unchecked().c_str();
-  ASSERT_TRUE(parsed.value_unchecked().support.has_value());
-  EXPECT_EQ(parsed.value_unchecked().support->level, "Partner Gold Plus");
-  EXPECT_FALSE(parsed.value_unchecked().support->rear_support);
+  ASSERT_TRUE(parsed.value_unchecked().support_level.has_value());
+  EXPECT_EQ(parsed.value_unchecked().support_level, "Partner Gold Plus");
+  ASSERT_TRUE(parsed.value_unchecked().support_rear.has_value());
+  EXPECT_FALSE(*parsed.value_unchecked().support_rear);
 }
 
 TEST_F(SubscriptionContractTest, RejectsBackupUnitsOutsidePricelistScale)

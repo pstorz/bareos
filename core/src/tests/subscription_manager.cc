@@ -105,11 +105,18 @@ std::string EncodeBase64(const std::vector<std::uint8_t>& data)
 subscription::SubscriptionContract MakeUnsignedContract()
 {
   subscription::SubscriptionContract contract;
+  contract.file_type = std::string(subscription::kSubscriptionContractFileType);
   contract.customer_name = "Example Customer GmbH";
+  contract.customer_contact_name = "Example Contact";
+  contract.customer_contact_address = "Example Street 1, 12345 Example City";
+  contract.customer_contact_email = "contact@example.com";
+  contract.issued_by = "Bareos GmbH & Co. KG";
+  contract.issued_at
+      = subscription::ContractDateTime{2026, 5, 15, 15, 0, 0, false};
   contract.backup_units = 40;
-  contract.support
-      = subscription::SubscriptionContract::Support{"Standard", true};
-  contract.expiration_date = {2027, 12, 31};
+  contract.support_level = "Standard";
+  contract.support_rear = true;
+  contract.expiration_date = {2027, 12, 31, 0, 0, 0, false};
   contract.key_id = "main-2026";
   return contract;
 }
@@ -118,31 +125,47 @@ std::string RenderFile(const subscription::SubscriptionContract& contract,
                        std::string_view signature_base64)
 {
   std::string expiration_date
-      = subscription::FormatSubscriptionContractExpirationDate(
+      = subscription::FormatSubscriptionContractDateTime(
           contract.expiration_date);
-  return "{\n"
-         "  \"format_version\": 1,\n"
-         "  \"customer_name\": \"" + contract.customer_name
-         + "\",\n"
-           "  \"backup_units\": "
-         + std::to_string(contract.backup_units)
-         + ",\n"
-           "  \"support\": {\n"
-           "    \"level\": \""
-         + contract.support->level
-         + "\",\n"
-           "    \"rear_support\": "
-         + (contract.support->rear_support ? "true" : "false")
-         + "\n"
-           "  },\n"
-           "  \"expiration_date\": \""
-         + expiration_date
-         + "\",\n"
-           "  \"key_id\": \""
-         + contract.key_id
-         + "\",\n"
-           "  \"signature\": \""
-         + std::string(signature_base64) + "\"\n}";
+  std::string result = "{\n";
+  result += "  \"format_version\": 1,\n";
+  result += "  \"file_type\": \"" + contract.file_type.value_or("") + "\",\n";
+  if (contract.customer_name) {
+    result += "  \"customer_name\": \"" + *contract.customer_name + "\",\n";
+  }
+  if (contract.customer_contact_name) {
+    result += "  \"customer_contact_name\": \""
+              + *contract.customer_contact_name + "\",\n";
+  }
+  if (contract.customer_contact_address) {
+    result += "  \"customer_contact_address\": \""
+              + *contract.customer_contact_address + "\",\n";
+  }
+  if (contract.customer_contact_email) {
+    result += "  \"customer_contact_email\": \""
+              + *contract.customer_contact_email + "\",\n";
+  }
+  if (contract.issued_by) {
+    result += "  \"issued_by\": \"" + *contract.issued_by + "\",\n";
+  }
+  if (contract.issued_at) {
+    std::string issued_at
+        = subscription::FormatSubscriptionContractDateTime(*contract.issued_at);
+    result += "  \"issued_at\": \"" + issued_at + "\",\n";
+  }
+  result
+      += "  \"backup_units\": " + std::to_string(contract.backup_units) + ",\n";
+  if (contract.support_level) {
+    result += "  \"support_level\": \"" + *contract.support_level + "\",\n";
+  }
+  if (contract.support_rear.has_value()) {
+    result += "  \"support_rear\": "
+              + std::string(*contract.support_rear ? "true" : "false") + ",\n";
+  }
+  result += "  \"expiration_date\": \"" + expiration_date + "\",\n";
+  result += "  \"key_id\": \"" + contract.key_id + "\",\n";
+  result += "  \"signature\": \"" + std::string(signature_base64) + "\"\n}";
+  return result;
 }
 
 class TempDir {
@@ -175,6 +198,15 @@ void WriteFile(const std::filesystem::path& path, std::string_view content)
   ASSERT_TRUE(file.good());
 }
 
+void WriteSignedContract(const std::filesystem::path& path,
+                         const subscription::SubscriptionContract& contract,
+                         EVP_PKEY* signing_key)
+{
+  auto signature = Sign(
+      signing_key, subscription::CanonicalizeSubscriptionContract(contract));
+  WriteFile(path, RenderFile(contract, EncodeBase64(signature)));
+}
+
 class SubscriptionManagerTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() { InitOpenSsl(); }
@@ -184,7 +216,7 @@ class SubscriptionManagerTest : public ::testing::Test {
 TEST_F(SubscriptionManagerTest, MissingImplicitDefaultIsNotConfigured)
 {
   TempDir temp_dir;
-  auto default_path = (temp_dir.path() / "subscription.json").string();
+  auto default_path = (temp_dir.path() / "subscription.bsub").string();
   directordaemon::SubscriptionContractManager manager(nullptr, 0, default_path);
 
   auto snapshot = manager.Reload("");
@@ -210,6 +242,30 @@ TEST_F(SubscriptionManagerTest, MissingExplicitFileWarnStateIsFileMissing)
   EXPECT_EQ(snapshot.file_path, configured);
 }
 
+TEST_F(SubscriptionManagerTest, ImplicitDefaultLoadsValidContract)
+{
+  TempDir temp_dir;
+  auto key = GenerateEd25519Key();
+  auto public_key = PublicKeyPem(key.get());
+  auto default_path = temp_dir.path() / "subscription.bsub";
+  directordaemon::SubscriptionTrustedPublicKey trusted_key{"main-2026",
+                                                           public_key.c_str()};
+  directordaemon::SubscriptionContractManager manager(&trusted_key, 1,
+                                                      default_path.string());
+
+  auto contract = MakeUnsignedContract();
+  WriteSignedContract(default_path, contract, key.get());
+
+  auto snapshot = manager.Reload("");
+
+  ASSERT_EQ(snapshot.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  EXPECT_FALSE(snapshot.explicitly_configured);
+  EXPECT_EQ(snapshot.file_path, default_path.string());
+  ASSERT_TRUE(snapshot.contract.has_value());
+  EXPECT_EQ(snapshot.contract->backup_units, contract.backup_units);
+}
+
 TEST_F(SubscriptionManagerTest, ValidContractLoadsWithTrustedCompiledKey)
 {
   TempDir temp_dir;
@@ -223,7 +279,7 @@ TEST_F(SubscriptionManagerTest, ValidContractLoadsWithTrustedCompiledKey)
   auto contract = MakeUnsignedContract();
   auto signature = Sign(
       key.get(), subscription::CanonicalizeSubscriptionContract(contract));
-  auto file_path = temp_dir.path() / "subscription.json";
+  auto file_path = temp_dir.path() / "subscription.bsub";
   WriteFile(file_path, RenderFile(contract, EncodeBase64(signature)));
 
   auto snapshot = manager.Reload(file_path.string());
@@ -233,6 +289,51 @@ TEST_F(SubscriptionManagerTest, ValidContractLoadsWithTrustedCompiledKey)
   ASSERT_TRUE(snapshot.contract.has_value());
   ASSERT_TRUE(snapshot.validity.has_value());
   EXPECT_EQ(snapshot.contract->customer_name, contract.customer_name);
+  EXPECT_EQ(snapshot.contract->customer_contact_name,
+            contract.customer_contact_name);
+  EXPECT_EQ(snapshot.contract->customer_contact_address,
+            contract.customer_contact_address);
+  EXPECT_EQ(snapshot.contract->customer_contact_email,
+            contract.customer_contact_email);
+  EXPECT_EQ(snapshot.contract->backup_units, contract.backup_units);
+  EXPECT_EQ(snapshot.contract->support_level, contract.support_level);
+  EXPECT_EQ(snapshot.contract->support_rear, contract.support_rear);
+}
+
+TEST_F(SubscriptionManagerTest, MinimalContractLoadsWithoutOptionalMetadata)
+{
+  TempDir temp_dir;
+  auto key = GenerateEd25519Key();
+  auto public_key = PublicKeyPem(key.get());
+  directordaemon::SubscriptionTrustedPublicKey trusted_key{"main-2026",
+                                                           public_key.c_str()};
+  directordaemon::SubscriptionContractManager manager(
+      &trusted_key, 1, (temp_dir.path() / "default.json").string());
+
+  auto contract = MakeUnsignedContract();
+  contract.customer_name.reset();
+  contract.customer_contact_name.reset();
+  contract.customer_contact_address.reset();
+  contract.customer_contact_email.reset();
+  contract.issued_by.reset();
+  contract.issued_at.reset();
+  contract.support_level.reset();
+  contract.support_rear.reset();
+  auto signature = Sign(
+      key.get(), subscription::CanonicalizeSubscriptionContract(contract));
+  auto file_path = temp_dir.path() / "subscription.bsub";
+  WriteFile(file_path, RenderFile(contract, EncodeBase64(signature)));
+
+  auto snapshot = manager.Reload(file_path.string());
+
+  ASSERT_EQ(snapshot.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  ASSERT_TRUE(snapshot.contract.has_value());
+  EXPECT_FALSE(snapshot.contract->customer_name.has_value());
+  EXPECT_FALSE(snapshot.contract->issued_by.has_value());
+  EXPECT_FALSE(snapshot.contract->issued_at.has_value());
+  EXPECT_FALSE(snapshot.contract->support_level.has_value());
+  EXPECT_FALSE(snapshot.contract->support_rear.has_value());
   EXPECT_EQ(snapshot.contract->backup_units, contract.backup_units);
 }
 
@@ -249,7 +350,7 @@ TEST_F(SubscriptionManagerTest, UnknownKeyIdIsRejectedBeforeVerification)
   auto contract = MakeUnsignedContract();
   auto signature = Sign(
       key.get(), subscription::CanonicalizeSubscriptionContract(contract));
-  auto file_path = temp_dir.path() / "subscription.json";
+  auto file_path = temp_dir.path() / "subscription.bsub";
   WriteFile(file_path, RenderFile(contract, EncodeBase64(signature)));
 
   auto snapshot = manager.Reload(file_path.string());
@@ -275,7 +376,7 @@ TEST_F(SubscriptionManagerTest, SignatureMismatchIsRejected)
   auto signature
       = Sign(signing_key.get(),
              subscription::CanonicalizeSubscriptionContract(contract));
-  auto file_path = temp_dir.path() / "subscription.json";
+  auto file_path = temp_dir.path() / "subscription.bsub";
   WriteFile(file_path, RenderFile(contract, EncodeBase64(signature)));
 
   auto snapshot = manager.Reload(file_path.string());
@@ -298,7 +399,7 @@ TEST_F(SubscriptionManagerTest, RefreshReplacesCachedValidStateWhenFileTurnsBad)
   auto contract = MakeUnsignedContract();
   auto signature = Sign(
       key.get(), subscription::CanonicalizeSubscriptionContract(contract));
-  auto file_path = temp_dir.path() / "subscription.json";
+  auto file_path = temp_dir.path() / "subscription.bsub";
   WriteFile(file_path, RenderFile(contract, EncodeBase64(signature)));
 
   auto loaded = manager.Reload(file_path.string());
@@ -315,6 +416,40 @@ TEST_F(SubscriptionManagerTest, RefreshReplacesCachedValidStateWhenFileTurnsBad)
 }
 
 TEST_F(SubscriptionManagerTest,
+       RefreshReplacesCachedValidStateWhenFileChangesToAnotherValidContract)
+{
+  TempDir temp_dir;
+  auto key = GenerateEd25519Key();
+  auto public_key = PublicKeyPem(key.get());
+  directordaemon::SubscriptionTrustedPublicKey trusted_key{"main-2026",
+                                                           public_key.c_str()};
+  directordaemon::SubscriptionContractManager manager(
+      &trusted_key, 1, (temp_dir.path() / "default.json").string());
+
+  auto contract = MakeUnsignedContract();
+  auto file_path = temp_dir.path() / "subscription.bsub";
+  WriteSignedContract(file_path, contract, key.get());
+
+  auto loaded = manager.Reload(file_path.string());
+  ASSERT_EQ(loaded.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  ASSERT_TRUE(loaded.contract.has_value());
+  EXPECT_EQ(loaded.contract->backup_units, 40U);
+
+  contract.backup_units = 80;
+  contract.support_level = "Enterprise";
+  WriteSignedContract(file_path, contract, key.get());
+
+  auto refreshed = manager.RefreshIfChanged(file_path.string());
+
+  ASSERT_EQ(refreshed.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  ASSERT_TRUE(refreshed.contract.has_value());
+  EXPECT_EQ(refreshed.contract->backup_units, 80U);
+  EXPECT_EQ(refreshed.contract->support_level, "Enterprise");
+}
+
+TEST_F(SubscriptionManagerTest,
        RefreshUpdatesValidityWhenFileContentIsUnchanged)
 {
   TempDir temp_dir;
@@ -326,10 +461,10 @@ TEST_F(SubscriptionManagerTest,
       &trusted_key, 1, (temp_dir.path() / "default.json").string());
 
   auto contract = MakeUnsignedContract();
-  contract.expiration_date = {2026, 1, 15};
+  contract.expiration_date = {2026, 1, 15, 0, 0, 0, false};
   auto signature = Sign(
       key.get(), subscription::CanonicalizeSubscriptionContract(contract));
-  auto file_path = temp_dir.path() / "subscription.json";
+  auto file_path = temp_dir.path() / "subscription.bsub";
   WriteFile(file_path, RenderFile(contract, EncodeBase64(signature)));
 
   auto initially_valid = manager.Reload(file_path.string(), 1761955200);
@@ -346,6 +481,31 @@ TEST_F(SubscriptionManagerTest,
   ASSERT_EQ(expired.load_state,
             directordaemon::SubscriptionContractLoadState::kValid);
   ASSERT_EQ(*expired.validity, subscription::ContractValidity::kExpired);
+}
+
+TEST_F(SubscriptionManagerTest, ExpiredValidContractRemainsAuthoritative)
+{
+  TempDir temp_dir;
+  auto key = GenerateEd25519Key();
+  auto public_key = PublicKeyPem(key.get());
+  directordaemon::SubscriptionTrustedPublicKey trusted_key{"main-2026",
+                                                           public_key.c_str()};
+  directordaemon::SubscriptionContractManager manager(
+      &trusted_key, 1, (temp_dir.path() / "default.json").string());
+
+  auto contract = MakeUnsignedContract();
+  contract.expiration_date = {2026, 1, 15, 0, 0, 0, false};
+  auto file_path = temp_dir.path() / "subscription.bsub";
+  WriteSignedContract(file_path, contract, key.get());
+
+  auto snapshot = manager.Reload(file_path.string(), 1768521600);
+
+  ASSERT_EQ(snapshot.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  ASSERT_EQ(*snapshot.validity, subscription::ContractValidity::kExpired);
+  EXPECT_TRUE(directordaemon::SubscriptionContractIsAuthoritative(snapshot));
+  EXPECT_EQ(directordaemon::GetEffectiveSubscriptionUnits(snapshot, 10), 40U);
+  EXPECT_STREQ(directordaemon::GetSubscriptionUnitSource(snapshot), "contract");
 }
 
 TEST_F(SubscriptionManagerTest, WarningCallbackOnlyRunsOnStateTransitions)
@@ -370,6 +530,57 @@ TEST_F(SubscriptionManagerTest, WarningCallbackOnlyRunsOnStateTransitions)
   EXPECT_EQ(second.load_state,
             directordaemon::SubscriptionContractLoadState::kFileMissing);
   ASSERT_EQ(warnings.size(), 1U);
+}
+
+TEST_F(SubscriptionManagerTest,
+       WarningCallbackRunsWhenValidityTransitionsWithoutFileChanges)
+{
+  TempDir temp_dir;
+  std::vector<subscription::ContractValidity> warnings;
+  auto callback
+      = [&warnings](
+            const directordaemon::SubscriptionContractSnapshot& snapshot) {
+          ASSERT_TRUE(snapshot.validity.has_value());
+          warnings.push_back(*snapshot.validity);
+        };
+
+  auto key = GenerateEd25519Key();
+  auto public_key = PublicKeyPem(key.get());
+  directordaemon::SubscriptionTrustedPublicKey trusted_key{"main-2026",
+                                                           public_key.c_str()};
+  directordaemon::SubscriptionContractManager manager(
+      &trusted_key, 1, (temp_dir.path() / "default.json").string(), callback);
+
+  auto contract = MakeUnsignedContract();
+  contract.expiration_date = {2026, 1, 15, 0, 0, 0, false};
+  auto file_path = temp_dir.path() / "subscription.bsub";
+  WriteSignedContract(file_path, contract, key.get());
+
+  auto initially_valid = manager.Reload(file_path.string(), 1761955200);
+  ASSERT_EQ(initially_valid.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  ASSERT_EQ(*initially_valid.validity, subscription::ContractValidity::kValid);
+
+  auto expiring = manager.RefreshIfChanged(file_path.string(), 1763596800);
+  ASSERT_EQ(expiring.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  ASSERT_EQ(*expiring.validity, subscription::ContractValidity::kExpiringSoon);
+
+  auto expiring_again
+      = manager.RefreshIfChanged(file_path.string(), 1763683200);
+  ASSERT_EQ(expiring_again.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  ASSERT_EQ(*expiring_again.validity,
+            subscription::ContractValidity::kExpiringSoon);
+
+  auto expired = manager.RefreshIfChanged(file_path.string(), 1768521600);
+  ASSERT_EQ(expired.load_state,
+            directordaemon::SubscriptionContractLoadState::kValid);
+  ASSERT_EQ(*expired.validity, subscription::ContractValidity::kExpired);
+
+  ASSERT_EQ(warnings.size(), 2U);
+  EXPECT_EQ(warnings[0], subscription::ContractValidity::kExpiringSoon);
+  EXPECT_EQ(warnings[1], subscription::ContractValidity::kExpired);
 }
 
 TEST_F(SubscriptionManagerTest, EffectiveUnitsUseContractWhenAuthoritative)

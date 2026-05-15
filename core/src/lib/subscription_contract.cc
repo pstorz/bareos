@@ -126,47 +126,79 @@ result<uint64_t> ParseUnsignedInteger(std::string_view input, const char* field)
   return result<uint64_t>{value};
 }
 
-result<CivilDate> ParseCivilDate(std::string_view input)
+result<ContractDateTime> ParseRfc3339UtcTimestamp(std::string_view input,
+                                                  const char* field)
 {
-  if (input.size() != 10 || input[4] != '-' || input[7] != '-') {
-    return ErrorResult<CivilDate>(
-        "expiration_date must use the YYYY-MM-DD format");
+  if (input.size() != 20 || input[4] != '-' || input[7] != '-'
+      || input[10] != 'T' || input[13] != ':' || input[16] != ':'
+      || input[19] != 'Z') {
+    return ErrorResult<ContractDateTime>(
+        "%s must use the RFC 3339 UTC format YYYY-MM-DDTHH:MM:SSZ", field);
   }
 
-  auto year_result
-      = ParseUnsignedInteger(input.substr(0, 4), "expiration_date");
+  auto year_result = ParseUnsignedInteger(input.substr(0, 4), field);
   if (year_result.holds_error()) {
-    return ErrorResult<CivilDate>("%s", year_result.error_unchecked().c_str());
+    return ErrorResult<ContractDateTime>("%s",
+                                         year_result.error_unchecked().c_str());
   }
-
-  auto month_result
-      = ParseUnsignedInteger(input.substr(5, 2), "expiration_date");
+  auto month_result = ParseUnsignedInteger(input.substr(5, 2), field);
   if (month_result.holds_error()) {
-    return ErrorResult<CivilDate>("%s", month_result.error_unchecked().c_str());
+    return ErrorResult<ContractDateTime>(
+        "%s", month_result.error_unchecked().c_str());
   }
-
-  auto day_result = ParseUnsignedInteger(input.substr(8, 2), "expiration_date");
+  auto day_result = ParseUnsignedInteger(input.substr(8, 2), field);
   if (day_result.holds_error()) {
-    return ErrorResult<CivilDate>("%s", day_result.error_unchecked().c_str());
+    return ErrorResult<ContractDateTime>("%s",
+                                         day_result.error_unchecked().c_str());
+  }
+  auto hour_result = ParseUnsignedInteger(input.substr(11, 2), field);
+  if (hour_result.holds_error()) {
+    return ErrorResult<ContractDateTime>("%s",
+                                         hour_result.error_unchecked().c_str());
+  }
+  auto minute_result = ParseUnsignedInteger(input.substr(14, 2), field);
+  if (minute_result.holds_error()) {
+    return ErrorResult<ContractDateTime>(
+        "%s", minute_result.error_unchecked().c_str());
+  }
+  auto second_result = ParseUnsignedInteger(input.substr(17, 2), field);
+  if (second_result.holds_error()) {
+    return ErrorResult<ContractDateTime>(
+        "%s", second_result.error_unchecked().c_str());
   }
 
-  CivilDate parsed{static_cast<int>(*year_result.value()),
-                   static_cast<int>(*month_result.value()),
-                   static_cast<int>(*day_result.value())};
+  ContractDateTime parsed{static_cast<int>(*year_result.value()),
+                          static_cast<int>(*month_result.value()),
+                          static_cast<int>(*day_result.value()),
+                          static_cast<int>(*hour_result.value()),
+                          static_cast<int>(*minute_result.value()),
+                          static_cast<int>(*second_result.value()),
+                          false};
 
   if (parsed.month < 1 || parsed.month > 12) {
-    return ErrorResult<CivilDate>(
-        "expiration_date month must be in the range 1-12");
+    return ErrorResult<ContractDateTime>("%s month must be in the range 1-12",
+                                         field);
   }
-
   if (parsed.day < 1 || parsed.day > DaysInMonth(parsed.year, parsed.month)) {
-    return ErrorResult<CivilDate>("expiration_date day is out of range");
+    return ErrorResult<ContractDateTime>("%s day is out of range", field);
+  }
+  if (parsed.hour < 0 || parsed.hour > 23) {
+    return ErrorResult<ContractDateTime>("%s hour must be in the range 0-23",
+                                         field);
+  }
+  if (parsed.minute < 0 || parsed.minute > 59) {
+    return ErrorResult<ContractDateTime>("%s minute must be in the range 0-59",
+                                         field);
+  }
+  if (parsed.second < 0 || parsed.second > 59) {
+    return ErrorResult<ContractDateTime>("%s second must be in the range 0-59",
+                                         field);
   }
 
-  return result<CivilDate>{parsed};
+  return result<ContractDateTime>{parsed};
 }
 
-std::int64_t DaysFromCivil(const CivilDate& date)
+std::int64_t DaysFromCivil(const ContractDateTime& date)
 {
   int year = date.year;
   unsigned month = static_cast<unsigned>(date.month);
@@ -183,12 +215,14 @@ std::int64_t DaysFromCivil(const CivilDate& date)
          + static_cast<std::int64_t>(doe) - 719468;
 }
 
-std::int64_t FloorDivide(std::int64_t value, std::int64_t divisor)
+std::int64_t SecondsFromContractDateTime(const ContractDateTime& date_time)
 {
-  std::int64_t quotient = value / divisor;
-  std::int64_t remainder = value % divisor;
-  if (remainder != 0 && ((remainder < 0) != (divisor < 0))) { --quotient; }
-  return quotient;
+  std::int64_t seconds = DaysFromCivil(date_time) * 86400
+                         + static_cast<std::int64_t>(date_time.hour) * 3600
+                         + static_cast<std::int64_t>(date_time.minute) * 60
+                         + static_cast<std::int64_t>(date_time.second);
+  if (date_time.date_only) { seconds += 86399; }
+  return seconds;
 }
 
 std::string OpenSslErrorString()
@@ -272,6 +306,44 @@ result<std::string_view> GetRequiredJsonString(json_t* root, const char* key)
   return result<std::string_view>{std::string_view{string_value}};
 }
 
+result<std::optional<std::string>> GetOptionalJsonString(json_t* root,
+                                                         const char* key)
+{
+  json_t* value = json_object_get(root, key);
+  if (!value || json_is_null(value)) {
+    return result<std::optional<std::string>>{std::optional<std::string>{}};
+  }
+  if (!json_is_string(value)) {
+    return ErrorResult<std::optional<std::string>>(
+        "subscription contract key '%s' must be a JSON string", key);
+  }
+
+  const char* string_value = json_string_value(value);
+  if (!string_value) {
+    return ErrorResult<std::optional<std::string>>(
+        "subscription contract key '%s' must be a JSON string", key);
+  }
+
+  return result<std::optional<std::string>>{
+      std::optional<std::string>{string_value}};
+}
+
+result<std::optional<bool>> GetOptionalJsonBoolean(json_t* root,
+                                                   const char* key)
+{
+  json_t* value = json_object_get(root, key);
+  if (!value || json_is_null(value)) {
+    return result<std::optional<bool>>{std::optional<bool>{}};
+  }
+  if (!json_is_boolean(value)) {
+    return ErrorResult<std::optional<bool>>(
+        "subscription contract key '%s' must be a JSON boolean", key);
+  }
+
+  return result<std::optional<bool>>{
+      std::optional<bool>{json_boolean_value(value) != 0}};
+}
+
 result<uint64_t> GetRequiredJsonUnsignedInteger(json_t* root, const char* key)
 {
   json_t* value = json_object_get(root, key);
@@ -306,43 +378,18 @@ result<std::string> DumpCanonicalJson(json_t* root)
   return result<std::string>{std::move(canonical)};
 }
 
-result<std::optional<SubscriptionContract::Support>> ParseSupport(json_t* root)
+result<bool> AddSupportJson(json_t* root, const SubscriptionContract& contract)
 {
-  json_t* support = json_object_get(root, "support");
-  if (!support || json_is_null(support)) {
-    return result<std::optional<SubscriptionContract::Support>>{
-        std::optional<SubscriptionContract::Support>{}};
+  if (contract.support_level) {
+    json_object_set_new(root, "support_level",
+                        json_stringn(contract.support_level->data(),
+                                     contract.support_level->size()));
   }
-  if (!json_is_object(support)) {
-    return ErrorResult<std::optional<SubscriptionContract::Support>>(
-        "subscription contract key 'support' must be a JSON object or null");
+  if (contract.support_rear.has_value()) {
+    json_object_set_new(root, "support_rear",
+                        json_boolean(*contract.support_rear));
   }
-
-  auto level_result = GetRequiredJsonString(support, "level");
-  if (level_result.holds_error()) {
-    return ErrorResult<std::optional<SubscriptionContract::Support>>(
-        "%s", level_result.error_unchecked().c_str());
-  }
-  if (!IsValidUtf8Text(*level_result.value())) {
-    return ErrorResult<std::optional<SubscriptionContract::Support>>(
-        "support.level must be valid UTF-8 without control characters");
-  }
-
-  json_t* rear_support = json_object_get(support, "rear_support");
-  bool has_rear_support = false;
-  if (rear_support) {
-    if (!json_is_boolean(rear_support)) {
-      return ErrorResult<std::optional<SubscriptionContract::Support>>(
-          "subscription contract key 'support.rear_support' must be a JSON "
-          "boolean");
-    }
-    has_rear_support = json_boolean_value(rear_support) != 0;
-  }
-
-  SubscriptionContract::Support parsed{std::string(*level_result.value()),
-                                       has_rear_support};
-  return result<std::optional<SubscriptionContract::Support>>{
-      std::optional<SubscriptionContract::Support>{std::move(parsed)}};
+  return result<bool>{true};
 }
 
 enum class SignatureRequirement
@@ -397,16 +444,100 @@ result<SubscriptionContract> ParseSubscriptionContractImpl(
   contract.format_version = *format_version_result.value();
 
   auto customer_name_result
-      = GetRequiredJsonString(root.get(), "customer_name");
+      = GetOptionalJsonString(root.get(), "customer_name");
   if (customer_name_result.holds_error()) {
     return ErrorResult<SubscriptionContract>(
         "%s", customer_name_result.error_unchecked().c_str());
   }
-  if (!IsValidUtf8Text(*customer_name_result.value())) {
+  if (customer_name_result.value()->has_value()
+      && !IsValidUtf8Text(customer_name_result.value()->value())) {
     return ErrorResult<SubscriptionContract>(
         "customer_name must be valid UTF-8 without control characters");
   }
-  contract.customer_name = std::string(*customer_name_result.value());
+  contract.customer_name = std::move(customer_name_result.value_unchecked());
+
+  auto file_type_result = GetRequiredJsonString(root.get(), "file_type");
+  if (file_type_result.holds_error()) {
+    return ErrorResult<SubscriptionContract>(
+        "%s", file_type_result.error_unchecked().c_str());
+  }
+  if (*file_type_result.value() != kSubscriptionContractFileType) {
+    return ErrorResult<SubscriptionContract>(
+        "file_type must be '%s'",
+        std::string(kSubscriptionContractFileType).c_str());
+  }
+  contract.file_type = std::string(*file_type_result.value());
+
+  auto customer_contact_name_result
+      = GetOptionalJsonString(root.get(), "customer_contact_name");
+  if (customer_contact_name_result.holds_error()) {
+    return ErrorResult<SubscriptionContract>(
+        "%s", customer_contact_name_result.error_unchecked().c_str());
+  }
+  if (customer_contact_name_result.value()->has_value()
+      && !IsValidUtf8Text(customer_contact_name_result.value()->value())) {
+    return ErrorResult<SubscriptionContract>(
+        "customer_contact_name must be valid UTF-8 without control characters");
+  }
+  contract.customer_contact_name
+      = std::move(customer_contact_name_result.value_unchecked());
+
+  auto customer_contact_address_result
+      = GetOptionalJsonString(root.get(), "customer_contact_address");
+  if (customer_contact_address_result.holds_error()) {
+    return ErrorResult<SubscriptionContract>(
+        "%s", customer_contact_address_result.error_unchecked().c_str());
+  }
+  if (customer_contact_address_result.value()->has_value()
+      && !IsValidUtf8Text(customer_contact_address_result.value()->value())) {
+    return ErrorResult<SubscriptionContract>(
+        "customer_contact_address must be valid UTF-8 without control "
+        "characters");
+  }
+  contract.customer_contact_address
+      = std::move(customer_contact_address_result.value_unchecked());
+
+  auto customer_contact_email_result
+      = GetOptionalJsonString(root.get(), "customer_contact_email");
+  if (customer_contact_email_result.holds_error()) {
+    return ErrorResult<SubscriptionContract>(
+        "%s", customer_contact_email_result.error_unchecked().c_str());
+  }
+  if (customer_contact_email_result.value()->has_value()
+      && !IsValidUtf8Text(customer_contact_email_result.value()->value())) {
+    return ErrorResult<SubscriptionContract>(
+        "customer_contact_email must be valid UTF-8 without control "
+        "characters");
+  }
+  contract.customer_contact_email
+      = std::move(customer_contact_email_result.value_unchecked());
+
+  auto issued_by_result = GetOptionalJsonString(root.get(), "issued_by");
+  if (issued_by_result.holds_error()) {
+    return ErrorResult<SubscriptionContract>(
+        "%s", issued_by_result.error_unchecked().c_str());
+  }
+  if (issued_by_result.value()->has_value()
+      && !IsValidUtf8Text(issued_by_result.value()->value())) {
+    return ErrorResult<SubscriptionContract>(
+        "issued_by must be valid UTF-8 without control characters");
+  }
+  contract.issued_by = std::move(issued_by_result.value_unchecked());
+
+  auto issued_at_result = GetOptionalJsonString(root.get(), "issued_at");
+  if (issued_at_result.holds_error()) {
+    return ErrorResult<SubscriptionContract>(
+        "%s", issued_at_result.error_unchecked().c_str());
+  }
+  if (issued_at_result.value()->has_value()) {
+    auto issued_at = ParseRfc3339UtcTimestamp(issued_at_result.value()->value(),
+                                              "issued_at");
+    if (issued_at.holds_error()) {
+      return ErrorResult<SubscriptionContract>(
+          "%s", issued_at.error_unchecked().c_str());
+    }
+    contract.issued_at = *issued_at.value();
+  }
 
   auto backup_units_result
       = GetRequiredJsonUnsignedInteger(root.get(), "backup_units");
@@ -424,12 +555,32 @@ result<SubscriptionContract> ParseSubscriptionContractImpl(
   }
   contract.backup_units = *backup_units_result.value();
 
-  auto support_result = ParseSupport(root.get());
-  if (support_result.holds_error()) {
+  auto support_level_result
+      = GetOptionalJsonString(root.get(), "support_level");
+  if (support_level_result.holds_error()) {
     return ErrorResult<SubscriptionContract>(
-        "%s", support_result.error_unchecked().c_str());
+        "%s", support_level_result.error_unchecked().c_str());
   }
-  contract.support = std::move(*support_result.value());
+  if (support_level_result.value()->has_value()
+      && !IsValidUtf8Text(support_level_result.value()->value())) {
+    return ErrorResult<SubscriptionContract>(
+        "support_level must be valid UTF-8 without control characters");
+  }
+  contract.support_level = std::move(support_level_result.value_unchecked());
+
+  auto support_rear_result = GetOptionalJsonBoolean(root.get(), "support_rear");
+  if (support_rear_result.holds_error()) {
+    return ErrorResult<SubscriptionContract>(
+        "%s", support_rear_result.error_unchecked().c_str());
+  }
+  contract.support_rear = *support_rear_result.value();
+
+  json_t* legacy_support = json_object_get(root.get(), "support");
+  if (legacy_support) {
+    return ErrorResult<SubscriptionContract>(
+        "subscription contract key 'support' is no longer supported; use "
+        "'support_level' and 'support_rear'");
+  }
 
   auto expiration_date_result
       = GetRequiredJsonString(root.get(), "expiration_date");
@@ -437,7 +588,8 @@ result<SubscriptionContract> ParseSubscriptionContractImpl(
     return ErrorResult<SubscriptionContract>(
         "%s", expiration_date_result.error_unchecked().c_str());
   }
-  auto parsed_date = ParseCivilDate(*expiration_date_result.value());
+  auto parsed_date = ParseRfc3339UtcTimestamp(*expiration_date_result.value(),
+                                              "expiration_date");
   if (parsed_date.holds_error()) {
     return ErrorResult<SubscriptionContract>(
         "%s", parsed_date.error_unchecked().c_str());
@@ -484,11 +636,18 @@ result<SubscriptionContract> ParseSubscriptionContractForSigning(
   return ParseSubscriptionContractImpl(input, SignatureRequirement::kOptional);
 }
 
-std::string FormatSubscriptionContractExpirationDate(const CivilDate& date)
+std::string FormatSubscriptionContractDateTime(
+    const ContractDateTime& date_time)
 {
-  char buffer[11];
-  Bsnprintf(buffer, sizeof(buffer), "%04d-%02d-%02d", date.year, date.month,
-            date.day);
+  char buffer[21];
+  if (date_time.date_only) {
+    Bsnprintf(buffer, 11, "%04d-%02d-%02d", date_time.year, date_time.month,
+              date_time.day);
+  } else {
+    Bsnprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02dZ",
+              date_time.year, date_time.month, date_time.day, date_time.hour,
+              date_time.minute, date_time.second);
+  }
   return buffer;
 }
 
@@ -509,28 +668,51 @@ result<std::string> SerializeSubscriptionContract(
 
   json_object_set_new(document.get(), "format_version",
                       json_integer(contract.format_version));
-  json_object_set_new(document.get(), "customer_name",
-                      json_stringn(contract.customer_name.data(),
-                                   contract.customer_name.size()));
+  if (contract.file_type) {
+    json_object_set_new(
+        document.get(), "file_type",
+        json_stringn(contract.file_type->data(), contract.file_type->size()));
+  }
+  if (contract.customer_name) {
+    json_object_set_new(document.get(), "customer_name",
+                        json_stringn(contract.customer_name->data(),
+                                     contract.customer_name->size()));
+  }
+  if (contract.customer_contact_name) {
+    json_object_set_new(document.get(), "customer_contact_name",
+                        json_stringn(contract.customer_contact_name->data(),
+                                     contract.customer_contact_name->size()));
+  }
+  if (contract.customer_contact_address) {
+    json_object_set_new(
+        document.get(), "customer_contact_address",
+        json_stringn(contract.customer_contact_address->data(),
+                     contract.customer_contact_address->size()));
+  }
+  if (contract.customer_contact_email) {
+    json_object_set_new(document.get(), "customer_contact_email",
+                        json_stringn(contract.customer_contact_email->data(),
+                                     contract.customer_contact_email->size()));
+  }
   json_object_set_new(document.get(), "backup_units",
                       json_integer(contract.backup_units));
-  if (contract.support) {
-    json_t* support = json_object();
-    if (!support) {
-      return ErrorResult<std::string>(
-          "failed to allocate subscription support JSON object");
-    }
-    json_object_set_new(support, "level",
-                        json_stringn(contract.support->level.data(),
-                                     contract.support->level.size()));
-    json_object_set_new(support, "rear_support",
-                        json_boolean(contract.support->rear_support));
-    json_object_set_new(document.get(), "support", support);
-  } else {
-    json_object_set_new(document.get(), "support", json_null());
+  if (contract.issued_by) {
+    json_object_set_new(
+        document.get(), "issued_by",
+        json_stringn(contract.issued_by->data(), contract.issued_by->size()));
+  }
+  if (contract.issued_at) {
+    auto issued_at = FormatSubscriptionContractDateTime(*contract.issued_at);
+    json_object_set_new(document.get(), "issued_at",
+                        json_stringn(issued_at.data(), issued_at.size()));
+  }
+  auto support_result = AddSupportJson(document.get(), contract);
+  if (support_result.holds_error()) {
+    return ErrorResult<std::string>("%s",
+                                    support_result.error_unchecked().c_str());
   }
   auto expiration_date
-      = FormatSubscriptionContractExpirationDate(contract.expiration_date);
+      = FormatSubscriptionContractDateTime(contract.expiration_date);
   json_object_set_new(
       document.get(), "expiration_date",
       json_stringn(expiration_date.data(), expiration_date.size()));
@@ -562,25 +744,48 @@ std::string CanonicalizeSubscriptionContract(
 
   json_object_set_new(canonical.get(), "format_version",
                       json_integer(contract.format_version));
-  json_object_set_new(canonical.get(), "customer_name",
-                      json_stringn(contract.customer_name.data(),
-                                   contract.customer_name.size()));
+  if (contract.file_type) {
+    json_object_set_new(
+        canonical.get(), "file_type",
+        json_stringn(contract.file_type->data(), contract.file_type->size()));
+  }
+  if (contract.customer_name) {
+    json_object_set_new(canonical.get(), "customer_name",
+                        json_stringn(contract.customer_name->data(),
+                                     contract.customer_name->size()));
+  }
+  if (contract.customer_contact_name) {
+    json_object_set_new(canonical.get(), "customer_contact_name",
+                        json_stringn(contract.customer_contact_name->data(),
+                                     contract.customer_contact_name->size()));
+  }
+  if (contract.customer_contact_address) {
+    json_object_set_new(
+        canonical.get(), "customer_contact_address",
+        json_stringn(contract.customer_contact_address->data(),
+                     contract.customer_contact_address->size()));
+  }
+  if (contract.customer_contact_email) {
+    json_object_set_new(canonical.get(), "customer_contact_email",
+                        json_stringn(contract.customer_contact_email->data(),
+                                     contract.customer_contact_email->size()));
+  }
   json_object_set_new(canonical.get(), "backup_units",
                       json_integer(contract.backup_units));
-  if (contract.support) {
-    json_t* support = json_object();
-    if (!support) { return {}; }
-    json_object_set_new(support, "level",
-                        json_stringn(contract.support->level.data(),
-                                     contract.support->level.size()));
-    json_object_set_new(support, "rear_support",
-                        json_boolean(contract.support->rear_support));
-    json_object_set_new(canonical.get(), "support", support);
-  } else {
-    json_object_set_new(canonical.get(), "support", json_null());
+  if (contract.issued_by) {
+    json_object_set_new(
+        canonical.get(), "issued_by",
+        json_stringn(contract.issued_by->data(), contract.issued_by->size()));
   }
+  if (contract.issued_at) {
+    auto issued_at = FormatSubscriptionContractDateTime(*contract.issued_at);
+    json_object_set_new(canonical.get(), "issued_at",
+                        json_stringn(issued_at.data(), issued_at.size()));
+  }
+  auto support_result = AddSupportJson(canonical.get(), contract);
+  if (support_result.holds_error()) { return {}; }
   auto expiration_date
-      = FormatSubscriptionContractExpirationDate(contract.expiration_date);
+      = FormatSubscriptionContractDateTime(contract.expiration_date);
   json_object_set_new(
       canonical.get(), "expiration_date",
       json_stringn(expiration_date.data(), expiration_date.size()));
@@ -728,19 +933,19 @@ result<std::vector<std::uint8_t>> SignSubscriptionContract(
 }
 
 ContractValidity EvaluateSubscriptionContractValidity(
-    const CivilDate& expiration_date,
+    const ContractDateTime& expiration_date,
     std::time_t now,
     int warning_days)
 {
   if (warning_days < 0) { warning_days = 0; }
 
-  std::int64_t current_day = FloorDivide(static_cast<std::int64_t>(now),
-                                         static_cast<std::int64_t>(86400));
-  std::int64_t expiration_day = DaysFromCivil(expiration_date);
+  std::int64_t current_second = static_cast<std::int64_t>(now);
+  std::int64_t expiration_second = SecondsFromContractDateTime(expiration_date);
 
-  if (current_day > expiration_day) { return ContractValidity::kExpired; }
+  if (current_second > expiration_second) { return ContractValidity::kExpired; }
 
-  if ((expiration_day - current_day) <= warning_days) {
+  if ((expiration_second - current_second)
+      <= static_cast<std::int64_t>(warning_days) * 86400) {
     return ContractValidity::kExpiringSoon;
   }
 

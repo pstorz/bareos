@@ -119,6 +119,10 @@ bool ShouldWarn(const SubscriptionContractSnapshot& snapshot)
 
 std::string BuildWarningMessage(const SubscriptionContractSnapshot& snapshot)
 {
+  auto customer_name
+      = snapshot.contract && snapshot.contract->customer_name
+            ? std::optional<std::string>(*snapshot.contract->customer_name)
+            : std::nullopt;
   switch (snapshot.load_state) {
     case SubscriptionContractLoadState::kNotConfigured:
       return {};
@@ -145,18 +149,26 @@ std::string BuildWarningMessage(const SubscriptionContractSnapshot& snapshot)
     case SubscriptionContractLoadState::kValid: {
       if (!snapshot.contract || !snapshot.validity) { return {}; }
 
-      auto expiration = subscription::FormatSubscriptionContractExpirationDate(
+      auto expiration = subscription::FormatSubscriptionContractDateTime(
           snapshot.contract->expiration_date);
       if (*snapshot.validity == subscription::ContractValidity::kExpired) {
-        return "Subscription contract file '" + snapshot.file_path
-               + "' for customer '" + snapshot.contract->customer_name
-               + "' expired on " + expiration + ".";
+        auto message
+            = "Subscription contract file '" + snapshot.file_path + "'";
+        if (customer_name) {
+          message += " for customer '" + *customer_name + "'";
+        }
+        message += " expired on " + expiration + ".";
+        return message;
       }
 
       if (*snapshot.validity == subscription::ContractValidity::kExpiringSoon) {
-        return "Subscription contract file '" + snapshot.file_path
-               + "' for customer '" + snapshot.contract->customer_name
-               + "' expires on " + expiration + ".";
+        auto message
+            = "Subscription contract file '" + snapshot.file_path + "'";
+        if (customer_name) {
+          message += " for customer '" + *customer_name + "'";
+        }
+        message += " expires on " + expiration + ".";
+        return message;
       }
 
       return {};
@@ -166,7 +178,7 @@ std::string BuildWarningMessage(const SubscriptionContractSnapshot& snapshot)
   return {};
 }
 
-std::array<SubscriptionTrustedPublicKey, 0> kBuiltInTrustedSubscriptionKeys{};
+#include "dird/subscription_keys.inc"
 
 SubscriptionContractManager g_subscription_contract_manager(
     kBuiltInTrustedSubscriptionKeys.data(),
@@ -370,9 +382,9 @@ std::string SubscriptionContractManager::BuildTransitionKey(
 
   if (snapshot.contract.has_value()) {
     key << '\n'
-        << snapshot.contract->customer_name << '\n'
+        << snapshot.contract->customer_name.value_or("") << '\n'
         << snapshot.contract->backup_units << '\n'
-        << subscription::FormatSubscriptionContractExpirationDate(
+        << subscription::FormatSubscriptionContractDateTime(
                snapshot.contract->expiration_date);
   }
 

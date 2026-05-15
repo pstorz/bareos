@@ -26,6 +26,52 @@ if(NOT ENABLE_JANSSON)
 endif()
 find_package(Jansson REQUIRED)
 
+set(SUBSCRIPTION_KEY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/subscription_keys")
+file(MAKE_DIRECTORY "${SUBSCRIPTION_KEY_DIR}")
+file(GLOB SUBSCRIPTION_KEY_FILES CONFIGURE_DEPENDS
+     "${SUBSCRIPTION_KEY_DIR}/*.pub.pem"
+)
+list(SORT SUBSCRIPTION_KEY_FILES)
+
+set(SUBSCRIPTION_KEY_ENTRIES "")
+set(SUBSCRIPTION_KEY_COUNT 0)
+foreach(SUBSCRIPTION_KEY_FILE IN LISTS SUBSCRIPTION_KEY_FILES)
+  get_filename_component(SUBSCRIPTION_KEY_NAME "${SUBSCRIPTION_KEY_FILE}" NAME)
+  string(REGEX REPLACE "\\.pub\\.pem$" "" SUBSCRIPTION_KEY_ID
+                       "${SUBSCRIPTION_KEY_NAME}"
+  )
+  if(SUBSCRIPTION_KEY_ID STREQUAL SUBSCRIPTION_KEY_NAME)
+    message(
+      FATAL_ERROR
+        "Subscription key '${SUBSCRIPTION_KEY_NAME}' must use the '*.pub.pem' suffix."
+    )
+  endif()
+
+  file(READ "${SUBSCRIPTION_KEY_FILE}" SUBSCRIPTION_KEY_PEM)
+  math(EXPR SUBSCRIPTION_KEY_COUNT "${SUBSCRIPTION_KEY_COUNT} + 1")
+  set(SUBSCRIPTION_KEY_DELIMITER "KEY${SUBSCRIPTION_KEY_COUNT}")
+  string(FIND "${SUBSCRIPTION_KEY_PEM}" ")${SUBSCRIPTION_KEY_DELIMITER}\""
+              SUBSCRIPTION_KEY_DELIMITER_POS
+  )
+  if(NOT SUBSCRIPTION_KEY_DELIMITER_POS EQUAL -1)
+    message(
+      FATAL_ERROR
+        "Subscription key '${SUBSCRIPTION_KEY_NAME}' contains the raw string delimiter '${SUBSCRIPTION_KEY_DELIMITER}'."
+    )
+  endif()
+
+  string(
+    APPEND
+    SUBSCRIPTION_KEY_ENTRIES
+    "    {\"${SUBSCRIPTION_KEY_ID}\", R\"${SUBSCRIPTION_KEY_DELIMITER}(${SUBSCRIPTION_KEY_PEM})${SUBSCRIPTION_KEY_DELIMITER}\"},\n"
+  )
+endforeach()
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/subscription_keys.inc.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/subscription_keys.inc" @ONLY
+)
+
 if(HAVE_WIN32)
   include_directories(
     ${PROJECT_SOURCE_DIR}/src/win32/generic

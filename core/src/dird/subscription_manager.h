@@ -35,7 +35,7 @@
 namespace directordaemon {
 
 constexpr const char* kDefaultSubscriptionContractFile
-    = CONFDIR "/subscription.json";
+    = CONFDIR "/subscription.bsub";
 
 enum class SubscriptionContractLoadState
 {

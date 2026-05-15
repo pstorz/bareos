@@ -1741,6 +1741,42 @@ status subscriptions
    alongside with the used, configured and remaining units.
    The value for the configured units can be set in
    :config:option:`dir/director/Subscriptions`.
+   If the Director has a valid signed subscription contract configured via
+   :config:option:`dir/director/SubscriptionFile` or at the packaged default
+   location ``<configdir>/subscription.bsub``, the contract becomes the
+   authoritative source for the configured unit count and the subscription
+   metadata. The legacy :config:option:`dir/director/Subscriptions` value is
+   then only used as fallback when no valid contract can be loaded.
+
+   The subscription file is JSON-based and uses the dedicated ``.bsub`` file
+   extension. It identifies itself with ``"file_type":
+   "bareos-subscription-file"``. The functionally required fields are
+   ``format_version``, ``file_type``, ``backup_units``, ``expiration_date``,
+   ``key_id``, and ``signature``. Issuance and customer metadata are optional.
+   Both ``issued_at`` and ``expiration_date`` use an ISO 8601 / RFC 3339 UTC
+   timestamp format such as ``2026-05-15T15:00:00Z``. Optional metadata can
+   include ``customer_name``, ``customer_contact_name``,
+   ``customer_contact_address``, ``customer_contact_email``, ``issued_by``,
+   ``issued_at``, ``support_level``, and ``support_rear``.
+
+   A valid but expired contract remains authoritative and is reported as
+   expired. Missing, unreadable, invalid, or untrusted contract files are
+   reported with warnings and make :bcommand:`status subscriptions` fall back to
+   the legacy configured unit count.
+
+   Unsigned contract JSON can be signed offline with :command:`bsubscription`:
+
+   .. code-block:: shell-session
+      :caption: Signing a subscription contract file
+
+      $ bsubscription --input unsigned.json --private-key contract-key.pem \
+          --output subscription.bsub
+
+   For HSM-backed Ed25519 keys, :command:`bsubscription` can also load keys via
+   an OpenSSL store URI, for example ``--private-key-uri pkcs11:...``. On
+   OpenSSL 3 builds, providers can be loaded explicitly with
+   ``--provider <name>`` and ``--provider-path <dir>`` before resolving the key
+   URI.
 
    To run this check automatically once a week, create an Admin Job that
    executes the console command after the regular backup cycle:
