@@ -85,6 +85,7 @@ target_sources(
           serial.cc
           signal.cc
           status_packet.cc
+          subscription_contract.cc
           thread_list.cc
           thread_specific_data.cc
           tls.cc
