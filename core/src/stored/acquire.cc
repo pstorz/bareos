@@ -410,6 +410,7 @@ DeviceControlRecord* AcquireDeviceForAppend(DeviceControlRecord* dcr)
   Device* dev = dcr->dev;
   JobControlRecord* jcr = dcr->jcr;
   bool retval = false;
+  bool have_vol = false;
 
   Enter(200);
   InitDeviceWaitTimers(dcr);
@@ -430,8 +431,19 @@ DeviceControlRecord* AcquireDeviceForAppend(DeviceControlRecord* dcr)
 
   dev->ClearUnload();
 
+  if (dcr->reserved_volume && dev->CanAppend()
+      && dcr->VolumeName[0] != 0
+      && bstrcmp(dcr->VolumeName, dev->VolHdr.VolumeName) && !dev->swap_dev
+      && !dev->MustUnload()
+      && !bstrcmp(dcr->VolCatInfo.VolCatStatus, "Recycle")) {
+    Dmsg0(190, "reserved volume already mounted in append mode.\n");
+    if (dev->num_writers == 0) {
+      dev->VolCatInfo = dcr->VolCatInfo; /* structure assignment */
+    }
+    have_vol = dcr->IsTapePositionOk();
+  }
 
-  {
+  if (!have_vol) {
     dev->rLock(true);
     BlockDevice(dev, BST_DOING_ACQUIRE);
     dev->Unlock();
