@@ -307,6 +307,12 @@ if(NOT client-only)
                    GTest::gtest_main
   )
   bareos_add_test(sd_backend LINK_LIBRARIES ${LINK_LIBRARIES})
+  bareos_add_test(volume_position_validation_test LINK_LIBRARIES
+                                                  GTest::gtest_main
+  )
+  if(TARGET droplet)
+    bareos_add_test(droplet_backend LINK_LIBRARIES ${LINK_LIBRARIES})
+  endif()
   if(${CMAKE_SYSTEM_NAME} MATCHES "SunOS") # disable on solaris
     set(disable "DISABLE")
   else()

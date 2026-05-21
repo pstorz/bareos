@@ -33,6 +33,7 @@
 #include "stored/device_control_record.h"
 #include "stored/stored_jcr_impl.h"
 #include "stored/label.h"
+#include "stored/volume_position_validation.h"
 #include "lib/edit.h"
 #include "include/jcr.h"
 #include "lib/bsock.h"
@@ -40,6 +41,17 @@
 namespace storagedaemon {
 
 static pthread_mutex_t mount_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static bool RefreshMountedVolumeCatalogInfo(DeviceControlRecord* dcr)
+{
+  if (dcr->dev->VolHdr.VolumeName[0] == 0) { return false; }
+  if (!bstrcmp(dcr->VolumeName, dcr->dev->VolHdr.VolumeName)) { return false; }
+  if (!dcr->DirGetVolumeInfo(GET_VOL_INFO_FOR_WRITE)) { return false; }
+  if (dcr->jcr->IsJobCanceled()) { return false; }
+
+  dcr->dev->VolCatInfo = dcr->VolCatInfo;
+  return true;
+}
 
 enum
 {
@@ -618,21 +630,34 @@ bool DeviceControlRecord::is_eod_valid()
 {
   switch (dev->GetSeekMode()) {
     case SeekMode::FILE_BLOCK: {
+      auto relation
+          = CompareEodFileBlockPosition(dev->VolCatInfo.VolCatFiles,
+                                        dev->GetFile());
+
+      if (relation == FileBlockCatalogRelation::kDeviceAhead
+          && RefreshMountedVolumeCatalogInfo(this)) {
+        relation = CompareEodFileBlockPosition(dev->VolCatInfo.VolCatFiles,
+                                               dev->GetFile());
+      }
+
       /* Check if we are positioned on the tape at the same place
        * that the database says we should be. */
-      if (dev->VolCatInfo.VolCatFiles == dev->GetFile()) {
+      if (relation == FileBlockCatalogRelation::kMatch) {
         Jmsg(jcr, M_INFO, 0,
              T_("Ready to append to end of Volume \"%s\" at file=%" PRIu32
                 ".\n"),
              VolumeName, dev->GetFile());
-      } else if (dev->GetFile() > dev->VolCatInfo.VolCatFiles) {
+      } else if (relation == FileBlockCatalogRelation::kDeviceAhead) {
+        auto corrected_position = CorrectCatalogForEodFileMismatch(
+            {dev->VolCatInfo.VolCatFiles, dev->VolCatInfo.VolCatBlocks},
+            dev->GetFile());
         Jmsg(jcr, M_WARNING, 0,
              T_("For Volume \"%s\":\n"
                 "The number of files mismatch! Volume=%u Catalog=%u\n"
                 "Correcting Catalog\n"),
              VolumeName, dev->GetFile(), dev->VolCatInfo.VolCatFiles);
-        dev->VolCatInfo.VolCatFiles = dev->GetFile();
-        dev->VolCatInfo.VolCatBlocks = dev->GetBlockNum();
+        dev->VolCatInfo.VolCatFiles = corrected_position.files;
+        dev->VolCatInfo.VolCatBlocks = corrected_position.blocks;
         if (!DirUpdateVolumeInfo(is_labeloperation::False)) {
           Jmsg(jcr, M_WARNING, 0, T_("Error updating Catalog\n"));
           MarkVolumeInError();
