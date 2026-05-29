@@ -30,7 +30,6 @@
 
 #include <chrono>
 #include <filesystem>
-#include <future>
 
 #define STORAGE_DAEMON 1
 #include "include/jcr.h"
@@ -157,5 +156,95 @@ TEST_F(sd, virtual_tape_persists_filemarks)
 
   delete dev;
   FreeJcr(jcr);
+  std::filesystem::remove_all(tape_dir);
+}
+
+TEST_F(sd, virtual_tape_only_advances_despool_job_switches)
+{
+  const char* name = "sd_backend_test";
+  char dev_name[] = "virtual-tape1";
+
+  JobControlRecord* jcr = SetupDummyJcr(name, nullptr, nullptr);
+  ASSERT_TRUE(jcr);
+
+  DeviceResource* device_resource
+      = (DeviceResource*)my_config->GetResWithName(R_DEVICE, dev_name);
+  ASSERT_TRUE(device_resource);
+
+  Device* dev = FactoryCreateDevice(jcr, device_resource);
+  ASSERT_TRUE(dev);
+
+  const auto tape_dir
+      = std::filesystem::temp_directory_path()
+        / ("bareos-virtual-tape-despool-" + std::to_string(getpid()));
+  std::filesystem::remove_all(tape_dir);
+
+  FreeMemory(dev->archive_device_string);
+  dev->archive_device_string = GetMemory(tape_dir.string().size() + 1);
+  PmStrcpy(dev->archive_device_string, tape_dir.string().c_str());
+  Mmsg(dev->prt_name, "\"%s\" (%s)", device_resource->resource_name_,
+       dev->archive_device_string);
+
+  DeviceControlRecord dcr;
+  dcr.jcr = jcr;
+  dcr.dev = dev;
+  dcr.device_resource = device_resource;
+
+  ASSERT_TRUE(dev->open(&dcr, DeviceMode::CREATE_READ_WRITE));
+  dev->attached_dcrs.push_back(&dcr);
+
+  const char direct_first[] = "direct-first";
+  ASSERT_EQ(dev->write(direct_first, strlen(direct_first)),
+            static_cast<ssize_t>(strlen(direct_first)));
+
+  const char direct_second[] = "direct-second";
+  ASSERT_EQ(dev->write(direct_second, strlen(direct_second)),
+            static_cast<ssize_t>(strlen(direct_second)));
+
+  struct mtget status;
+  ASSERT_EQ(dev->d_ioctl(dev->fd, MTIOCGET, (char*)&status), 0);
+  EXPECT_EQ(status.mt_fileno, 0);
+  EXPECT_EQ(status.mt_blkno, 2);
+
+  JobControlRecord* despool_jcr_first
+      = SetupDummyJcr("sd_backend_test_despool_first", nullptr, nullptr);
+  ASSERT_TRUE(despool_jcr_first);
+  despool_jcr_first->JobId = 101;
+
+  JobControlRecord* despool_jcr_second
+      = SetupDummyJcr("sd_backend_test_despool_second", nullptr, nullptr);
+  ASSERT_TRUE(despool_jcr_second);
+  despool_jcr_second->JobId = 202;
+
+  DeviceControlRecord despool_dcr_first;
+  despool_dcr_first.jcr = despool_jcr_first;
+  despool_dcr_first.dev = dev;
+  despool_dcr_first.despooling = true;
+  dev->attached_dcrs.push_back(&despool_dcr_first);
+
+  const char despool_first[] = "despool-first";
+  ASSERT_EQ(dev->write(despool_first, strlen(despool_first)),
+            static_cast<ssize_t>(strlen(despool_first)));
+
+  despool_dcr_first.despooling = false;
+  DeviceControlRecord despool_dcr_second;
+  despool_dcr_second.jcr = despool_jcr_second;
+  despool_dcr_second.dev = dev;
+  despool_dcr_second.despooling = true;
+  dev->attached_dcrs.push_back(&despool_dcr_second);
+
+  const char despool_second[] = "despool-second";
+  ASSERT_EQ(dev->write(despool_second, strlen(despool_second)),
+            static_cast<ssize_t>(strlen(despool_second)));
+
+  ASSERT_EQ(dev->d_ioctl(dev->fd, MTIOCGET, (char*)&status), 0);
+  EXPECT_EQ(status.mt_fileno, 1);
+  EXPECT_EQ(status.mt_blkno, 1);
+
+  dev->attached_dcrs.clear();
+  delete dev;
+  FreeJcr(jcr);
+  FreeJcr(despool_jcr_first);
+  FreeJcr(despool_jcr_second);
   std::filesystem::remove_all(tape_dir);
 }

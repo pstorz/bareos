@@ -25,7 +25,6 @@
 #include <chrono>
 #include <filesystem>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include <sys/mtio.h>
@@ -58,7 +57,7 @@ class virtual_tape_device : public generic_tape_device {
   size_t current_block_{0};
   uint64_t next_block_id_{0};
   std::chrono::milliseconds operation_delay_{0};
-  std::thread::id last_writer_thread_{};
+  uint32_t last_despool_job_id_{0};
 
   bool LoadLayout();
   bool SaveLayout() const;
@@ -66,6 +65,7 @@ class virtual_tape_device : public generic_tape_device {
   void EnsurePositionIsValid();
   void ResetPosition();
   void PositionAtEod();
+  uint32_t CurrentDespoolJobId() const;
   void AdvanceForWriterSwitch();
   void TruncateAtCurrentPosition();
   void MaybeDelay() const;

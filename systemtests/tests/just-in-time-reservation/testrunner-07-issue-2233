@@ -39,7 +39,7 @@ mkdir -p "${runner_tmp}"
 start_test
 
 issue_log="${runner_tmp}/issue-2233.out"
-job_count=5
+job_count=6
 
 rm -f "${issue_log}"
 rm -rf storage/issue2233-vtape
@@ -92,6 +92,8 @@ run job=backup-bareos-fd-issue2233 yes
 run job=backup-bareos-fd-issue2233-huge yes
 run job=backup-bareos-fd-issue2233 yes
 run job=backup-bareos-fd-issue2233 yes
+wait
+run job=backup-bareos-fd-issue2233-small yes
 wait
 messages
 quit

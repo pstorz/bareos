@@ -30,6 +30,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "include/jcr.h"
+#include "stored/device_control_record.h"
 #include "stored/backends/util.h"
 #include "stored/sd_backends.h"
 #include "virtual_tape_device.h"
@@ -146,15 +148,29 @@ void virtual_tape_device::PositionAtEod()
   current_block_ = files_.back().size();
 }
 
+uint32_t virtual_tape_device::CurrentDespoolJobId() const
+{
+  for (const auto* dcr : attached_dcrs) {
+    if (!dcr || !dcr->despooling || !dcr->jcr) { continue; }
+    return dcr->jcr->JobId;
+  }
+
+  return 0;
+}
+
 void virtual_tape_device::AdvanceForWriterSwitch()
 {
   EnsurePositionIsValid();
 
-  const auto current_writer = std::this_thread::get_id();
-  if (last_writer_thread_ == std::thread::id{}
-      || last_writer_thread_ == current_writer
-      || files_[current_file_].empty()) {
-    last_writer_thread_ = current_writer;
+  const auto current_despool_job_id = CurrentDespoolJobId();
+  if (current_despool_job_id == 0) {
+    last_despool_job_id_ = 0;
+    return;
+  }
+
+  if (last_despool_job_id_ == 0
+      || last_despool_job_id_ == current_despool_job_id) {
+    last_despool_job_id_ = current_despool_job_id;
     return;
   }
 
@@ -163,7 +179,7 @@ void virtual_tape_device::AdvanceForWriterSwitch()
   files_.emplace_back();
   ++current_file_;
   current_block_ = 0;
-  last_writer_thread_ = current_writer;
+  last_despool_job_id_ = current_despool_job_id;
 }
 
 void virtual_tape_device::MaybeDelay() const
@@ -338,7 +354,7 @@ int virtual_tape_device::HandleOperation(mtop& operation)
         ++current_file_;
         current_block_ = 0;
       }
-      last_writer_thread_ = {};
+      last_despool_job_id_ = 0;
       MaybeDelay();
       return SaveLayout() ? 0 : -1;
     case MTFSF:
@@ -454,7 +470,9 @@ ssize_t virtual_tape_device::d_read(int, void* buffer, size_t count)
   return block.size;
 }
 
-ssize_t virtual_tape_device::d_write(int, const void* buffer, size_t count)
+ssize_t virtual_tape_device::d_write(int,
+                                     const void* buffer,
+                                     size_t count)
 {
   EnsurePositionIsValid();
   AdvanceForWriterSwitch();
