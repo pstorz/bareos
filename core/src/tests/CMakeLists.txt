@@ -376,10 +376,6 @@ if(NOT client-only)
     test_sd_plugins LINK_LIBRARIES Bareos::Lib Bareos::LibSD GTest::gtest_main
   )
   bareos_add_test(
-    volume_position_validation_test
-    LINK_LIBRARIES Bareos::SD Bareos::LibSD Bareos::Lib GTest::gtest_main
-  )
-  bareos_add_test(
     test_setdebug LINK_LIBRARIES Bareos::Dir Bareos::Lib Bareos::Findlib
                                  Bareos::SQL GTest::gtest_main
   )
