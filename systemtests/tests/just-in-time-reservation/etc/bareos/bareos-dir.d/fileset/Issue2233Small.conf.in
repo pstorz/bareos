@@ -1,0 +1,9 @@
+FileSet {
+  Name = "Issue2233Small"
+  Include {
+    Options {
+      Signature = XXH128
+    }
+    File=<@tmpdir@/issue2233-small-file-list
+  }
+}

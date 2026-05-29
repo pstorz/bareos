@@ -28,6 +28,11 @@
 
 namespace storagedaemon {
 
+static bool IsTapeLikeDeviceType(std::string_view device_type)
+{
+  return device_type == DeviceType::B_TAPE_DEV || device_type == "virtual_tape";
+}
+
 DeviceResource::DeviceResource(const DeviceResource& other)
     : BareosResource(other)
     , media_type(nullptr)
@@ -229,7 +234,7 @@ static void WarnOnGtOneMaxConcurrentJobs(int max_concurrent_jobs,
 
 static bool ValidateTapeDevice(const DeviceResource& resource)
 {
-  ASSERT(resource.device_type == DeviceType::B_TAPE_DEV);
+  ASSERT(IsTapeLikeDeviceType(resource.device_type));
 
   WarnOnZeroMaxConcurrentJobs(resource.max_concurrent_jobs,
                               resource.resource_name_);
@@ -261,7 +266,7 @@ bool DeviceResource::Validate()
   }
 
   to_lower(device_type);
-  if (device_type == DeviceType::B_TAPE_DEV) {
+  if (IsTapeLikeDeviceType(device_type)) {
     return ValidateTapeDevice(*this);
   }
 

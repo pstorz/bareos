@@ -29,6 +29,7 @@
 
 
 #include <chrono>
+#include <filesystem>
 #include <future>
 
 #define STORAGE_DAEMON 1
@@ -89,4 +90,72 @@ TEST_F(sd, backend_load_unload)
 
   Dmsg0(100, "cleanup\n");
   FreeJcr(jcr);
+}
+
+TEST_F(sd, virtual_tape_persists_filemarks)
+{
+  const char* name = "sd_backend_test";
+  char dev_name[] = "virtual-tape1";
+
+  JobControlRecord* jcr = SetupDummyJcr(name, nullptr, nullptr);
+  ASSERT_TRUE(jcr);
+
+  DeviceResource* device_resource
+      = (DeviceResource*)my_config->GetResWithName(R_DEVICE, dev_name);
+  ASSERT_TRUE(device_resource);
+
+  Device* dev = FactoryCreateDevice(jcr, device_resource);
+  ASSERT_TRUE(dev);
+
+  const auto tape_dir = std::filesystem::temp_directory_path()
+                        / ("bareos-virtual-tape-" + std::to_string(getpid()));
+  std::filesystem::remove_all(tape_dir);
+
+  FreeMemory(dev->archive_device_string);
+  dev->archive_device_string = GetMemory(tape_dir.string().size() + 1);
+  PmStrcpy(dev->archive_device_string, tape_dir.string().c_str());
+  Mmsg(dev->prt_name, "\"%s\" (%s)", device_resource->resource_name_,
+       dev->archive_device_string);
+
+  DeviceControlRecord dcr;
+  dcr.jcr = jcr;
+  dcr.dev = dev;
+  dcr.device_resource = device_resource;
+
+  ASSERT_TRUE(dev->open(&dcr, DeviceMode::CREATE_READ_WRITE));
+
+  const char first_block[] = "abc";
+  const char second_block[] = "defg";
+  ASSERT_EQ(dev->write(first_block, sizeof(first_block) - 1),
+            sizeof(first_block) - 1);
+  ASSERT_EQ(dev->write(second_block, sizeof(second_block) - 1),
+            sizeof(second_block) - 1);
+  dev->SetAppend();
+
+  struct mtget status;
+  ASSERT_EQ(dev->d_ioctl(dev->fd, MTIOCGET, (char*)&status), 0);
+  EXPECT_EQ(status.mt_fileno, 0);
+  EXPECT_EQ(status.mt_blkno, 2);
+
+  ASSERT_TRUE(dev->weof(1));
+  ASSERT_EQ(dev->d_ioctl(dev->fd, MTIOCGET, (char*)&status), 0);
+  EXPECT_EQ(status.mt_fileno, 1);
+  EXPECT_EQ(status.mt_blkno, 0);
+
+  ASSERT_TRUE(dev->rewind(&dcr));
+  ASSERT_EQ(dev->d_ioctl(dev->fd, MTIOCGET, (char*)&status), 0);
+  EXPECT_EQ(status.mt_fileno, 0);
+  EXPECT_EQ(status.mt_blkno, 0);
+
+  char buffer[16];
+  ASSERT_EQ(dev->read(buffer, sizeof(buffer)), sizeof(first_block) - 1);
+  EXPECT_EQ(std::string(buffer, sizeof(first_block) - 1), "abc");
+  ASSERT_EQ(dev->read(buffer, sizeof(buffer)), sizeof(second_block) - 1);
+  EXPECT_EQ(std::string(buffer, sizeof(second_block) - 1), "defg");
+  EXPECT_EQ(dev->read(buffer, sizeof(buffer)), 0);
+  EXPECT_EQ(dev->read(buffer, sizeof(buffer)), 0);
+
+  delete dev;
+  FreeJcr(jcr);
+  std::filesystem::remove_all(tape_dir);
 }

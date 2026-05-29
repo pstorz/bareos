@@ -1,0 +1,9 @@
+Storage {
+  Name = VirtualTape
+  Address = @hostname@
+  Password = "@sd_password@"
+  Device = VirtualTapeStorage
+  Media Type = Tape
+  Port = @sd_port@
+  Maximum Concurrent Jobs = 10
+}
