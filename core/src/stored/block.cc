@@ -443,6 +443,7 @@ static bool TerminateWritingVolume(DeviceControlRecord* dcr)
   bool ok = true;
 
   /* Create a JobMedia record to indicated end of tape */
+  SyncDeviceFilePosition(dev);
   dev->VolCatInfo.VolCatFiles = dev->file;
   if (!dcr->DirCreateJobmediaRecord(false)) {
     Dmsg0(50, "Error from create JobMedia\n");
@@ -521,6 +522,7 @@ static bool DoNewFileBookkeeping(DeviceControlRecord* dcr)
     dev->dev_errno = EIO;
     return false;
   }
+  SyncDeviceFilePosition(dev);
   dev->VolCatInfo.VolCatFiles = dev->file;
   if (!dcr->DirUpdateVolumeInfo(is_labeloperation::False)) {
     Dmsg0(50, "Error from update_vol_info.\n");
@@ -803,6 +805,10 @@ bool DeviceControlRecord::WriteBlockToDev()
   }
 
   bool block_seek = dev->GetSeekMode() == SeekMode::FILE_BLOCK;
+  if (block_seek && dcr->despooling && dcr->VolFirstIndex == 0
+      && block->FirstIndex > 0) {
+    SyncDeviceFilePosition(dev);
+  }
 
   // if this is the first write to this volume (from this job) create a null
   // jobmedia entry to prevent the volume from getting recycled.

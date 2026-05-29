@@ -200,6 +200,7 @@ bail_out:
 void SetStartVolPosition(DeviceControlRecord* dcr)
 {
   Device* dev = dcr->dev;
+  SyncDeviceFilePosition(dev);
   /* Set new start position */
   if (dev->GetSeekMode() == SeekMode::FILE_BLOCK) {
     dcr->StartBlock = dev->block_num;
@@ -240,6 +241,23 @@ void SetNewFileParameters(DeviceControlRecord* dcr)
   dcr->VolLastIndex = 0;
   dcr->NewFile = false;
   dcr->WroteVol = false;
+}
+
+bool SyncDeviceFilePosition(Device* dev)
+{
+  if (!dev->IsTape() || dev->GetSeekMode() != SeekMode::FILE_BLOCK
+      || !dev->HasCap(CAP_MTIOCGET) || !dev->IsOpen()) {
+    return false;
+  }
+
+  const auto backend_file = dev->GetOsTapeFile();
+  if (backend_file < 0 || static_cast<uint32_t>(backend_file) <= dev->file) {
+    return false;
+  }
+
+  Dmsg2(200, "Syncing device file from %u to %d\n", dev->file, backend_file);
+  dev->file = static_cast<uint32_t>(backend_file);
+  return true;
 }
 
 /**

@@ -540,6 +540,7 @@ Device* FactoryCreateDevice(JobControlRecord* jcr, DeviceResource* device);
 bool CanOpenMountedDev(Device* dev);
 bool LoadDev(Device* dev);
 int WriteBlock(Device* dev);
+bool SyncDeviceFilePosition(Device* dev);
 void AttachJcrToDevice(Device* dev, JobControlRecord* jcr);
 void DetachJcrFromDevice(Device* dev, JobControlRecord* jcr);
 JobControlRecord* next_attached_jcr(Device* dev, JobControlRecord* jcr);

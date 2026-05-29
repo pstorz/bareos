@@ -562,6 +562,7 @@ bool ReleaseDevice(DeviceControlRecord* dcr)
           WriteAnsiIbmLabels(dcr, ANSI_EOF_LABEL, dev->VolHdr.VolumeName);
         }
         if (!dev->AtWeot()) {
+          SyncDeviceFilePosition(dev);
           dev->VolCatInfo.VolCatFiles = dev->file; /* set number of files */
 
           // Note! do volume update before close, which zaps VolCatInfo
