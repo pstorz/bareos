@@ -403,6 +403,13 @@ find_program(
 )
 # The lookup cache must be cleared before re-searching because these
 # executables can be provided by the build tree or the system PATH.
+
+# This is required as in the CI pipeline we prepare the Webui-Vue dist
+# directory and package it into the tarball as the build nodes do not have
+# node and the rest of the tools.
+# To still allow the test of the webui on the testingfull stage which has
+# the tools system-wide installed the path detection needs to run again.
+
 unset(WEBUI_VUE_PLAYWRIGHT CACHE)
 find_program(
   WEBUI_VUE_PLAYWRIGHT
