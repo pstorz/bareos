@@ -343,6 +343,47 @@ char* BareosDb::strerror(libbareos::source_location loc)
   return errmsg;
 }
 
+const BareosDb::LastSqlError& BareosDb::GetLastSqlError(
+    libbareos::source_location loc)
+{
+  CheckOwnership(loc);
+  return last_sql_error_;
+}
+
+bool BareosDb::LastSqlErrorLikelyCatalogCorruption(
+    libbareos::source_location loc)
+{
+  CheckOwnership(loc);
+  return last_sql_error_.classification
+         == SqlErrorClassification::kLikelyCatalogCorruption;
+}
+
+void BareosDb::SetLastSqlError(std::string sqlstate,
+                               std::string message,
+                               std::string phase,
+                               SqlErrorClassification classification,
+                               libbareos::source_location loc)
+{
+  CheckOwnership(loc);
+  last_sql_error_.has_error = true;
+  last_sql_error_.classification = classification;
+  last_sql_error_.sqlstate = std::move(sqlstate);
+  last_sql_error_.message = std::move(message);
+  last_sql_error_.phase = std::move(phase);
+}
+
+void BareosDb::ClearLastSqlError(libbareos::source_location loc)
+{
+  CheckOwnership(loc);
+  last_sql_error_ = LastSqlError{};
+}
+
+bool BareosDb::HasLastSqlError(libbareos::source_location loc)
+{
+  CheckOwnership(loc);
+  return last_sql_error_.has_error;
+}
+
 /**
  * Given a full filename, split it into its path
  *  and filename parts. They are returned in pool memory

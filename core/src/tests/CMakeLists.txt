@@ -233,6 +233,10 @@ if(NOT client-only)
                    GTest::gtest_main
     SKIP_GTEST # used by systemtest catalog
   )
+  bareos_add_test(
+    catalog_sql_error_test LINK_LIBRARIES Bareos::Lib Bareos::SQL
+                                          GTest::gtest_main
+  )
 
   bareos_add_test(
     cli_test LINK_LIBRARIES Bareos::Lib CLI11::CLI11 GTest::gtest_main

@@ -488,6 +488,22 @@ class BareosSqlError : public std::runtime_error {
 };
 
 class BareosDb : public BareosDbQueryEnum {
+ public:
+  enum class SqlErrorClassification : uint8_t
+  {
+    kNone,
+    kGeneric,
+    kLikelyCatalogCorruption
+  };
+
+  struct LastSqlError {
+    bool has_error = false;
+    SqlErrorClassification classification = SqlErrorClassification::kNone;
+    std::string sqlstate{};
+    std::string message{};
+    std::string phase{};
+  };
+
  protected:
   brwlock_t lock_; /**< Transaction lock */
   SQL_INTERFACETYPE db_interface_type_
@@ -525,6 +541,7 @@ class BareosDb : public BareosDbQueryEnum {
   POOLMEM* esc_obj = nullptr;     /**< Escaped restore object */
   POOLMEM* cmd = nullptr;         /**< SQL command string */
   POOLMEM* errmsg = nullptr;      /**< Nicely edited error message */
+  LastSqlError last_sql_error_{};
   static constexpr const char* queries[] = {
 #include "postgresql_queries.inc"
   }; /**< table of query texts */
@@ -588,6 +605,10 @@ class BareosDb : public BareosDbQueryEnum {
  public:
   char* strerror(libbareos::source_location loc
                  = libbareos::source_location::current());
+  const LastSqlError& GetLastSqlError(libbareos::source_location loc
+                                      = libbareos::source_location::current());
+  bool LastSqlErrorLikelyCatalogCorruption(
+      libbareos::source_location loc = libbareos::source_location::current());
   bool CheckMaxConnections(JobControlRecord* jcr, uint32_t max_concurrent_jobs);
   bool QueryDb(JobControlRecord* jcr,
                const char* select_cmd,
@@ -1061,6 +1082,18 @@ class BareosDb : public BareosDbQueryEnum {
       = 0;
 
  protected:
+  void SetLastSqlError(std::string sqlstate,
+                       std::string message,
+                       std::string phase,
+                       SqlErrorClassification classification
+                       = SqlErrorClassification::kGeneric,
+                       libbareos::source_location loc
+                       = libbareos::source_location::current());
+  void ClearLastSqlError(libbareos::source_location loc
+                         = libbareos::source_location::current());
+  bool HasLastSqlError(libbareos::source_location loc
+                       = libbareos::source_location::current());
+
   void CheckOwnership(libbareos::source_location l
                       = libbareos::source_location::current())
   {

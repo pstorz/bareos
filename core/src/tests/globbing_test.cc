@@ -33,6 +33,24 @@
 
 using namespace directordaemon;
 
+TEST(RestoreSelectionMessages, likely_pruned_mentions_retention)
+{
+  auto* message = NoFilesFoundMessageForRestoreSelection(true);
+  ASSERT_NE(message, nullptr);
+  EXPECT_NE(
+      strstr(message, "Most likely your retention policy pruned the files."),
+      nullptr);
+}
+
+TEST(RestoreSelectionMessages, non_pruned_does_not_mention_retention)
+{
+  auto* message = NoFilesFoundMessageForRestoreSelection(false);
+  ASSERT_NE(message, nullptr);
+  EXPECT_EQ(
+      strstr(message, "Most likely your retention policy pruned the files."),
+      nullptr);
+}
+
 int FakeCdCmd(UaContext* ua, TreeContext* tree, std::string path)
 {
   std::string command = "cd " + path;

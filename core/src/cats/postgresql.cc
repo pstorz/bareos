@@ -44,6 +44,9 @@
 #  include "lib/berrno.h"
 #  include "lib/dlist.h"
 
+#  include <algorithm>
+#  include <cctype>
+
 /* -----------------------------------------------------------------------
  *
  *   PostgreSQL dependent defines and subroutines
@@ -66,15 +69,46 @@ struct retries {
   int amount;
 };
 
-result do_query(PGconn* db_handle, const char* query, retries r = {10})
+struct query_error {
+  std::string sqlstate{};
+  std::string message{};
+};
+
+static query_error extract_error(PGconn* db_handle, PGresult* pg_result)
 {
+  query_error error;
+
+  if (pg_result) {
+    if (auto* sqlstate = PQresultErrorField(pg_result, PG_DIAG_SQLSTATE)) {
+      error.sqlstate = sqlstate;
+    }
+    if (auto* message = PQresultErrorMessage(pg_result)) {
+      error.message = message;
+    }
+  }
+
+  if (error.message.empty()) { error.message = PQerrorMessage(db_handle); }
+  return error;
+}
+
+result do_query(PGconn* db_handle,
+                const char* query,
+                retries r = {10},
+                query_error* error = nullptr)
+{
+  if (error) { *error = {}; }
   for (int i = 0; i < r.amount; i++) {
     if (i > 1) { Bmicrosleep(5, 0); }
     result res{PQexec(db_handle, query)};
     if (res) {
       auto status = PQresultStatus(res.get());
-      if (status != PGRES_TUPLES_OK && status != PGRES_COMMAND_OK) { res = {}; }
+      if (status != PGRES_TUPLES_OK && status != PGRES_COMMAND_OK) {
+        if (error) { *error = extract_error(db_handle, res.get()); }
+        res = {};
+      }
       return res;
+    } else if (error) {
+      error->message = PQerrorMessage(db_handle);
     }
   }
   return {};
@@ -82,11 +116,14 @@ result do_query(PGconn* db_handle, const char* query, retries r = {10})
 
 const char* strerror(PGconn* db_handle) { return PQerrorMessage(db_handle); }
 
-result try_query(PGconn* db_handle, bool try_reconnection, const char* query)
+result try_query(PGconn* db_handle,
+                 bool try_reconnection,
+                 const char* query,
+                 query_error* error = nullptr)
 {
   Dmsg1(500, "try_query starts with '%s'\n", query);
 
-  auto res = do_query(db_handle, query);
+  auto res = do_query(db_handle, query, retries{10}, error);
   if (!res && try_reconnection) {
     PQreset(db_handle);
     if (PQstatus(db_handle) == CONNECTION_OK) {
@@ -95,8 +132,8 @@ result try_query(PGconn* db_handle, bool try_reconnection, const char* query)
                    "SET cursor_tuple_fraction=1;"
                    "SET standard_conforming_strings=on;"
                    "SET client_min_messages TO WARNING;",
-                   retries{1})) {
-        res = do_query(db_handle, query);
+                   retries{1}, error)) {
+        res = do_query(db_handle, query, retries{10}, error);
       }
     }
   }
@@ -110,6 +147,35 @@ result try_query(PGconn* db_handle, bool try_reconnection, const char* query)
   return res;
 }
 };  // namespace postgres
+
+static std::string QueryPhaseForSql(const char* query)
+{
+  if (!query) { return "query"; }
+  if (!bstrncasecmp(query, "FETCH", 5)) { return "cursor fetch"; }
+  if (!bstrncasecmp(query, "DECLARE", 7)) { return "cursor declare"; }
+  if (!bstrncasecmp(query, "CLOSE", 5)) { return "cursor close"; }
+  return "query";
+}
+
+static BareosDb::SqlErrorClassification ClassifySqlError(
+    const std::string& sqlstate,
+    const std::string& message)
+{
+  if (sqlstate == "XX001") {
+    return BareosDb::SqlErrorClassification::kLikelyCatalogCorruption;
+  }
+
+  std::string lowered = message;
+  std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  if (lowered.find("invalid page in block") != std::string::npos
+      || lowered.find("page verification failed") != std::string::npos
+      || lowered.find("data corrupted") != std::string::npos) {
+    return BareosDb::SqlErrorClassification::kLikelyCatalogCorruption;
+  }
+
+  return BareosDb::SqlErrorClassification::kGeneric;
+}
 
 BareosDbPostgresql::BareosDbPostgresql(JobControlRecord*,
                                        const char*,
@@ -542,6 +608,8 @@ bool BareosDbPostgresql::BigSqlQuery(const char* query,
 
   do {
     if (!SqlQueryWithoutHandler("FETCH 100 FROM _bar_cursor")) {
+      Mmsg(errmsg, T_("Query failed: %s: ERR=%s\n"),
+           "FETCH 100 FROM _bar_cursor", sql_strerror());
       goto bail_out;
     }
     while ((row = SqlFetchRow()) != NULL) {
@@ -553,7 +621,11 @@ bool BareosDbPostgresql::BigSqlQuery(const char* query,
 
   } while (num_rows_ > 0);
 
-  SqlQueryWithoutHandler("CLOSE _bar_cursor");
+  if (!SqlQueryWithoutHandler("CLOSE _bar_cursor")) {
+    Mmsg(errmsg, T_("Query failed: %s: ERR=%s\n"), "CLOSE _bar_cursor",
+         sql_strerror());
+    goto bail_out;
+  }
 
   Dmsg0(500, "BigSqlQuery finished\n");
   SqlFreeResult();
@@ -614,8 +686,9 @@ bool BareosDbPostgresql::SqlQueryWithoutHandler(const char* query,
                                                 query_flags flags)
 {
   CheckOwnership();
-  auto result
-      = postgres::try_query(db_handle_, try_reconnect_ && !transaction_, query);
+  postgres::query_error query_error;
+  auto result = postgres::try_query(db_handle_, try_reconnect_ && !transaction_,
+                                    query, &query_error);
   if (result) {
     if (!flags.test(query_flag::DiscardResult)) {
       PQclear(result_);
@@ -630,6 +703,9 @@ bool BareosDbPostgresql::SqlQueryWithoutHandler(const char* query,
     }
     return true;
   } else {
+    SetLastSqlError(
+        query_error.sqlstate, query_error.message, QueryPhaseForSql(query),
+        ClassifySqlError(query_error.sqlstate, query_error.message));
     return false;
   }
 }

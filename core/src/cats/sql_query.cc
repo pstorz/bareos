@@ -96,8 +96,13 @@ bool BareosDb::SqlQuery(const char* query)
   Dmsg2(debuglevel, "called: %s with query %s\n", __PRETTY_FUNCTION__, query);
 
   DbLocker _{this};
+  ClearLastSqlError();
   retval = SqlQueryWithoutHandler(query, {});
   if (!retval) {
+    if (!HasLastSqlError()) {
+      SetLastSqlError("", sql_strerror(), "SqlQuery",
+                      SqlErrorClassification::kGeneric);
+    }
     Mmsg(errmsg, T_("Query failed: %s: ERR=%s\n"), query, sql_strerror());
   }
 
@@ -111,8 +116,13 @@ bool BareosDb::SqlExec(const char* query)
   Dmsg2(debuglevel, "called: %s with query %s\n", __PRETTY_FUNCTION__, query);
 
   DbLocker _{this};
+  ClearLastSqlError();
   retval = SqlQueryWithoutHandler(query, {BareosDb::query_flag::DiscardResult});
   if (!retval) {
+    if (!HasLastSqlError()) {
+      SetLastSqlError("", sql_strerror(), "SqlExec",
+                      SqlErrorClassification::kGeneric);
+    }
     Mmsg(errmsg, T_("Query failed: %s: ERR=%s\n"), query, sql_strerror());
   }
 
@@ -128,8 +138,13 @@ bool BareosDb::SqlQuery(const char* query,
   Dmsg2(debuglevel, "called: %s with query %s\n", __PRETTY_FUNCTION__, query);
 
   DbLocker _{this};
+  ClearLastSqlError();
   retval = SqlQueryWithHandler(query, ResultHandler, ctx);
   if (!retval) {
+    if (!HasLastSqlError()) {
+      SetLastSqlError("", sql_strerror(), "SqlQueryWithHandler",
+                      SqlErrorClassification::kGeneric);
+    }
     Mmsg(errmsg, T_("Query failed: %s: ERR=%s\n"), query, sql_strerror());
   }
 

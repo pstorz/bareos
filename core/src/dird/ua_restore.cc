@@ -52,6 +52,7 @@
 #include "include/protocol_types.h"
 
 #include <vector>
+#include <string>
 
 namespace directordaemon {
 
@@ -1253,17 +1254,78 @@ static bool CheckAndSetFileregex(UaContext* ua,
   return true;
 }
 
-static bool AskForFileregex(UaContext* ua, RestoreContext* rx)
+struct LastCatalogSqlError {
+  bool has_error = false;
+  bool likely_catalog_corruption = false;
+  std::string sqlstate{};
+  std::string message{};
+  std::string phase{};
+};
+
+static LastCatalogSqlError GetLastCatalogSqlError(UaContext* ua)
+{
+  LastCatalogSqlError result;
+  DbLocker db_lock{ua->db};
+  const auto& error = ua->db->GetLastSqlError();
+  result.has_error = error.has_error;
+  result.likely_catalog_corruption
+      = ua->db->LastSqlErrorLikelyCatalogCorruption();
+  result.sqlstate = error.sqlstate;
+  result.message = error.message;
+  result.phase = error.phase;
+  return result;
+}
+
+static void ReportCatalogSqlError(UaContext* ua, const char* operation)
+{
+  const auto sql_error = GetLastCatalogSqlError(ua);
+  if (!sql_error.has_error) {
+    DbLocker db_lock{ua->db};
+    ua->ErrorMsg("%s\n", ua->db->strerror());
+    return;
+  }
+
+  if (!sql_error.sqlstate.empty()) {
+    ua->ErrorMsg(T_("Catalog SQL error while %s (SQLSTATE %s): %s\n"),
+                 operation, sql_error.sqlstate.c_str(),
+                 sql_error.message.c_str());
+  } else {
+    ua->ErrorMsg(T_("Catalog SQL error while %s: %s\n"), operation,
+                 sql_error.message.c_str());
+  }
+
+  if (sql_error.likely_catalog_corruption) {
+    ua->ErrorMsg(
+        T_("This likely indicates catalog database corruption. Verify catalog "
+           "database integrity and recover from a known-good catalog backup "
+           "if necessary.\n"));
+  }
+}
+
+static const char* NoFilesFoundMessageForRestoreSelection(bool likely_pruned)
+{
+  if (likely_pruned) {
+    return T_(
+        "\n\nFor one or more of the JobIds selected, no files were found,\n"
+        "so file selection is not possible.\n"
+        "Most likely your retention policy pruned the files.\n");
+  }
+
+  return T_(
+      "\n\nFor one or more of the JobIds selected, no files were found,\n"
+      "so file selection is not possible.\n");
+}
+
+static bool AskForFileregex(UaContext* ua,
+                            RestoreContext* rx,
+                            bool likely_pruned)
 {
   /* if user enters all on command line select everything */
   if (FindArg(ua, NT_("all")) >= 0
       || FindArgWithValue(ua, NT_("fileregex")) >= 0) {
     return true;
   }
-  ua->SendMsg(
-      T_("\n\nFor one or more of the JobIds selected, no files were found,\n"
-         "so file selection is not possible.\n"
-         "Most likely your retention policy pruned the files.\n"));
+  ua->SendMsg("%s", NoFilesFoundMessageForRestoreSelection(likely_pruned));
   if (GetYesno(ua, T_("\nDo you want to restore all the files? (yes|no): "))) {
     if (ua->pint32_val) { return true; }
 
@@ -1347,7 +1409,9 @@ static bool BuildDirectoryTree(UaContext* ua, RestoreContext* rx)
   if (!ua->db->GetFileList(ua->jcr, rx->JobIds, false /* do not use md5 */,
                            true /* get delta */, InsertTreeHandler,
                            (void*)&tree)) {
-    ua->ErrorMsg("%s", ua->db->strerror());
+    ReportCatalogSqlError(ua, T_("building restore directory tree"));
+    FreeTree(tree.root);
+    return false;
   }
 
   if (*rx->BaseJobIds) {
@@ -1355,25 +1419,23 @@ static bool BuildDirectoryTree(UaContext* ua, RestoreContext* rx)
     PmStrcat(rx->JobIds, rx->BaseJobIds);
   }
 
-  /* Look at the first JobId on the list (presumably the oldest) and
-   *  if it is marked purged, don't do the manual selection because
-   *  the Job was pruned, so the tree is incomplete. */
-  if (tree.FileCount != 0) {
-    // Find out if any Job is purged
-    Mmsg(rx->query, "SELECT SUM(PurgedFiles) FROM Job WHERE JobId IN (%s)",
-         rx->JobIds);
-    rx->found = false;
-    if (!ua->db->SqlQuery(rx->query, RestoreCountHandler, (void*)rx)) {
-      ua->ErrorMsg("%s\n", ua->db->strerror());
-    }
-    // rx->JobId is the PurgedFiles flag
-    if (rx->found && rx->JobId > 0) {
-      tree.FileCount = 0; /* set count to zero, no tree selection */
-    }
+  bool likely_pruned = false;
+  Mmsg(rx->query, "SELECT SUM(PurgedFiles) FROM Job WHERE JobId IN (%s)",
+       rx->JobIds);
+  rx->found = false;
+  if (!ua->db->SqlQuery(rx->query, RestoreCountHandler, (void*)rx)) {
+    ReportCatalogSqlError(ua, T_("checking purge state for selected jobs"));
+    FreeTree(tree.root);
+    return false;
+  }
+  // rx->JobId is the PurgedFiles flag
+  if (rx->found && rx->JobId > 0) {
+    likely_pruned = true;
+    tree.FileCount = 0; /* set count to zero, no tree selection */
   }
 
   if (tree.FileCount == 0) {
-    OK = AskForFileregex(ua, rx);
+    OK = AskForFileregex(ua, rx, likely_pruned);
     if (OK) { AddAllFindex(rx); }
   } else {
     char ec1[50];
