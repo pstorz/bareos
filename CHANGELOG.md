@@ -93,6 +93,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - hyper-v: fix restores with portable data [PR #2474]
+### Changed
+- dirconfig: add subscription setting with comment [PR #2468]
+- hyper-v: fix restores with portable data [PR #2469]
+- table-formatter.js: Fix icon selection logic [PR #2479]
+- systemtests: tune for execution on Windows [PR #2501]
+- barri: remove unnecessary quotes in version text [PR #2498]
+- barri: remove indicators dependency [PR #2482]
+- cmake: disable debian info generation on Windows [PR #2525]
+- director: remove device resource [PR #2524]
+- bareos-fd-mariabackup: ignore invalid utf8 on decode() [PR #2527]
+- debian: dbconfig allow major upgrade without backup dump [PR #2506]
+- plugins: mariabackup python-mysqlclient ignore invalid utf8 [PR #2546]
+- dedup backend: Fix leaking filedescriptor [PR #2548]
+- vol-mgr: fix not locking the volume reservation chain during copying [PR #2565]
+- windows: reduce compiler warnings on windows build [PR #2588]
+- grpc-fd: fix not freeing memory of backed up filenames [PR #2590]
+- cleanup: remove glusterfs and droplet [PR #2531]
+- hyper-v: fix automerging AVHDX differencing disks after RCT backup [PR #2572]
+- barri: sync parameter names between plugin and cli [PR #2566]
+- docs and comments: fix typos [PR #2585]
+- `status subscription` command: adapt to new price-list [PR #2547]
+- matrix.yml: add Fedora 44 [PR #2616]
+- python-dir/sd: fix not registering python thread state correctly [PR #2493]
+- webui: optimize performance and security [PR #2593]
+- python-bareos: add support for the sslpsk3 module [PR #2559]
+- matrix: add ubuntu 26.04 [PR #2635]
+- core: unify parsing of bools [PR #2578]
+- core: remove one "unused" layer of abstraction from our tls code [PR #2631]
+- bvfs: fix cache race [PR #2642]
+- mssqlvdi: set default for serveraddress+instance on restore [PR #879]
+- docs: clarify mssql plugin options [PR #2653]
+- dedupable: remove error on flush [PR #2649]
+- filed: log that WIN32 streams are not supported on non-Windows OS [PR #2657]
+- VMware Plugin: Fix local vmdk restore > 2TB [PR #2687]
+- bpipe plugin: add unique suffix to file name [PR #2613]
+- deprecate: FD alias, Counter res,  var substitutions in label format  and fix when= handling [PR #2695]
+- build: remove windows warnings [PR #2698]
+- spec: use gcc-15 for rhel builds [PR #2705]
+
+### Removed
+- dird: deprecate Pool->FileRetention, Pool->JobRetention, WriteVerifyList [PR #2567]
+- Disable EL 10 ARM64 and ULC OpenSSL 1.1 builds [PR #2665]
+
+### Fixed
+- VMware Plugin: Fix NVRAM backup when datacenter is not in root folder [PR #2461]
+- rpm: don't fail, if install log file isn't writable [PR #2473]
+- systemtests: autochanger add testrunner-restore-non-present-volume [PR #2476]
+- core/filed: fix spurious wakeups race condition in filed. [PR #2508]
+- webui: add encrypt checkbox for label tape [PR #2522]
+- Increase read timeout in Proxmox plugin [PR #2544]
+- packaging: add missing DLLs to windows installer [PR #2569]
+- systemtests check runscript failed - improve media_vault [PR #2556]
+- Remove shell expansion during directory parsing; add select jobid=XXX support [PR #2509]
+- tests: fix disabling config checking because of newly used pid-file option [PR #2597]
+- Fix gcc 16 build for Fedora 44 and newer [PR #2595]
+- ktls: fix daemons getting stuck on reading [PR #2581]
+- refactor systemtests autochanger [PR #2601]
+- fix reverse-history-search crash on windows [PR #2614]
+- webui: fix legacy session name setup on new PHP [PR #2670]
+- contrib: media_vault use scriptdir [PR #2689]
+- Improve database encoding error handling [PR #2696]
+
+### Documentation
+- update bareos-github-banner.png to 13th anniversary [PR #2483]
+- ADR: document daemon status after installation [PR #2453]
+- docs: large improvement on several chapters [PR #2460]
+- Update README.md [PR #2519]
+- README.md: fix video links [PR #2521]
+- docs: add tape speed test, tapestat & sg_logs in troubleshooting [PR #2537]
+- Add documentation for the barri image file format [PR #2607]
+- gh: change milestone bulletpoint in PR templates [PR #2638]
+- docs: PAM add remarks about pam_sss [PR #2629]
+- Update security policy [PR #2663]
+- docs: correct TlsRequire default in docs [PR #2671]
+- docs: Update MSSPlugin instructions [PR #2684]
+- docs: show bareos supported versions in a chart [PR #2681]
+- docs: fix sphinx-linkcheck warnings in our docs [PR #2706]
+- docs: promote eval subscription in release docs [PR #2712]
 
 ## [25.0.0] - 2025-12-01
 
@@ -2311,4 +2389,78 @@ If you want to migrate from your manually configured disk autochanger to simply 
 [PR #2707]: https://github.com/bareos/bareos/pull/2707
 [PR #2710]: https://github.com/bareos/bareos/pull/2710
 [PR #2713]: https://github.com/bareos/bareos/pull/2713
+[PR #2458]: https://github.com/bareos/bareos/pull/2458
+[PR #2460]: https://github.com/bareos/bareos/pull/2460
+[PR #2461]: https://github.com/bareos/bareos/pull/2461
+[PR #2468]: https://github.com/bareos/bareos/pull/2468
+[PR #2469]: https://github.com/bareos/bareos/pull/2469
+[PR #2473]: https://github.com/bareos/bareos/pull/2473
+[PR #2476]: https://github.com/bareos/bareos/pull/2476
+[PR #2479]: https://github.com/bareos/bareos/pull/2479
+[PR #2482]: https://github.com/bareos/bareos/pull/2482
+[PR #2483]: https://github.com/bareos/bareos/pull/2483
+[PR #2484]: https://github.com/bareos/bareos/pull/2484
+[PR #2493]: https://github.com/bareos/bareos/pull/2493
+[PR #2498]: https://github.com/bareos/bareos/pull/2498
+[PR #2501]: https://github.com/bareos/bareos/pull/2501
+[PR #2505]: https://github.com/bareos/bareos/pull/2505
+[PR #2506]: https://github.com/bareos/bareos/pull/2506
+[PR #2508]: https://github.com/bareos/bareos/pull/2508
+[PR #2509]: https://github.com/bareos/bareos/pull/2509
+[PR #2510]: https://github.com/bareos/bareos/pull/2510
+[PR #2519]: https://github.com/bareos/bareos/pull/2519
+[PR #2521]: https://github.com/bareos/bareos/pull/2521
+[PR #2522]: https://github.com/bareos/bareos/pull/2522
+[PR #2524]: https://github.com/bareos/bareos/pull/2524
+[PR #2525]: https://github.com/bareos/bareos/pull/2525
+[PR #2527]: https://github.com/bareos/bareos/pull/2527
+[PR #2531]: https://github.com/bareos/bareos/pull/2531
+[PR #2537]: https://github.com/bareos/bareos/pull/2537
+[PR #2544]: https://github.com/bareos/bareos/pull/2544
+[PR #2546]: https://github.com/bareos/bareos/pull/2546
+[PR #2547]: https://github.com/bareos/bareos/pull/2547
+[PR #2548]: https://github.com/bareos/bareos/pull/2548
+[PR #2556]: https://github.com/bareos/bareos/pull/2556
+[PR #2559]: https://github.com/bareos/bareos/pull/2559
+[PR #2565]: https://github.com/bareos/bareos/pull/2565
+[PR #2566]: https://github.com/bareos/bareos/pull/2566
+[PR #2567]: https://github.com/bareos/bareos/pull/2567
+[PR #2569]: https://github.com/bareos/bareos/pull/2569
+[PR #2572]: https://github.com/bareos/bareos/pull/2572
+[PR #2578]: https://github.com/bareos/bareos/pull/2578
+[PR #2581]: https://github.com/bareos/bareos/pull/2581
+[PR #2585]: https://github.com/bareos/bareos/pull/2585
+[PR #2588]: https://github.com/bareos/bareos/pull/2588
+[PR #2590]: https://github.com/bareos/bareos/pull/2590
+[PR #2593]: https://github.com/bareos/bareos/pull/2593
+[PR #2595]: https://github.com/bareos/bareos/pull/2595
+[PR #2597]: https://github.com/bareos/bareos/pull/2597
+[PR #2601]: https://github.com/bareos/bareos/pull/2601
+[PR #2607]: https://github.com/bareos/bareos/pull/2607
+[PR #2613]: https://github.com/bareos/bareos/pull/2613
+[PR #2614]: https://github.com/bareos/bareos/pull/2614
+[PR #2616]: https://github.com/bareos/bareos/pull/2616
+[PR #2629]: https://github.com/bareos/bareos/pull/2629
+[PR #2630]: https://github.com/bareos/bareos/pull/2630
+[PR #2631]: https://github.com/bareos/bareos/pull/2631
+[PR #2635]: https://github.com/bareos/bareos/pull/2635
+[PR #2638]: https://github.com/bareos/bareos/pull/2638
+[PR #2642]: https://github.com/bareos/bareos/pull/2642
+[PR #2649]: https://github.com/bareos/bareos/pull/2649
+[PR #2653]: https://github.com/bareos/bareos/pull/2653
+[PR #2657]: https://github.com/bareos/bareos/pull/2657
+[PR #2663]: https://github.com/bareos/bareos/pull/2663
+[PR #2665]: https://github.com/bareos/bareos/pull/2665
+[PR #2670]: https://github.com/bareos/bareos/pull/2670
+[PR #2671]: https://github.com/bareos/bareos/pull/2671
+[PR #2681]: https://github.com/bareos/bareos/pull/2681
+[PR #2684]: https://github.com/bareos/bareos/pull/2684
+[PR #2687]: https://github.com/bareos/bareos/pull/2687
+[PR #2689]: https://github.com/bareos/bareos/pull/2689
+[PR #2695]: https://github.com/bareos/bareos/pull/2695
+[PR #2696]: https://github.com/bareos/bareos/pull/2696
+[PR #2698]: https://github.com/bareos/bareos/pull/2698
+[PR #2705]: https://github.com/bareos/bareos/pull/2705
+[PR #2706]: https://github.com/bareos/bareos/pull/2706
+[PR #2712]: https://github.com/bareos/bareos/pull/2712
 [unreleased]: https://github.com/bareos/bareos/tree/master
