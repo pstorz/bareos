@@ -23,11 +23,6 @@ Status
 
 The Plugin can do full, differential and incremental backup and restore of VM disks.
 
-Since :sinceVersion:`25.0.4: VMware Plugin` When using the plugin option
-:strong:`localvmdk=yes`, virtual disks larger than 2TB can now be restored
-to local VMDK files, in which case they will be split into 2GB extents. Restoring
-such virtual disks to existing or recreated VM was always possible.
-
 Since :sinceVersion:`24.0.5: VMware Plugin` The Plugin can now save and recreate
 VMs with VirtualSerialPort devices.
 
@@ -170,7 +165,7 @@ First add a user account in vCenter that has full privileges by assigning the ac
 
 When using the vCenter appliance with embedded SSO, a user account usually has the structure :command:`<username>@vsphere.local`, it may be different when using Active Directory as SSO in vCenter. For the examples here, we will use :command:`bakadm@vsphere.local` with the password :command:`Bak.Adm-1234`.
 
-For more details regarding users and permissions see vSphere documentation at https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/9-0/vsphere-security.html
+For more details regarding users and permissions see vSphere documentation at https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-security-8-0.html
 
 Make sure to add or enable the following settings in your |fd| configuration:
 
@@ -411,9 +406,7 @@ Since :sinceVersion:`22.1.1: VMware Plugin: enable_cbt` the plugin will try to
 enable CBT automatically when the plugin option **enable_cbt=yes** is set (see below).
 Since :sinceVersion:`23.0.0: VMware Plugin: enable_cbt` this option is set to **yes** by default.
 
-Some bugs in older versions of vSphere, i.e. 5.5, prevented this mechanism from working.
-You can use the script :command:`vmware_cbt_tool.py` even in those cases.
-It is packaged in the bareos-vmware-plugin package:
+As of https://knowledge.broadcom.com/external/article?legacyId=2075984 manually enabling CBT is currently not working properly. The API however works properly. To enable CBT use the Script :command:`vmware_cbt_tool.py`, it is packaged in the bareos-vmware-plugin package:
 
 .. code-block:: shell-session
    :caption: usage of vmware\_cbt\_tool.py
