@@ -1,0 +1,1 @@
+import{H as e,Q as t}from"./vue.runtime.esm-bundler-BYsaiXyX.js";import{t as n}from"./index-D1lhRiXm.js";function r(r,i={}){let a=n(),o=a.getTableRowsPerPage(r,Number.isInteger(i.rowsPerPage)&&i.rowsPerPage>=0?i.rowsPerPage:15),s=t({...i,rowsPerPage:o});return e(()=>s.value.rowsPerPage,e=>{a.setTableRowsPerPage(r,e)},{immediate:!0}),s}export{r as t};

@@ -585,19 +585,18 @@ void BareosDb::ListJobRecords(JobControlRecord* jcr,
     FillQuery(SQL_QUERY::list_jobs_count, selection.c_str(), range);
   } else if (last) {
     if (type == VERT_LIST) {
-      FillQuery<SQL_QUERY::list_jobs_long_last>(cmd, selection.c_str(),
-                                                order_range.c_str());
+      FillQuery(SQL_QUERY::list_jobs_long_last, selection.c_str(),
+                order_range.c_str());
     } else {
-      FillQuery<SQL_QUERY::list_jobs_last>(cmd, selection.c_str(),
-                                           order_range.c_str());
+      FillQuery(SQL_QUERY::list_jobs_last, selection.c_str(),
+                order_range.c_str());
     }
   } else {
     if (type == VERT_LIST) {
-      FillQuery<SQL_QUERY::list_jobs_long>(cmd, selection.c_str(),
-                                           order_range.c_str());
+      FillQuery(SQL_QUERY::list_jobs_long, selection.c_str(),
+                order_range.c_str());
     } else {
-      FillQuery<SQL_QUERY::list_jobs>(cmd, selection.c_str(),
-                                      order_range.c_str());
+      FillQuery(SQL_QUERY::list_jobs, selection.c_str(), order_range.c_str());
     }
   }
 

@@ -65,3 +65,9 @@ add_subdirectory(plugins)
 if(${traymonitor})
   add_subdirectory(qt-tray-monitor)
 endif()
+if(NOT HAVE_WIN32
+   AND NOT HAVE_DARWIN_OS
+   AND NOT client-only
+)
+  add_subdirectory(webui-proxy)
+endif()

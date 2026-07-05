@@ -897,45 +897,14 @@ class BareosDb : public BareosDbQueryEnum {
                            OutputFormatter* sendit);
 
   /* sql_query.cc */
-  static constexpr const char* get_predefined_query_name(
-      BareosDb::SQL_QUERY query)
-  {
-    return query_names[static_cast<int>(query)];
-  }
+  const char* get_predefined_query_name(SQL_QUERY query);
+  const char* get_predefined_query(SQL_QUERY query);
 
-  static constexpr const char* get_predefined_query(BareosDb::SQL_QUERY query)
-  {
-    return queries[static_cast<int>(query)];
-  }
-
-  template <SQL_QUERY query, typename... Args>
-  void FillQuery(POOLMEM*& storage, Args&&... args)
-  {
-    printf_check(queries[static_cast<int>(query)], args...);
-    FillQuery(storage, query, std::forward<Args>(args)...);
-  }
-
-  template <SQL_QUERY query, typename... Args>
-  void FillQuery(PoolMem& storage, Args&&... args)
-  {
-    printf_check(queries[static_cast<int>(query)], args...);
-    FillQuery(storage, query, std::forward<Args>(args)...);
-  }
-
- private:
+  void FillQuery(SQL_QUERY predefined_query, ...);
   void FillQuery(POOLMEM*& query, SQL_QUERY predefined_query, ...);
   void FillQuery(PoolMem& query, SQL_QUERY predefined_query, ...);
 
- public:
-  template <SQL_QUERY query, typename... Args> bool SqlQuery(Args&&... args)
-  {
-    PoolMem formatted(PM_MESSAGE);
-
-    FillQuery<query>(formatted, std::forward<Args>(args)...);
-
-    return SqlQuery(formatted.c_str());
-  }
-
+  bool SqlQuery(SQL_QUERY query, ...);
   bool SqlQuery(const char* query);
   bool SqlExec(const char* query);  // like SqlQuery, but does not store result
   bool SqlQuery(const char* query, DB_RESULT_HANDLER* ResultHandler, void* ctx);

@@ -108,8 +108,9 @@ static bool GetPruneCandidatesForVolume(UaContext* ua,
 
   utime_t VolRetention = mr->VolRetention;
   now = (utime_t)time(NULL);
-  ua->db->FillQuery<BareosDb::SQL_QUERY::sel_JobMedia>(
-      query, edit_int64(mr->MediaId, ed1), edit_int64(now - VolRetention, ed2));
+  ua->db->FillQuery(query, BareosDb::SQL_QUERY::sel_JobMedia,
+                    edit_int64(mr->MediaId, ed1),
+                    edit_int64(now - VolRetention, ed2));
 
   Dmsg3(250, "Now=%d VolRetention=%d now-VolRetention=%s\n", (int)now,
         (int)VolRetention, ed2);
