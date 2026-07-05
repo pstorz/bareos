@@ -297,6 +297,8 @@ typedef struct {
   int replace;                  /* Replace flag */
   int create_status;            /* Status from createFile() */
   int filedes;                  /* filedescriptor for read/write in core */
+  const char* original_file_name;
+  const char* original_link_name;
 } PyRestorePacket;
 
 // Forward declarations of type specific functions.

@@ -2216,7 +2216,8 @@ static PyObject* PyIoPacket_repr(PyIoPacket* self)
        ", mode=%04o, buf=\"%s\", fname=\"%s\", status=%" PRId32
        ", io_errno=%" PRId32 ", lerror=%" PRId32 ", whence=%" PRId32
        ", offset=%" PRId64 ", win32=%d, filedes=%d)",
-       self->func, self->count, self->flags, (self->mode & ~S_IFMT),
+       self->func, self->count, self->flags,
+       static_cast<unsigned int>(self->mode & ~S_IFMT),
        PyGetByteArrayValue(self->buf), self->fname, self->status,
        self->io_errno, self->lerror, self->whence, self->offset, self->win32,
        self->filedes);

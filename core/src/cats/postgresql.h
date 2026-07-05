@@ -60,7 +60,7 @@ class BareosDbPostgresql : public BareosDb {
  private:
   void SqlFieldSeek(int field) override { field_number_ = field; }
   int SqlNumFields(void) override { return num_fields_; }
-  const char* OpenDatabase() override;
+  const char* OpenDatabase(JobControlRecord* jcr) override;
   void CloseDatabase(JobControlRecord* jcr) override;
   void EscapeString(JobControlRecord* jcr,
                     char* snew,
@@ -98,8 +98,7 @@ class BareosDbPostgresql : public BareosDb {
   bool SqlBatchInsertFileTable(JobControlRecord* jcr,
                                AttributesDbRecord* ar) override;
 
-  bool CheckDatabaseEncoding();
-  bool SetClientOptions();
+  bool CheckDatabaseEncoding(JobControlRecord* jcr);
 
   bool fields_fetched_
       = false;         /**< Marker, if field descriptions are already fetched */

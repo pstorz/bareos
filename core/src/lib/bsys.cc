@@ -422,7 +422,7 @@ static void LockPidFile(const char* progname,
     if (errno == EAGAIN || errno == EACCES) {
       BErrNo be;
       Emsg2(M_ERROR_TERM, 0,
-            "PID file '%s' is locked; probably '%s' is already running.\n",
+            T_("PID file '%s' is locked; probably '%s' is already running. "),
             pidfile_path, progname);
 
     } else {

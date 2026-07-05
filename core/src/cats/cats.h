@@ -42,6 +42,7 @@
 #include "lib/crypto.h"
 #include "lib/base64.h"
 #include "lib/source_location.h"
+#include "lib/util.h"
 
 #include <bitset>
 #include <string>
@@ -587,6 +588,7 @@ class BareosDb : public BareosDbQueryEnum {
   char* strerror(libbareos::source_location loc
                  = libbareos::source_location::current());
   bool CheckMaxConnections(JobControlRecord* jcr, uint32_t max_concurrent_jobs);
+  bool CheckTablesVersion(JobControlRecord* jcr);
   bool QueryDb(JobControlRecord* jcr,
                const char* select_cmd,
                libbareos::source_location loc
@@ -806,7 +808,8 @@ class BareosDb : public BareosDbQueryEnum {
                       bool last,
                       bool count,
                       OutputFormatter* sendit,
-                      e_list_type type);
+                      e_list_type type,
+                      bool descending = false);
   void ListJobTotals(JobControlRecord* jcr,
                      JobDbRecord* jr,
                      OutputFormatter* sendit);
@@ -894,14 +897,45 @@ class BareosDb : public BareosDbQueryEnum {
                            OutputFormatter* sendit);
 
   /* sql_query.cc */
-  const char* get_predefined_query_name(SQL_QUERY query);
-  const char* get_predefined_query(SQL_QUERY query);
+  static constexpr const char* get_predefined_query_name(
+      BareosDb::SQL_QUERY query)
+  {
+    return query_names[static_cast<int>(query)];
+  }
 
-  void FillQuery(SQL_QUERY predefined_query, ...);
+  static constexpr const char* get_predefined_query(BareosDb::SQL_QUERY query)
+  {
+    return queries[static_cast<int>(query)];
+  }
+
+  template <SQL_QUERY query, typename... Args>
+  void FillQuery(POOLMEM*& storage, Args&&... args)
+  {
+    printf_check(queries[static_cast<int>(query)], args...);
+    FillQuery(storage, query, std::forward<Args>(args)...);
+  }
+
+  template <SQL_QUERY query, typename... Args>
+  void FillQuery(PoolMem& storage, Args&&... args)
+  {
+    printf_check(queries[static_cast<int>(query)], args...);
+    FillQuery(storage, query, std::forward<Args>(args)...);
+  }
+
+ private:
   void FillQuery(POOLMEM*& query, SQL_QUERY predefined_query, ...);
   void FillQuery(PoolMem& query, SQL_QUERY predefined_query, ...);
 
-  bool SqlQuery(SQL_QUERY query, ...);
+ public:
+  template <SQL_QUERY query, typename... Args> bool SqlQuery(Args&&... args)
+  {
+    PoolMem formatted(PM_MESSAGE);
+
+    FillQuery<query>(formatted, std::forward<Args>(args)...);
+
+    return SqlQuery(formatted.c_str());
+  }
+
   bool SqlQuery(const char* query);
   bool SqlExec(const char* query);  // like SqlQuery, but does not store result
   bool SqlQuery(const char* query, DB_RESULT_HANDLER* ResultHandler, void* ctx);
@@ -961,7 +995,7 @@ class BareosDb : public BareosDbQueryEnum {
 
   /* Pure virtual low level methods */
   // returns an error string on error
-  virtual const char* OpenDatabase() = 0;
+  virtual const char* OpenDatabase(JobControlRecord* jcr) = 0;
   virtual void CloseDatabase(JobControlRecord* jcr) = 0;
   virtual void StartTransaction(JobControlRecord* jcr) = 0;
   virtual void EndTransaction(JobControlRecord* jcr) = 0;
@@ -1043,8 +1077,6 @@ class BareosDb : public BareosDbQueryEnum {
   {
     if (!is_private_) { RwlCheckWriterIsMe(&lock_, l); }
   }
-
-  bool CheckTablesVersion();
 };
 
 BareosDb* db_init_database(JobControlRecord* jcr,
