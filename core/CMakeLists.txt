@@ -609,7 +609,7 @@ if(${lmdb})
 endif()
 
 # info what the config files need to be installed PLUGINS  ############
-if(ENABLE_PYTHON)
+if(HAVE_PYTHON)
   set(PLUGINS python-ldap)
 else()
   set(PLUGINS "")
@@ -668,7 +668,7 @@ else()
   message(STATUS "installing ${logdir}")
 
   install(DIRECTORY DESTINATION ${workingdir})
-  message(STATUS "installing ${workingdir}")
+  message(STATUS "installing ${woringdir}")
 endif()
 
 include(BareosConfigureFile)
