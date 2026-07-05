@@ -1,6 +1,0 @@
-Catalog {
-  Name = BadEncoding
-  dbname = "@db_name@-UTF8"
-  dbuser = "@db_user@"
-  dbpassword = "@db_password@"
-}

@@ -7,6 +7,7 @@ set -u
 . ./environment
 #shellcheck source=../../scripts/functions
 . "${BAREOS_SCRIPTS_DIR}"/functions
+. ./reload_test_functions
 
 export director_debug_level=""
 #director_debug_level="-d 200"
@@ -15,9 +16,7 @@ export director_debug_level=""
 stop_director
 
 #cleanup possible leftover from last run
-"${BAREOS_SCRIPTS_DIR}"/cleanup
-"${BAREOS_SCRIPTS_DIR}"/setup
-
-create_utf8_catalog_database
+${BAREOS_SCRIPTS_DIR}/cleanup
+${BAREOS_SCRIPTS_DIR}/setup
 
 start_director

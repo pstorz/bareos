@@ -189,7 +189,7 @@ macro(find_systemtests_binary_paths SYSTEMTESTS_BINARIES)
     set(FD_PLUGINS_DIR_TO_TEST ${PLUGINS_DIR_TO_TEST})
     set(SD_PLUGINS_DIR_TO_TEST ${PLUGINS_DIR_TO_TEST})
     set(DIR_PLUGINS_DIR_TO_TEST ${PLUGINS_DIR_TO_TEST})
-    set(WEBUI_PUBLIC_DIR_TO_TEST /usr/share/bareos-webui/public)
+    set(WEBUI_PUBLIC_DIR_TO_TEST /usr/share/bareos-webui-php/public)
 
   else() # run systemtests on source and compiled files
 
@@ -800,10 +800,6 @@ function(add_systemtest_from_directory test_dir test_basename)
     CONFIGURE_DEPENDS "${test_dir}/testrunner-*"
   )
   foreach(testfilename ${all_tests})
-    if(NOT EXISTS "${test_dir}/${testfilename}")
-      message(DEBUG "Skipping out-of-date testrunner ${testfilename}")
-      continue()
-    endif()
     string(REPLACE "testrunner-" "" test ${testfilename})
     add_systemtest(${test_basename}:${test} ${test_dir}/${testfilename})
     set_tests_properties(
