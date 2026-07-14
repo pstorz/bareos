@@ -1,7 +1,7 @@
 /**
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2018-2022 Bareos GmbH & Co. KG
+   Copyright (C) 2018-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -31,6 +31,9 @@
 #include "lib/bnet.h"
 #include "lib/bstringlist.h"
 #include "lib/ascii_control_characters.h"
+#include "lib/bareos_resource.h"
+#include "lib/try_tls_handshake_as_a_server.h"
+#include "stored/butil.h"
 #include "lib/util.h"
 
 TEST(BStringList, ConstructorsTest)
@@ -246,6 +249,26 @@ TEST(Util, version_number_test)
             static_cast<BareosVersionNumber>(1702));
   EXPECT_GT(BareosVersionNumber::kRelease_18_2,
             BareosVersionNumber::kUndefined);
+}
+
+namespace {
+struct TestUseConfigAndJcrs : UseConfigAndJcrs {
+  using UseConfigAndJcrs::found_jcr;
+  using UseConfigAndJcrs::UseConfigAndJcrs;
+};
+
+}  // namespace
+
+TEST(TlsPskAuth, JobPskCannotAuthenticateAsDirector)
+{
+  ConfigurationParser parser;
+  TestUseConfigAndJcrs provider(&parser);
+  provider.found_jcr
+      = storagedaemon::SetupDummyJcr("Test Job", nullptr, nullptr);
+
+  auto error = provider.check_resource_name(R_DIRECTOR, "Test Director");
+  ASSERT_TRUE(error.has_value());
+  EXPECT_NE(error->find("tried authenticating as resource"), std::string::npos);
 }
 
 TEST(Util, version_number_major_minor)
