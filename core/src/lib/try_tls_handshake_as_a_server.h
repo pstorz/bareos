@@ -141,6 +141,18 @@ struct UseConfigAndJcrs : UsePasswordsFromConfig {
               (int)name.size(), name.data());
         return 0;
       }
+      if (!jcr->sd_auth_key) {
+        Dmsg1(100, "Login attempt via job %.*s, but that job has no auth key\n",
+              (int)name.size(), name.data());
+        return 0;
+      }
+      if (strcmp(jcr->sd_auth_key, "dummy")) {
+        Dmsg1(100,
+              "Login attempt via job %.*s, but that job has no real auth key\n",
+              (int)name.size(), name.data());
+        return 0;
+      }
+
       found_jcr = jcr;
 
       auto key_length = strlen(jcr->sd_auth_key);
