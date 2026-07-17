@@ -72,7 +72,14 @@ if not getattr(ssl, "HAS_PSK", False):
 
 
 def bash(name):
-    return name.replace(" ", "\x01")
+    if name is None:
+        return None
+    if isinstance(name, str):
+        return name.replace(" ", "\x01")
+    if isinstance(name, bytes):
+        return name.replace(b" ", b"\x01")
+
+    raise TypeError("name has to be None/str/bytes")
 
 
 class LowLevel(object):
