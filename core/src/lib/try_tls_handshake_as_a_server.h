@@ -80,7 +80,7 @@ struct UsePasswordsFromConfig : TlsSecretProvider {
     return pw_len;
   }
 
-  std::optional<std::string> check_resource_name(uint32_t resource_type,
+  std::optional<std::string> is_resource_name_different_from_tls_name(uint32_t resource_type,
                                                  std::string_view name)
   {
     // if psk was not used, then we cannot reject anything!
@@ -202,7 +202,7 @@ struct UseConfigAndJcrs : UsePasswordsFromConfig {
     return std::nullopt;
   }
 
-  std::optional<std::string> check_resource_name(uint32_t resource_type,
+  std::optional<std::string> is_resource_name_different_from_tls_name(uint32_t resource_type,
                                                  std::string_view name)
   {
     if (found_jcr) {
@@ -215,7 +215,7 @@ struct UseConfigAndJcrs : UsePasswordsFromConfig {
       return std::optional{msg.str()};
     }
 
-    return UsePasswordsFromConfig::check_resource_name(resource_type, name);
+    return UsePasswordsFromConfig::is_resource_name_different_from_tls_name(resource_type, name);
   }
 
   JobControlRecord* get_job_for_used_secret() const { return found_jcr; }

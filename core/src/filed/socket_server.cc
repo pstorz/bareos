@@ -94,7 +94,7 @@ static void* HandleConnectionRequest(ConfigurationParser* config, void* arg)
           bstrftimes(tbuf, sizeof(tbuf), (utime_t)time(NULL)));
 
     if (std::optional error
-        = tls_secret_provider.check_resource_name(R_DIRECTOR, name)) {
+        = tls_secret_provider.is_resource_name_different_from_tls_name(R_DIRECTOR, name)) {
       Emsg2(M_ERROR, 0, "Invalid connection from %s: ERR=%s\n", bs->who(),
             error->c_str());
       Bmicrosleep(5, 0); /* make user wait 5 seconds */

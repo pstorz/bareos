@@ -266,7 +266,7 @@ TEST(TlsPskAuth, JobPskCannotAuthenticateAsDirector)
   provider.found_jcr
       = storagedaemon::SetupDummyJcr("Test Job", nullptr, nullptr);
 
-  auto error = provider.check_resource_name(R_DIRECTOR, "Test Director");
+  auto error = provider.is_resource_name_different_from_tls_name(R_DIRECTOR, "Test Director");
   ASSERT_TRUE(error.has_value());
   EXPECT_NE(error->find("tried authenticating as resource"), std::string::npos);
 }
