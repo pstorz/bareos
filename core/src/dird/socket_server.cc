@@ -115,7 +115,9 @@ static void* HandleConnectionRequest(ConfigurationParser* config, void* arg)
     Dmsg1(110, "Got a FD connection at %s\n",
           bstrftimes(tbuf, sizeof(tbuf), (utime_t)time(NULL)));
 
-    if (auto error = tls_secret_provider.is_resource_name_different_from_tls_name(R_CLIENT, name)) {
+    if (auto error
+        = tls_secret_provider.is_resource_name_different_from_tls_name(R_CLIENT,
+                                                                       name)) {
       Emsg2(M_ERROR, 0, "Invalid connection from %s: ERR=%s\n", bs->who(),
             error->c_str());
       Bmicrosleep(5, 0); /* make user wait 5 seconds */
@@ -128,7 +130,9 @@ static void* HandleConnectionRequest(ConfigurationParser* config, void* arg)
     return HandleFiledConnection(*client_connections.get(), bs, name,
                                  fd_protocol_version);
   } else if (bsscanf(bs->msg, hello_console, name) == 1) {
-    if (auto error = tls_secret_provider.is_resource_name_different_from_tls_name(R_CONSOLE, name)) {
+    if (auto error
+        = tls_secret_provider.is_resource_name_different_from_tls_name(
+            R_CONSOLE, name)) {
       Emsg2(M_ERROR, 0, "Invalid connection from %s: ERR=%s\n", bs->who(),
             error->c_str());
       Bmicrosleep(5, 0); /* make user wait 5 seconds */
