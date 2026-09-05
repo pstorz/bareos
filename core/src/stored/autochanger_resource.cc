@@ -38,11 +38,12 @@ AutochangerResource::AutochangerResource()
 }
 
 std::unique_ptr<AutochangerResource>
-AutochangerResource::CreateImplicitAutochanger(const std::string& device_name)
+AutochangerResource::CreateImplicitAutochanger(const std::string& device_name,
+                                               int initial_device_capacity)
 {
   auto autochanger = std::make_unique<AutochangerResource>();
   autochanger->device_resources
-      = new alist<DeviceResource*>(10, not_owned_by_alist);
+      = new alist<DeviceResource*>(initial_device_capacity, not_owned_by_alist);
   autochanger->resource_name_ = strdup(device_name.c_str());
   autochanger->changer_name = strdup("/dev/null");
   autochanger->changer_command = strdup("");

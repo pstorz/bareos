@@ -38,8 +38,20 @@ class AutochangerResource : public BareosResource {
  public:
   AutochangerResource();
 
+  /* Create an implicit autochanger for the given device name. The
+   * `device_resources` list is pre-allocated with capacity for
+   * `initial_device_capacity` entries so that it never needs to grow
+   * (reallocate) afterwards: this matters for autochangers backed by a
+   * multiplied device, whose device list is appended to at runtime (see
+   * reserve.cc SpawnMultipliedDevice()) from a job-handling thread while
+   * other threads (status reporting, statistics, Director device lookup)
+   * iterate the same list without taking a lock. Passing a capacity that
+   * covers the maximum possible number of entries up front avoids a
+   * use-after-free on the `alist`'s backing array that a runtime
+   * reallocation would otherwise cause for those lock-free readers. */
   static std::unique_ptr<AutochangerResource> CreateImplicitAutochanger(
-      const std::string& device_name);
+      const std::string& device_name,
+      int initial_device_capacity = 10);
 
   virtual ~AutochangerResource() = default;
   AutochangerResource& operator=(const AutochangerResource& rhs);

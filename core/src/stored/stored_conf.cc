@@ -438,8 +438,15 @@ static void MultiplyDevice(DeviceResource& original,
 {
   // create autochanger
   if (!original.changer_res) {
+    // Pre-size the device list for the maximum number of devices this
+    // Count directive can ever produce ("0000" plus up to "count" more,
+    // lazily spawned at runtime by SpawnMultipliedDevice() in reserve.cc),
+    // so that the runtime appends never trigger a reallocation of the
+    // alist's backing array -- see CreateImplicitAutochanger()'s doc
+    // comment for why that matters for thread-safety.
     original.changer_res = AutochangerResource::CreateImplicitAutochanger(
-                               std::string(original.resource_name_))
+                               std::string(original.resource_name_),
+                               static_cast<int>(original.count) + 1)
                                .release();
     original.changer_command = strdup("");
     if (!config.GetResWithName(R_AUTOCHANGER,

@@ -531,6 +531,15 @@ static DeviceResource* SpawnMultipliedDevice(AutochangerResource* changer)
 {
   DeviceResource* tmpl = changer->multiplied_device_template;
   if (!tmpl) { return nullptr; }
+
+  // Every mutation of shared, globally-visible resource state (the
+  // template's growth counter, the R_DEVICE resource chain, and the
+  // autochanger's device list) happens under a single lock scope here, so
+  // that the whole "check cap -> find-or-create -> attach -> advance
+  // counter" sequence is atomic with respect to any other thread that also
+  // takes ResLocker (see job.cc, askdir.cc, stored.cc).
+  ResLocker _{my_config};
+
   if (tmpl->next_multiplied_device_index > tmpl->count) { return nullptr; }
 
   // strip the leading "$" that MultiplyDevice() prefixed onto the template
@@ -561,11 +570,8 @@ static DeviceResource* SpawnMultipliedDevice(AutochangerResource* changer)
   std::unique_ptr<DeviceResource> owned_device = tmpl->CreateCopy(device_name);
   owned_device->autoselect = true;
 
-  {
-    ResLocker _{my_config};
-    if (!my_config->AppendToResourcesChain(owned_device.get(), R_DEVICE)) {
-      return nullptr;
-    }
+  if (!my_config->AppendToResourcesChain(owned_device.get(), R_DEVICE)) {
+    return nullptr;
   }
   device = owned_device.release(); /* ownership transferred to resource chain */
 

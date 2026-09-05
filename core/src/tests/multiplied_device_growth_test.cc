@@ -30,6 +30,7 @@
 
 #include <chrono>
 #include <future>
+#include <set>
 #include <thread>
 
 #define STORAGE_DAEMON 1
@@ -198,13 +199,26 @@ TEST_F(MultipliedDeviceGrowthTest, two_concurrent_jobs_grow_two_devices)
           "1901 No Media."));  // response to DirFindNextAppendableVolume
   EXPECT_CALL(*bsock2, send()).WillRepeatedly(Return(true));
 
-  bsock1->recv();
-  ASSERT_EQ(use_cmd(job1->jcr), true);
-  ASSERT_STREQ(bsock1->msg, "3000 OK use device device=GrowDevice0001\n");
+  // Actually run both reservations concurrently (not just interleaved on a
+  // single thread) so that SpawnMultipliedDevice() is genuinely exercised
+  // from two threads at once. reservation_mutex serializes the two calls
+  // internally, so exactly one of "0001"/"0002" goes to each job, but which
+  // job gets which is not guaranteed -- so the outcome is checked as a set.
+  auto future1 = std::async(std::launch::async, [&job1, &bsock1] {
+    bsock1->recv();
+    EXPECT_EQ(use_cmd(job1->jcr), true);
+    return std::string(bsock1->msg);
+  });
+  auto future2 = std::async(std::launch::async, [&job2, &bsock2] {
+    bsock2->recv();
+    EXPECT_EQ(use_cmd(job2->jcr), true);
+    return std::string(bsock2->msg);
+  });
 
-  bsock2->recv();
-  ASSERT_EQ(use_cmd(job2->jcr), true);
-  ASSERT_STREQ(bsock2->msg, "3000 OK use device device=GrowDevice0002\n");
+  std::set<std::string> messages{future1.get(), future2.get()};
+  std::set<std::string> expected{"3000 OK use device device=GrowDevice0001\n",
+                                 "3000 OK use device device=GrowDevice0002\n"};
+  EXPECT_EQ(messages, expected);
 }
 
 // A third concurrent job must not grow a third device, since Count=2 caps
@@ -268,7 +282,7 @@ TEST_F(MultipliedDeviceGrowthTest, third_job_waits_for_cap)
 
   // Unreserve job1 (device GrowDevice0001) after waiting for a bit
   auto _ = std::async(std::launch::async,
-                       [&job1] { GrowthWaitThenUnreserve(job1); });
+                      [&job1] { GrowthWaitThenUnreserve(job1); });
 
   future.wait();
 }
