@@ -464,29 +464,32 @@ static void MultiplyDevice(DeviceResource& original,
           original.changer_res->resource_name_);
   }
 
-  // create devices
-  for (uint32_t i = 0; i <= original.count; i++) {
-    std::string serial_number = std::string("0000") + std::to_string(i);
-    std::string device_name = original.resource_name_
-                              + serial_number.substr(serial_number.size() - 4);
-    DeviceResource* device = dynamic_cast<DeviceResource*>(
-        config.GetResWithName(R_DEVICE, device_name.c_str()));
-    if (!device) {
-      device = original.CreateCopy(device_name).release();
-      if (i == 0) { device->autoselect = false; }
-      config.AppendToResourcesChain(device, R_DEVICE);
-    } else {
-      Emsg0(M_INFO, 0,
-            "Device resource \"%s\" will not implicitly create device \"%s\" "
-            "resource since there already exists a device resource with that "
-            "name.\n",
-            original.resource_name_, device_name.c_str());
-    }
-
-    auto& devices = *original.changer_res->device_resources;
-    auto it = std::find(devices.begin(), devices.end(), device);
-    if (it == devices.end()) { devices.append(device); }
+  // Only the "0000" device is created eagerly at config-parse time. All
+  // further multiplied devices (up to "count") are created lazily, on
+  // demand, by SpawnMultipliedDevice() in reserve.cc once a job actually
+  // needs more devices than are currently available.
+  std::string device_name = std::string(original.resource_name_) + "0000";
+  DeviceResource* device = dynamic_cast<DeviceResource*>(
+      config.GetResWithName(R_DEVICE, device_name.c_str()));
+  if (!device) {
+    device = original.CreateCopy(device_name).release();
+    device->autoselect = false;
+    config.AppendToResourcesChain(device, R_DEVICE);
+  } else {
+    Emsg0(M_INFO, 0,
+          "Device resource \"%s\" will not implicitly create device \"%s\" "
+          "resource since there already exists a device resource with that "
+          "name.\n",
+          original.resource_name_, device_name.c_str());
   }
+
+  auto& devices = *original.changer_res->device_resources;
+  auto it = std::find(devices.begin(), devices.end(), device);
+  if (it == devices.end()) { devices.append(device); }
+
+  original.changer_res->multiplied_device_template = &original;
+  original.next_multiplied_device_index = 1;
+
   // The original device name is prefixed with "$" in order to prevent a naming
   // collision with the implicitly created autochanger. If both the original
   // device and the implicit autochanger have the same name, both will be used

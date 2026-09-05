@@ -44,6 +44,7 @@
 #include "include/jcr.h"
 #include "lib/parse_conf.h"
 
+#include <algorithm>
 #include <cinttypes>
 
 namespace storagedaemon {
@@ -517,6 +518,67 @@ bool FindSuitableDeviceForJob(JobControlRecord* jcr, ReserveContext& rctx)
  * Search for a particular storage device with particular storage
  * characteristics (MediaType).
  */
+/**
+ * If the given autochanger was implicitly created by a Device's Count
+ * directive, lazily create ("grow") one more multiplied device from the
+ * template device, up to the template's configured count cap. Returns the
+ * newly created (or, if an administrator already explicitly configured a
+ * device with that specific numbered name, the pre-existing) device
+ * resource, or nullptr if no growth is possible (no template, or the count
+ * cap has already been reached).
+ */
+static DeviceResource* SpawnMultipliedDevice(AutochangerResource* changer)
+{
+  DeviceResource* tmpl = changer->multiplied_device_template;
+  if (!tmpl) { return nullptr; }
+  if (tmpl->next_multiplied_device_index > tmpl->count) { return nullptr; }
+
+  // strip the leading "$" that MultiplyDevice() prefixed onto the template
+  // name in order to avoid a naming collision with the implicit autochanger.
+  std::string base_name(tmpl->resource_name_);
+  if (!base_name.empty() && base_name[0] == '$') { base_name.erase(0, 1); }
+
+  uint32_t index = tmpl->next_multiplied_device_index;
+  std::string serial_number = std::string("0000") + std::to_string(index);
+  std::string device_name
+      = base_name + serial_number.substr(serial_number.size() - 4);
+
+  DeviceResource* device = dynamic_cast<DeviceResource*>(
+      my_config->GetResWithName(R_DEVICE, device_name.c_str()));
+  if (device) {
+    /* An administrator already explicitly configured a device with this
+     * specific numbered name (e.g. to customize one slot); just attach it
+     * to the changer instead of creating a duplicate. */
+    auto& devices = *changer->device_resources;
+    if (std::find(devices.begin(), devices.end(), device) == devices.end()) {
+      device->changer_res = changer;
+      devices.append(device);
+    }
+    ++tmpl->next_multiplied_device_index;
+    return device;
+  }
+
+  std::unique_ptr<DeviceResource> owned_device = tmpl->CreateCopy(device_name);
+  owned_device->autoselect = true;
+
+  {
+    ResLocker _{my_config};
+    if (!my_config->AppendToResourcesChain(owned_device.get(), R_DEVICE)) {
+      return nullptr;
+    }
+  }
+  device = owned_device.release(); /* ownership transferred to resource chain */
+
+  device->changer_res = changer;
+  changer->device_resources->append(device);
+  ++tmpl->next_multiplied_device_index;
+
+  Dmsg2(debuglevel, "Spawned multiplied device \"%s\" from template \"%s\".\n",
+        device->resource_name_, base_name.c_str());
+
+  return device;
+}
+
 int SearchResForDevice(JobControlRecord* jcr, ReserveContext& rctx)
 {
   int status;
@@ -555,6 +617,28 @@ int SearchResForDevice(JobControlRecord* jcr, ReserveContext& rctx)
         }
 
         return status;
+      }
+
+      // No existing device in this autochanger could be reserved; if it was
+      // implicitly created by a Device's Count directive, grow it by one
+      // more device (up to the configured count cap) and try that instead
+      // of making the job wait for one of the count-limited devices.
+      if (DeviceResource* grown = SpawnMultipliedDevice(changer)) {
+        rctx.device_resource = grown;
+        Dmsg1(debuglevel, "Try newly spawned changer device %s\n",
+              grown->resource_name_);
+        status = ReserveDevice(jcr, rctx);
+        if (status == 1) {
+          if (rctx.store->append) {
+            Dmsg2(debuglevel, "Device %s reserved=%d for append.\n",
+                  grown->resource_name_, jcr->sd_impl->dcr->dev->NumReserved());
+          } else {
+            Dmsg2(debuglevel, "Device %s reserved=%d for read.\n",
+                  grown->resource_name_,
+                  jcr->sd_impl->read_dcr->dev->NumReserved());
+          }
+          return status;
+        }
       }
     }
   }

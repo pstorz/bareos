@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2011 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -90,6 +90,11 @@ class DeviceResource : public BareosResource {
   char* unmount_command; /**< Unmount command */
   uint32_t count{1};     /**< Total number of multiplied devices */
   DeviceResource* multiplied_device_resource; /**< Copied from this device */
+  uint32_t next_multiplied_device_index{
+      1}; /**< Next numeric suffix to assign when lazily growing multiplied
+             devices on demand. Only meaningful on the template device (the
+             original device resource, renamed with a "$" prefix once
+             multiplied). */
 
   Device* dev; /* Pointer to physical dev -- set at runtime */
   AutochangerResource* changer_res; /* Pointer to changer res if any */

@@ -118,8 +118,12 @@ TEST(sd, MultipliedDeviceTest_CountAllAutomaticallyCreatedResources)
   ASSERT_TRUE(test_config->ParseConfig());
   auto count = CountAllDeviceResources(*test_config);
 
-  /* configurable using Device config for "AnotherMultipliedDeviceResource" */
-  int amount_to_check = 117;
+  /* Right after ParseConfig(), only the eagerly created "0000" device exists
+   * for each of the four Count-configured devices (MultipliedDeviceResource,
+   * AnotherMultipliedDeviceResource, DeviceWithExplicitAutochanger,
+   * DeviceWithImplicitAutochanger). Further multiplied devices are created
+   * lazily on demand at reservation time. */
+  int amount_to_check = 4;
   EXPECT_EQ(count, amount_to_check);
 }
 
@@ -133,34 +137,23 @@ static uint32_t CheckNamesOfConfiguredDeviceResources_1(
       = GetDeviceResourceByName(config, "$MultipliedDeviceResource");
   if (!source_device_resource) { return 0; }
 
-  /* find all matching multiplied-devices, this includes the source device */
+  /* Right after ParseConfig(), only the eagerly created "0000" device
+   * exists; further multiplied devices ("0001", "0002", ...) are created
+   * lazily on demand at reservation time (see reserve.cc
+   * SpawnMultipliedDevice()), which is exercised separately by
+   * multiplied_device_growth_test.cc. */
   BareosResource* p = nullptr;
   while ((p = config.GetNextRes(R_DEVICE, p))) {
     DeviceResource* device = dynamic_cast<DeviceResource*>(p);
     if (device->multiplied_device_resource == source_device_resource) {
-      const char* name = nullptr;
-      switch (count_devices++) {
-        case 0:
-          name = "MultipliedDeviceResource0000";
-          break;
-        case 1:
-          name = "MultipliedDeviceResource0001";
-          break;
-        case 2:
-          name = "MultipliedDeviceResource0002";
-          break;
-        case 3:
-          name = "MultipliedDeviceResource0003";
-          break;
-        default:
-          return 0;
-      } /* switch (count_devices) */
-      std::string name_of_device(device->resource_name_);
-      std::string name_to_compare(name ? name : "???");
-      if (name_of_device == name_to_compare) { ++count_str_ok; }
+      ++count_devices;
+      if (std::string(device->resource_name_)
+          == "MultipliedDeviceResource0000") {
+        ++count_str_ok;
+      }
     } /* if (device->multiplied_device_resource) */
   } /* while GetNextRes */
-  return count_str_ok;
+  return (count_devices == 1) ? count_str_ok : 0;
 }
 
 TEST(sd, MultipliedDeviceTest_CheckNames_1)
@@ -175,7 +168,7 @@ TEST(sd, MultipliedDeviceTest_CheckNames_1)
 
   auto count = CheckNamesOfConfiguredDeviceResources_1(*test_config);
 
-  EXPECT_EQ(count, 4);
+  EXPECT_EQ(count, 1);
 }
 
 static uint32_t CheckNamesOfConfiguredDeviceResources_2(
@@ -188,43 +181,21 @@ static uint32_t CheckNamesOfConfiguredDeviceResources_2(
       = GetDeviceResourceByName(config, "$AnotherMultipliedDeviceResource");
   if (!source_device_resource) { return 0; }
 
+  /* Right after ParseConfig(), only the eagerly created "0000" device
+   * exists, even though Count=100 allows up to 101 devices to be grown
+   * lazily on demand at reservation time. */
   BareosResource* p = nullptr;
   while ((p = config.GetNextRes(R_DEVICE, p))) {
     DeviceResource* device_resource = dynamic_cast<DeviceResource*>(p);
     if (device_resource->multiplied_device_resource == source_device_resource) {
-      const char* name = nullptr;
-      switch (count_devices++) {
-        case 0:
-          name = "AnotherMultipliedDeviceResource0000";
-          break;
-        case 1:
-          name = "AnotherMultipliedDeviceResource0001";
-          break;
-        case 2:
-          name = "AnotherMultipliedDeviceResource0002";
-          break;
-        case 3:
-          name = "AnotherMultipliedDeviceResource0003";
-          break;
-        /* configurable using Device config for
-         * "AnotherMultipliedDeviceResource" */
-        case 9999:
-          name = "AnotherMultipliedDeviceResource9999";
-          break;
-        default:
-          if (count_devices < 10000) {
-            ++count_str_ok;
-            continue;
-          } else {
-            return 0;
-          }
-      } /* switch (count_devices) */
-      std::string name_of_device(device_resource->resource_name_);
-      std::string name_to_compare(name ? name : "???");
-      if (name_of_device == name_to_compare) { ++count_str_ok; }
+      ++count_devices;
+      if (std::string(device_resource->resource_name_)
+          == "AnotherMultipliedDeviceResource0000") {
+        ++count_str_ok;
+      }
     } /* if (device_resource->multiplied_device_resource) */
   } /* while GetNextRes */
-  return count_str_ok;
+  return (count_devices == 1) ? count_str_ok : 0;
 }
 
 TEST(sd, MultipliedDeviceTest_CheckNames_2)
@@ -239,20 +210,16 @@ TEST(sd, MultipliedDeviceTest_CheckNames_2)
 
   auto count = CheckNamesOfConfiguredDeviceResources_2(*test_config);
 
-  EXPECT_EQ(count, 101);
+  EXPECT_EQ(count, 1);
 }
 
 static uint32_t CheckAutochangerInAllDevices(ConfigurationParser& config)
 {
+  /* Right after ParseConfig(), only the eagerly created "0000" device of
+   * each multiplied device is attached to its implicit autochanger. */
   std::map<std::string, std::string> names = {
-      {"MultipliedDeviceResource0001", "virtual-multiplied-device-autochanger"},
-      {"MultipliedDeviceResource0002", "virtual-multiplied-device-autochanger"},
-      {"MultipliedDeviceResource0003", "virtual-multiplied-device-autochanger"},
-      {"AnotherMultipliedDeviceResource0001",
-       "another-virtual-multiplied-device-autochanger"},
-      {"AnotherMultipliedDeviceResource0002",
-       "another-virtual-multiplied-device-autochanger"},
-      {"AnotherMultipliedDeviceResource0100",
+      {"MultipliedDeviceResource0000", "virtual-multiplied-device-autochanger"},
+      {"AnotherMultipliedDeviceResource0000",
        "another-virtual-multiplied-device-autochanger"}};
 
   uint32_t count_str_ok = 0;
@@ -286,7 +253,7 @@ TEST(sd, MultipliedDeviceTest_CheckNameOfAutomaticallyAttachedAutochanger)
 
   auto count = CheckAutochangerInAllDevices(*test_config);
 
-  EXPECT_EQ(count, 6);
+  EXPECT_EQ(count, 2);
 }
 
 static uint32_t CheckSomeDevicesInAutochanger(ConfigurationParser& config)
@@ -294,9 +261,10 @@ static uint32_t CheckSomeDevicesInAutochanger(ConfigurationParser& config)
   uint32_t count_str_ok = 0;
   BareosResource* p = nullptr;
 
-  std::set<std::string> names = {{"MultipliedDeviceResource0001"},
-                                 {"MultipliedDeviceResource0002"},
-                                 {"MultipliedDeviceResource0003"}};
+  /* Right after ParseConfig(), only the eagerly created "0000" device is
+   * attached to the implicit autochanger; further devices are attached
+   * lazily on demand at reservation time. */
+  std::set<std::string> names = {{"MultipliedDeviceResource0000"}};
 
   while ((p = config.GetNextRes(R_AUTOCHANGER, p))) {
     AutochangerResource* autochanger = dynamic_cast<AutochangerResource*>(p);
@@ -328,7 +296,7 @@ TEST(sd,
 
   auto count = CheckSomeDevicesInAutochanger(*test_config);
 
-  EXPECT_EQ(count, 3);
+  EXPECT_EQ(count, 1);
 }
 
 TEST(sd, MultipliedDeviceTest_CheckPointerReferenceOfCopiedDevice)
@@ -345,9 +313,32 @@ TEST(sd, MultipliedDeviceTest_CheckPointerReferenceOfCopiedDevice)
   p = test_config->GetResWithName(R_DEVICE, "$MultipliedDeviceResource");
   ASSERT_TRUE(p);
   DeviceResource* original_device_resource = dynamic_cast<DeviceResource*>(p);
-  p = test_config->GetResWithName(R_DEVICE, "MultipliedDeviceResource0001");
+  p = test_config->GetResWithName(R_DEVICE, "MultipliedDeviceResource0000");
   ASSERT_TRUE(p);
   DeviceResource* multiplied_device_resource = dynamic_cast<DeviceResource*>(p);
   EXPECT_EQ(original_device_resource,
             multiplied_device_resource->multiplied_device_resource);
+}
+
+TEST(sd, MultipliedDeviceTest_CheckMultipliedDeviceTemplatePointer)
+{
+  InitGlobals();
+  std::string path_to_config = "configs/stored_multiplied_device/";
+
+  PConfigParser test_config(InitSdConfig(path_to_config.c_str(), M_INFO));
+  storagedaemon::my_config = test_config.get();
+
+  ASSERT_TRUE(test_config->ParseConfig());
+
+  BareosResource* p;
+  p = test_config->GetResWithName(R_DEVICE, "$MultipliedDeviceResource");
+  ASSERT_TRUE(p);
+  DeviceResource* original_device_resource = dynamic_cast<DeviceResource*>(p);
+  ASSERT_TRUE(original_device_resource->changer_res);
+
+  // the implicit autochanger must be able to find its way back to the
+  // template device it should lazily grow further devices from
+  EXPECT_EQ(original_device_resource->changer_res->multiplied_device_template,
+            original_device_resource);
+  EXPECT_EQ(original_device_resource->next_multiplied_device_index, 1u);
 }

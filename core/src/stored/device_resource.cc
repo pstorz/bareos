@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2011 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -97,6 +97,7 @@ DeviceResource::DeviceResource(const DeviceResource& other)
   }
   count = other.count;
   multiplied_device_resource = other.multiplied_device_resource;
+  next_multiplied_device_index = other.next_multiplied_device_index;
   dev = other.dev;
   changer_res = other.changer_res;
 }
@@ -149,6 +150,7 @@ DeviceResource& DeviceResource::operator=(const DeviceResource& rhs)
   unmount_command = rhs.unmount_command;
   count = rhs.count;
   multiplied_device_resource = rhs.multiplied_device_resource;
+  next_multiplied_device_index = rhs.next_multiplied_device_index;
   dev = rhs.dev;
   changer_res = rhs.changer_res;
 
@@ -189,6 +191,7 @@ std::unique_ptr<DeviceResource> DeviceResource::CreateCopy(
   device->resource_name_ = strdup(copy_name.c_str());
   device->multiplied_device_resource = this;
   device->count = 0;
+  device->next_multiplied_device_index = 0;
   return device;
 }
 
