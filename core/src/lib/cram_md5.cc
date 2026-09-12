@@ -29,6 +29,7 @@
 #include "include/bareos.h"
 #include "lib/cram_md5.h"
 #include "lib/bsock.h"
+#include "lib/protocol_token.h"
 #include "lib/util.h"
 #include "lib/base64.h"
 
@@ -81,12 +82,13 @@ CramMd5Handshake::CompareChallengeWithOwnQualifiedName(
     const char* challenge) const
 {
   uint32_t a, b;
-  char buffer[MAXHOSTNAMELEN]{"?"};  // at least one character
-
-  bool scan_success = bsscanf(challenge, "<%u.%u@%s", &a, &b, buffer) == 3;
-
-  // string contains the closing ">" of the challenge
-  std::string challenge_qualified_name(buffer, strlen(buffer) - 1);
+  const auto challenge_name = GetProtocolToken(challenge, "@");
+  const bool scan_success = bsscanf(challenge, "<%u.%u@%*s", &a, &b) == 2
+                            && challenge_name && challenge_name->ends_with('>');
+  const std::string challenge_qualified_name
+      = scan_success
+            ? std::string{challenge_name->substr(0, challenge_name->size() - 1)}
+            : std::string{};
 
   Dmsg1(debuglevel_, "my_name: <%s> - challenge_name: <%s>\n",
         own_qualified_name_bashed_spaces_.c_str(),
@@ -199,7 +201,7 @@ bool CramMd5Handshake::CramMd5Response()
   Dmsg1(100, "cram-get received: %s", bs_->msg);
   chal.check_size(bs_->message_length);
   if (bs_->IsBnetDumpEnabled()) {
-    std::vector<char> destination_qualified_name(256);
+    std::vector<char> destination_qualified_name(bs_->message_length + 1);
     if (bsscanf(bs_->msg, "auth cram-md5c %s ssl=%d qualified-name=%s",
                 chal.c_str(), &remote_tls_policy_,
                 destination_qualified_name.data())
