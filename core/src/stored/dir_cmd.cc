@@ -47,6 +47,7 @@
 #include "stored/authenticate.h"
 #include "stored/autochanger.h"
 #include "stored/blocksize_boundaries.h"
+#include "lib/protocol_token.h"
 #include "stored/bsr.h"
 #include "stored/device_control_record.h"
 #include "stored/sd_device_control_record.h"
@@ -555,9 +556,16 @@ static bool ResolveCmd(JobControlRecord* jcr)
   dlist<IPADDR>* addr_list;
   const char* errstr;
   char addresses[2048];
+<<<<<<< HEAD
   char hostname[2048];
 
   bsscanf(dir->msg, resolvecmd, &hostname);
+=======
+  const auto hostname_token = GetProtocolToken(dir->msg, "resolve ");
+  std::string hostname;
+  if (!hostname_token) { goto bail_out; }
+  hostname.assign(*hostname_token);
+>>>>>>> dbb0d0396c (daemons: parse resolve host without fixed buffer)
 
   if ((addr_list = BnetHost2IpAddrs(hostname, 0, &errstr)) == NULL) {
     dir->fsend(T_("%s: Failed to resolve %s\n"), my_name, hostname);
