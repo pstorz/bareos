@@ -109,7 +109,7 @@ inline constexpr const char replicatecmd[]
 inline constexpr const char passiveclientcmd[]
     = "passive client address=%s port=%d ssl=%d";
 inline constexpr const char resolvecmd[] = "resolve %s";
-inline constexpr const char pluginoptionscmd[] = "pluginoptions %s";
+
 
 /* Responses sent to Director */
 inline constexpr const char derrmsg[] = "3900 Invalid command:";
@@ -1823,17 +1823,19 @@ bail_out:
 static bool PluginoptionsCmd(JobControlRecord* jcr)
 {
   BareosSocket* dir = jcr->dir_bsock;
-  char plugin_options[2048];
   std::string cpy{dir->msg};
+  const auto plugin_options_token = GetProtocolToken(cpy, "pluginoptions ");
+  std::string plugin_options;
 
   Dmsg1(100, "PluginOptionsCmd: %s", cpy.c_str());
-  if (bsscanf(cpy.c_str(), pluginoptionscmd, plugin_options) != 1) {
+  if (!plugin_options_token) {
     PmStrcpy(jcr->errmsg, cpy.c_str());
     Jmsg(jcr, M_FATAL, 0, T_("Bad pluginoptionscmd command: %s"), jcr->errmsg);
     goto bail_out;
   }
+  plugin_options.assign(*plugin_options_token);
 
-  UnbashSpaces(plugin_options);
+  UnbashSpaces(plugin_options.data());
   if (!jcr->sd_impl->plugin_options) {
     jcr->sd_impl->plugin_options = new alist<const char*>(10, owned_by_alist);
   }
