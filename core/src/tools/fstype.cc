@@ -61,7 +61,6 @@ int main(int argc, char* const* argv)
   int exit_status = BEXIT_SUCCESS;
   int ch, i;
 
-  setlocale(LC_ALL, "");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

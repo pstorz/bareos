@@ -87,12 +87,10 @@ void InitWinAPIWrapper();
 #  undef T_
 #  undef textdomain
 #  undef bindtextdomain
-#  undef setlocale
 
 #  define T_(s) (s)
 #  define textdomain(d)
 #  define bindtextdomain(p, d)
-#  define setlocale(p, d)
 #endif /* ENABLE_NLS */
 
 

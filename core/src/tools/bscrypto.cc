@@ -139,7 +139,6 @@ static void unwrap_key(char* keydata,
 
 int main(int argc, char* const* argv)
 {
-  setlocale(LC_ALL, "");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

@@ -38,7 +38,6 @@ int main(int argc, char** argv)
 {
   OSDependentInit();
 
-  setlocale(LC_ALL, "");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

@@ -96,7 +96,6 @@ static uint64_t fileAddr = 0; /* file write address */
 
 int main(int argc, char* argv[])
 {
-  setlocale(LC_ALL, "");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

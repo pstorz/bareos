@@ -98,7 +98,6 @@ int main(int argc, char* const* argv)
   char* exc = NULL;
   FILE* fd;
 
-  setlocale(LC_ALL, "");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

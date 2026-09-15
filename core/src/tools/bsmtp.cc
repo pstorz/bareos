@@ -231,7 +231,6 @@ std::pair<std::string, int> ParseHostAndPort(std::string val)
  */
 int main(int argc, char* argv[])
 {
-  setlocale(LC_ALL, "en_US");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

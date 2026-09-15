@@ -83,7 +83,6 @@ int main(int argc, char* const* argv)
   char drive = 'A';
   char buf[16];
 
-  setlocale(LC_ALL, "");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

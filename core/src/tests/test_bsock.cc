@@ -478,7 +478,6 @@ void InitForTest()
   directordaemon::me = dir_dir_config.get();
   console::me = cons_cons_config.get();
 
-  setlocale(LC_ALL, "");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

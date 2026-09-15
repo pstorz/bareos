@@ -73,7 +73,6 @@ static Session_Label g_sessrec{};
 
 int main(int argc, char* argv[])
 {
-  setlocale(LC_ALL, "");
   tzset();
   bindtextdomain("bareos", LOCALEDIR);
   textdomain("bareos");

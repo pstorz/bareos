@@ -79,10 +79,6 @@ using namespace std;
 #    define __RPC__out
 #  endif
 
-#  if !defined(ENABLE_NLS)
-#    define setlocale(p, d)
-#  endif
-
 #  ifdef HAVE_STRSAFE_H
 // Used for safe string manipulation
 #    include <strsafe.h>
