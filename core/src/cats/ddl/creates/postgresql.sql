@@ -106,10 +106,12 @@ CREATE TABLE Job
 );
 
 CREATE INDEX job_name_idx ON job (Name);
+CREATE INDEX job_clientid_starttime_idx ON Job (ClientId, StartTime);
 
 -- Create a table like Job for long term statistics
 CREATE TABLE JobHisto (LIKE Job);
 CREATE INDEX jobhisto_idx ON JobHisto (StartTime);
+CREATE INDEX jobhisto_clientid_starttime_idx ON JobHisto (ClientId, StartTime);
 
 CREATE TABLE Location (
     LocationId        SERIAL      NOT NULL,
@@ -754,7 +756,7 @@ commit;
 -- Initialize Version
 --   DELETE should not be required,
 --   but prevents errors if create script is called multiple times
-DELETE FROM Version WHERE VersionId<=2260;
-INSERT INTO Version (VersionId) VALUES (2260);
+DELETE FROM Version WHERE VersionId<=2270;
+INSERT INTO Version (VersionId) VALUES (2270);
 
 -- Make sure we have appropriate permissions
