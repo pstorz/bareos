@@ -293,9 +293,11 @@ CREATE TABLE Log
     JobId             INTEGER     NOT NULL,
     Time              TIMESTAMP   WITHOUT TIME ZONE,
     LogText           TEXT        NOT NULL,
+    MsgType           INTEGER,
     PRIMARY KEY (LogId)
 );
 CREATE INDEX log_name_idx ON Log (JobId);
+CREATE INDEX log_msgtype_idx ON Log (MsgType);
 
 CREATE TABLE LocationLog (
     LocLogId          SERIAL NOT NULL,
@@ -752,7 +754,7 @@ commit;
 -- Initialize Version
 --   DELETE should not be required,
 --   but prevents errors if create script is called multiple times
-DELETE FROM Version WHERE VersionId<=2250;
-INSERT INTO Version (VersionId) VALUES (2250);
+DELETE FROM Version WHERE VersionId<=2260;
+INSERT INTO Version (VersionId) VALUES (2260);
 
 -- Make sure we have appropriate permissions

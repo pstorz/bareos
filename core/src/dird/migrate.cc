@@ -3,7 +3,7 @@
 
    Copyright (C) 2004-2012 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2016 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -1752,8 +1752,8 @@ void MigrationCleanup(JobControlRecord* jcr, int TermCode)
            * - Copy any MetaData of a NDMP backup
            * - Set type="Job Copy" for the new job */
           Mmsg(query,
-               "INSERT INTO Log (JobId, Time, LogText ) "
-               "SELECT %s, Time, LogText FROM Log WHERE JobId=%s",
+               "INSERT INTO Log (JobId, Time, LogText, MsgType ) "
+               "SELECT %s, Time, LogText, MsgType FROM Log WHERE JobId=%s",
                new_jobid, old_jobid);
           mig_jcr->db->SqlQuery(query.c_str());
 

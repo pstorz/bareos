@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2012 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -703,7 +703,7 @@ void DispatchMessage(JobControlRecord* jcr,
           if (!jcr || !jcr->db) { break; }
 
           if (SendToDbLog) {
-            if (!SendToDbLog(jcr, mtime, msg)) {
+            if (!SendToDbLog(jcr, type, mtime, msg)) {
               DeliveryError(T_(
                   "Msg delivery error: Unable to store data in database.\n"));
             }

@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2009 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2016 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -393,7 +393,7 @@ void BareosDb::ListLogRecords(JobControlRecord* jcr,
   if (reverse) {
     Mmsg(cmd,
          "SELECT LogId, Job.Name AS JobName, Client.Name AS ClientName, Time, "
-         "LogText "
+         "LogText, MsgType "
          "FROM Log "
          "JOIN Job USING (JobId) "
          "LEFT JOIN Client USING (ClientId) "
@@ -403,9 +403,9 @@ void BareosDb::ListLogRecords(JobControlRecord* jcr,
          client_filter.c_str(), range);
   } else {
     Mmsg(cmd,
-         "SELECT LogId, JobName, ClientName, Time, LogText FROM ("
+         "SELECT LogId, JobName, ClientName, Time, LogText, MsgType FROM ("
          "SELECT LogId, Job.Name AS JobName, Client.Name As ClientName, Time, "
-         "LogText "
+         "LogText, MsgType "
          "FROM Log "
          "JOIN Job USING (JobId) "
          "LEFT JOIN Client USING (ClientId) "

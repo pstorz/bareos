@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2012 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2016 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -104,11 +104,12 @@ extern const ResourceItem job_items[];
  * writing the database is disabled.
  */
 static bool DirDbLogInsert(JobControlRecord* jcr,
+                           int type,
                            utime_t mtime,
                            const char* msg)
 {
   int length;
-  char ed1[50];
+  char ed1[50], ed2[50];
   char dt[MAX_TIME_LENGTH];
   PoolMem query(PM_MESSAGE), esc_msg(PM_MESSAGE);
 
@@ -118,8 +119,10 @@ static bool DirDbLogInsert(JobControlRecord* jcr,
   jcr->db->EscapeString(jcr, esc_msg.c_str(), msg, length);
 
   bstrutime(dt, sizeof(dt), mtime);
-  Mmsg(query, "INSERT INTO Log (JobId, Time, LogText) VALUES (%s,'%s','%s')",
-       edit_int64(jcr->JobId, ed1), dt, esc_msg.c_str());
+  Mmsg(query,
+       "INSERT INTO Log (JobId, Time, LogText, MsgType) "
+       "VALUES (%s,'%s','%s',%s)",
+       edit_int64(jcr->JobId, ed1), dt, esc_msg.c_str(), edit_int64(type, ed2));
 
   return jcr->db->SqlExec(query.c_str());
 }
