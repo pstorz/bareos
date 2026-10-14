@@ -1466,6 +1466,34 @@ export function filterRestoreVersionsByJobids(versions, jobids) {
   return dedupedVersions.filter(version => allowedJobIds.has(String(version?.jobid ?? '').trim()))
 }
 
+const RESTORE_VERSION_STAT_KEYS = ['size', 'mtime', 'mode', 'uid', 'gid']
+
+// For every version, list the stat fields that differ from the next older
+// version (lower job id), so the operator can spot what changed.
+export function getRestoreVersionStatChanges(versions) {
+  const list = Array.isArray(versions) ? versions : []
+  const changes = new Map()
+
+  for (const version of list) {
+    const jobid = Number(version?.jobid)
+    let previous = null
+    for (const other of list) {
+      const otherJobid = Number(other?.jobid)
+      if (otherJobid < jobid && (previous === null || otherJobid > Number(previous.jobid))) {
+        previous = other
+      }
+    }
+    changes.set(
+      version?.fileid,
+      previous === null
+        ? []
+        : RESTORE_VERSION_STAT_KEYS.filter(key => version?.stat?.[key] !== previous.stat?.[key])
+    )
+  }
+
+  return changes
+}
+
 export function getRestoreVersionsLookupJobId(selectedJobId, mergedJobids) {
   if (selectedJobId !== null && selectedJobId !== undefined && selectedJobId !== '') {
     return String(selectedJobId).trim()

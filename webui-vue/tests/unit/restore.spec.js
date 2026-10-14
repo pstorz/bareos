@@ -52,6 +52,7 @@ import {
   decorateRestoreBackupsWithPluginJobs,
   dedupeRestoreVersions,
   getRestoreVersionsLookupJobId,
+  getRestoreVersionStatChanges,
   filterRestoreBackupsByCriteria,
   filterRestoreVersionsByJobids,
   filterRestoreSourceClients,
@@ -1291,6 +1292,18 @@ describe('restore browser placeholder', () => {
       { fileid: 10, jobid: 1 },
       { fileid: 12, jobid: 2 },
     ])
+  })
+
+  it('reports stat fields that differ from the next older version', () => {
+    const changes = getRestoreVersionStatChanges([
+      { fileid: 12, jobid: 3, stat: { size: 20, mtime: 5, mode: 33188, uid: 0, gid: 0 } },
+      { fileid: 10, jobid: 1, stat: { size: 10, mtime: 1, mode: 33188, uid: 0, gid: 0 } },
+      { fileid: 11, jobid: 2, stat: { size: 10, mtime: 1, mode: 33261, uid: 0, gid: 0 } },
+    ])
+
+    expect(changes.get(10)).toEqual([])
+    expect(changes.get(11)).toEqual(['mode'])
+    expect(changes.get(12)).toEqual(['size', 'mtime', 'mode'])
   })
 
   it('uses the selected job id for version lookups when available', () => {

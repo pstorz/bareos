@@ -880,12 +880,23 @@
                         <div class="col-auto text-weight-medium">
                           {{ t('Job ID') }} {{ props.row.jobid }}
                         </div>
-                        <div class="col-auto text-caption text-grey-7">
+                        <div class="col-auto text-caption text-grey-7" :class="changedClass(props.row, 'size')">
                           {{ formatBytes(props.row.stat?.size ?? 0) }}
                         </div>
                       </div>
+                      <div class="text-caption text-grey-7 q-mt-xs" :class="changedClass(props.row, 'mtime')" :title="versionTime(props.row.stat?.mtime).title">
+                        {{ versionTime(props.row.stat?.mtime).text }}
+                      </div>
+                      <div class="text-caption q-mt-xs">
+                        <span class="versions-dialog__mono" :class="changedClass(props.row, 'mode')">{{ formatMode(props.row.stat?.mode) || '—' }}</span>
+                        <span class="versions-dialog__value" :class="changedClass(props.row, 'uid', 'gid')">{{ versionOwner(props.row) }}</span>
+                        <span v-if="versionOwnerNames(props.row)" class="text-grey-6 q-ml-xs" :title="ownerNamesHint">{{ versionOwnerNames(props.row) }}</span>
+                      </div>
                       <div class="text-caption text-grey-7 q-mt-xs">
-                        {{ formatMtime(props.row.stat?.mtime) }}
+                        {{ t('Accessed') }}: <span :title="versionTime(props.row.stat?.atime).title">{{ versionTime(props.row.stat?.atime).text }}</span>
+                        · {{ t('Changed') }}: <span :title="versionTime(props.row.stat?.ctime).title">{{ versionTime(props.row.stat?.ctime).text }}</span>
+                        · {{ t('Links') }}: {{ props.row.stat?.nlink ?? '—' }}
+                        · {{ t('Inode') }}: {{ props.row.stat?.ino ?? '—' }}
                       </div>
                       <div class="text-caption q-mt-sm">
                         <span class="text-grey-7">{{ t('Volume') }}:</span>
@@ -919,10 +930,32 @@
                 />
               </q-td>
               <q-td>{{ props.row.jobid }}</q-td>
-              <q-td>{{ formatMtime(props.row.stat?.mtime) }}</q-td>
-              <q-td class="text-right">{{ formatBytes(props.row.stat?.size ?? 0) }}</q-td>
+              <q-td :class="changedClass(props.row, 'mtime')" :title="versionTime(props.row.stat?.mtime).title">{{ versionTime(props.row.stat?.mtime).text }}</q-td>
+              <q-td class="text-right" :class="changedClass(props.row, 'size')">{{ formatBytes(props.row.stat?.size ?? 0) }}</q-td>
+              <q-td class="versions-dialog__mono" :class="changedClass(props.row, 'mode')">{{ formatMode(props.row.stat?.mode) }}</q-td>
+              <q-td :class="changedClass(props.row, 'uid', 'gid')">
+                {{ versionOwner(props.row) }}
+                <span v-if="versionOwnerNames(props.row)" class="text-grey-6 q-ml-xs">
+                  {{ versionOwnerNames(props.row) }}
+                  <q-tooltip>{{ ownerNamesHint }}</q-tooltip>
+                </span>
+              </q-td>
               <q-td>{{ props.row.volumename }}</q-td>
               <q-td>{{ props.row.md5 }}</q-td>
+            </q-tr>
+            <q-tr
+              :props="props"
+              :class="versionsDialog.selectedFileId === props.row.fileid ? 'bg-blue-1' : ''"
+              class="cursor-pointer versions-dialog__details-row"
+              @click="selectVersion(props.row)"
+            >
+              <q-td />
+              <q-td colspan="100%" class="text-caption text-grey-7">
+                {{ t('Accessed') }}: <span :title="versionTime(props.row.stat?.atime).title">{{ versionTime(props.row.stat?.atime).text }}</span>
+                · {{ t('Changed') }}: <span :title="versionTime(props.row.stat?.ctime).title">{{ versionTime(props.row.stat?.ctime).text }}</span>
+                · {{ t('Links') }}: {{ props.row.stat?.nlink ?? '—' }}
+                · {{ t('Inode') }}: {{ props.row.stat?.ino ?? '—' }}
+              </q-td>
             </q-tr>
           </template>
         </q-table>
@@ -955,7 +988,7 @@ import { useDirectorStore } from '../stores/director.js'
 import { usePluginHintsStore } from '../stores/pluginHints.js'
 import { useSettingsStore } from '../stores/settings.js'
 import { formatBytes } from '../mock/index.js'
-import { formatSqlRelativeTime } from '../utils/locales.js'
+import { formatCatalogTimestamp, formatSqlRelativeTime } from '../utils/locales.js'
 import { quoteDirectorString } from '../utils/directorStrings.js'
 import {
   DEFAULT_RELOCATION_SAMPLE_PATH,
@@ -976,6 +1009,7 @@ import {
   filterRestoreSourceClients,
   resolveRestoreRegexWhere,
   getRestoreVersionsLookupJobId,
+  getRestoreVersionStatChanges,
   getRestorePluginInfo,
   getRestorePluginHints,
   getAllRestorePluginHints,
@@ -2834,6 +2868,8 @@ const versionsCols = [
   { name: 'jobid',  label: 'Job ID',  field: 'jobid',                align: 'right',  style: 'width:70px', sortable: true },
   { name: 'mtime',  label: 'Date',    field: row => row.stat?.mtime, align: 'left', sortable: true },
   { name: 'size',   label: 'Size',    field: row => row.stat?.size,  align: 'right',  style: 'width:90px', sortable: true },
+  { name: 'mode',   label: 'Mode',    field: row => row.stat?.mode,  align: 'left',   sortable: true },
+  { name: 'owner',  label: 'Owner (uid:gid)',   field: row => versionOwner(row), align: 'left', sortable: true },
   { name: 'volume', label: 'Volume',  field: 'volumename',           align: 'left', sortable: true },
   { name: 'md5',    label: 'MD5',     field: 'md5',                  align: 'left', sortable: true },
 ]
@@ -2881,6 +2917,34 @@ async function openVersions(row) {
   } finally {
     versionsDialog.value.loading = false
   }
+}
+
+const versionStatChanges = computed(() => getRestoreVersionStatChanges(versionsDialog.value.versions))
+
+function changedClass(row, ...keys) {
+  const changed = versionStatChanges.value.get(row.fileid) ?? []
+  return keys.some(key => changed.includes(key)) ? 'versions-dialog__changed' : ''
+}
+
+const ownerNamesHint = computed(() =>
+  t('uid and gid are the values recorded in the backup. Names in brackets are resolved on the Director host and may differ from the client.')
+)
+
+// uid and gid are what the backup recorded
+function versionOwner(row) {
+  const stat = row.stat ?? {}
+  return stat.uid === undefined && stat.gid === undefined ? '—' : `${stat.uid ?? '?'}:${stat.gid ?? '?'}`
+}
+
+// names are looked up on the Director host, not on the backed up client
+function versionOwnerNames(row) {
+  const stat = row.stat ?? {}
+  return stat.user || stat.group ? `(${stat.user || '?'}:${stat.group || '?'})` : ''
+}
+
+// Shown as the global "relative time" setting asks; the other form is the tooltip
+function versionTime(ts) {
+  return formatCatalogTimestamp(formatMtime(ts), settings.relativeTime, settings.locale)
 }
 
 function selectVersion(ver) {
@@ -3096,8 +3160,22 @@ watch(() => [
 
 <style scoped>
 .versions-dialog-card {
-  width: min(700px, 95vw);
-  max-width: 700px;
+  width: min(1000px, 95vw);
+  max-width: 1000px;
+}
+
+.versions-dialog__mono {
+  font-family: monospace;
+}
+
+.versions-dialog__changed {
+  font-weight: 600;
+  color: var(--q-warning, #c77700);
+}
+
+.versions-dialog__details-row td {
+  border-top: none;
+  padding-top: 0;
 }
 
 .versions-dialog__title {
