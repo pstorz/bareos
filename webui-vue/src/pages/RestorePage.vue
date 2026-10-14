@@ -373,8 +373,8 @@
                     <template v-if="!props.row.isDir">
                       <q-btn
                         v-if="hasMultipleVersions(props.row.fileId)"
-                        flat dense round size="xs"
-                        :color="hasVersionOverride(props.row.fileId) ? 'orange' : 'grey-5'"
+                        flat dense round size="sm"
+                        :color="hasVersionOverride(props.row.fileId) ? 'orange' : 'primary'"
                         icon="history"
                         class="q-ml-xs"
                         :aria-label="hasVersionOverride(props.row.fileId)
