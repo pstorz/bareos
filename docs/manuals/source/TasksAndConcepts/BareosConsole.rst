@@ -1519,7 +1519,7 @@ status
       :caption: status
 
       status [all | dir=<dir-name> | director | scheduler | schedule=<schedule-name> |
-              client=<client-name> | storage=<storage-name> slots |
+              client=<client-name> | storage=<storage-name> [slots | model] |
               subscriptions [clients] [plugins] [all] [anonymize] [client=<client-name>] |
               configuration]
 
@@ -1547,6 +1547,14 @@ status
    hence the "waiting on max Storage jobs". JobId 5349 has a lower priority than all the other jobs
    so it is waiting for higher priority jobs to finish, and finally, JobId 2507 (ClientVerify) is
    waiting because only one job can run at a time, hence it is simply "waiting execution"
+
+   For an autochanger, :bcommand:`status storage=<storage-name> model` fetches the current
+   inventory from the Storage Daemon and shows the Director's model of the autochanger: the
+   volume in each drive and slot, and which jobs use a drive. It also lists all volumes whose
+   location in the catalog (:strong:`Slot` and :strong:`InChanger`) differs from the inventory.
+   This includes labeled volumes that the catalog places in the wrong slot and volumes that
+   are in the autochanger but not in the catalog. Use :bcommand:`update slots` to fix a
+   catalog location.
 
    If you do a status dir, it will by default list the first occurrence of all jobs that are
    scheduled today and tomorrow. If you wish to see the jobs that are scheduled in the next three

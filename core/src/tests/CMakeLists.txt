@@ -334,6 +334,11 @@ if(NOT client-only)
   bareos_add_test(
     sort_stringvector LINK_LIBRARIES Bareos::Lib GTest::gtest_main
   )
+
+  bareos_add_test(
+    storage_manager_test LINK_LIBRARIES Bareos::Dir Bareos::Lib
+                                        GTest::gtest_main
+  )
   bareos_add_test(
     test_config_parser_dir
     LINK_LIBRARIES Bareos::Dir Bareos::Lib Bareos::Findlib testing_common

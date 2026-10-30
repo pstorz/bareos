@@ -38,6 +38,7 @@
 #include "dird/sd_cmds.h"
 #include "dird/scheduler.h"
 #include "dird/storage.h"
+#include "dird/storage_manager.h"
 
 #include "cats/sql_pooling.h"
 #include "dird/ua_db.h"
@@ -69,6 +70,7 @@ static bool DoSubscriptionStatus(UaContext* ua);
 static void DoConfigurationStatus(UaContext* ua);
 static void DoAllStatus(UaContext* ua);
 static void StatusSlots(UaContext* ua, StorageResource* store);
+static void StatusModel(UaContext* ua, StorageResource* store);
 static void StatusContentApi(UaContext* ua, StorageResource* store);
 static void StatusContentJson(UaContext* ua, StorageResource* store);
 
@@ -198,12 +200,15 @@ bool StatusCmd(UaContext* ua, const char* cmd)
       DoConfigurationStatus(ua);
       return true;
     } else {
-      // limit storages to autochangers if slots is given
-      autochangers_only = (FindArg(ua, NT_("slots")) > 0);
+      // limit storages to autochangers if slots or model is given
+      autochangers_only
+          = (FindArg(ua, NT_("slots")) > 0 || FindArg(ua, NT_("model")) > 0);
       store = get_storage_resource(ua, false, autochangers_only);
 
       if (store) {
-        if (FindArg(ua, NT_("slots")) > 0) {
+        if (FindArg(ua, NT_("model")) > 0) {
+          StatusModel(ua, store);
+        } else if (FindArg(ua, NT_("slots")) > 0) {
           switch (ua->api) {
             case API_MODE_OFF:
               StatusSlots(ua, store);
@@ -2071,5 +2076,61 @@ bail_out:
   CloseSdBsock(ua);
 
   return;
+}
+static int CatalogLocationHandler(void* ctx, int, char** row)
+{
+  auto* catalog
+      = static_cast<std::vector<storage_manager::CatalogVolumeLocation>*>(ctx);
+  catalog->push_back({row[0], atoi(row[1]), str_to_uint64(row[2]) != 0});
+  return 0;
+}
+
+// Refresh the director side storage model from the storage daemon, show it
+// and its divergences from the catalog.
+static void StatusModel(UaContext* ua, StorageResource* store)
+{
+  ua->jcr->dir_impl->res.write_storage = store;
+  changer_vol_list_t* vol_list = get_vol_list_from_storage(
+      ua, store, true /* listall */, true /* scan */, false /* cached */);
+  if (vol_list) { StorageReleaseVolList(store, vol_list); }
+  CloseSdBsock(ua);
+
+  auto model
+      = storage_manager::GlobalStorageManager().Find(store->resource_name_);
+  if (!model) {
+    ua->WarningMsg(T_("No autochanger inventory available for Storage "
+                      "\"%s\".\n"),
+                   store->resource_name_);
+    return;
+  }
+
+  for (const auto& line : storage_manager::DescribeModel(*model)) {
+    ua->SendMsg("%s\n", line.c_str());
+  }
+
+  if (!OpenClientDb(ua)) { return; }
+
+  std::vector<storage_manager::CatalogVolumeLocation> catalog;
+  PoolMem query;
+  char ed1[50];
+  Mmsg(query,
+       "SELECT VolumeName, Slot, InChanger FROM Media WHERE StorageId=%s",
+       edit_int64(store->StorageId, ed1));
+  if (!ua->db->SqlQuery(query.c_str(), CatalogLocationHandler, &catalog)) {
+    ua->ErrorMsg(T_("Query failed: %s\n"), ua->db->strerror());
+    return;
+  }
+
+  auto divergences = model->FindDivergences(catalog);
+  if (divergences.empty()) {
+    ua->SendMsg(T_("Catalog is consistent with the storage model.\n"));
+    return;
+  }
+  ua->SendMsg(T_("%zu divergence(s) between catalog and storage model:\n"),
+              divergences.size());
+  for (const auto& divergence : divergences) {
+    ua->SendMsg("  %s\n",
+                storage_manager::DescribeDivergence(divergence).c_str());
+  }
 }
 } /* namespace directordaemon */

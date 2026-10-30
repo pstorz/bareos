@@ -43,6 +43,7 @@
 
 #include "dird/ndmp_dma_storage.h"
 #include "dird/storage.h"
+#include "dird/storage_manager.h"
 
 namespace directordaemon {
 
@@ -549,6 +550,46 @@ static inline void FreeVolList(changer_vol_list_t* vol_list)
   }
 }
 
+// Feed a complete changer listing into the director side storage model.
+static void UpdateStorageModel(StorageResource* store,
+                               dlist<vol_list_t>* contents)
+{
+  using storage_manager::ChangerElement;
+
+  std::vector<ChangerElement> elements;
+  vol_list_t* vl;
+  foreach_dlist (vl, contents) {
+    ChangerElement element;
+    switch (vl->slot_type) {
+      case slot_type_t::kSlotTypeDrive:
+        element.type = ChangerElement::Type::kDrive;
+        if (vl->currently_loaded_slot_number > 0) {
+          element.loaded_slot = vl->currently_loaded_slot_number;
+        }
+        break;
+      case slot_type_t::kSlotTypeStorage:
+        element.type = ChangerElement::Type::kSlot;
+        break;
+      case slot_type_t::kSlotTypeImport:
+        element.type = ChangerElement::Type::kImportExport;
+        break;
+      default:
+        continue;
+    }
+    element.number = vl->bareos_slot_number;
+    if (vl->slot_status == slot_status_t::kSlotStatusFull && vl->VolName
+        && vl->VolName[0]) {
+      element.volume = vl->VolName;
+    }
+    elements.push_back(std::move(element));
+  }
+
+  auto inventory = storage_manager::BuildInventory(elements);
+  storage_manager::GlobalStorageManager()
+      .Get(store->resource_name_)
+      ->SetInventory(std::move(inventory.drives), std::move(inventory.slots));
+}
+
 // Generic routine to get the content of a storage autochanger.
 changer_vol_list_t* get_vol_list_from_storage(UaContext* ua,
                                               StorageResource* store,
@@ -619,6 +660,8 @@ changer_vol_list_t* get_vol_list_from_storage(UaContext* ua,
   }
 
   if (contents) {
+    if (listall) { UpdateStorageModel(store, contents); }
+
     // Cache the returned content of the autochanger.
     if (!store->runtime_storage_status->vol_list) {
       store->runtime_storage_status->vol_list

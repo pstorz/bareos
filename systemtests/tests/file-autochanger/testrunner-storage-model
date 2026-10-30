@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+#   BAREOS® - Backup Archiving REcovery Open Sourced
+#
+#   Copyright (C) 2026-2026 Bareos GmbH & Co. KG
+#
+#   This program is Free Software; you can redistribute it and/or
+#   modify it under the terms of version three of the GNU Affero General Public
+#   License as published by the Free Software Foundation and included
+#   in the file LICENSE.
+#
+#   This program is distributed in the hope that it will be useful, but
+#   WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+#   Affero General Public License for more details.
+#
+#   You should have received a copy of the GNU Affero General Public License
+#   along with this program; if not, write to the Free Software
+#   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+#   02110-1301, USA.
+
+set -e
+set -o pipefail
+set -u
+
+TestName="$(basename "$(pwd)")"
+export TestName
+
+# shellcheck source=../../environment.in
+. ./environment
+
+# shellcheck source=../../scripts/functions
+. "${BAREOS_SCRIPTS_DIR}"/functions
+
+# Check that the director builds its storage model from the autochanger
+# inventory of the storage daemon and compares it with the catalog.
+
+start_test
+
+cat <<END_OF_DATA >"$tmp/bconcmds"
+@$out ${NULL_DEV}
+messages
+@$out ${tmp}/model.out
+status storage=File model
+@$out ${tmp}/label.out
+label barcodes slots=4 drive=2 pool=Differential yes
+@$out ${tmp}/model-labeled.out
+status storage=File model
+@$out ${tmp}/release.out
+release drive=2
+END_OF_DATA
+
+run_bconsole "$@"
+
+expect_grep 'Storage "File": 4 drive(s)' "${tmp}/model.out" \
+  "model does not contain the drives of the autochanger"
+expect_grep '^  Drive-3: ' "${tmp}/model.out" \
+  "model does not list drive 3"
+expect_grep '^  Slot 2: "000002HD"$' "${tmp}/model.out" \
+  "model does not contain the volume in slot 2"
+expect_grep '^  Slot 34: empty$' "${tmp}/model.out" \
+  "model does not contain the import/export slots"
+expect_grep 'Volume "000002HD": catalog not present, storage daemon slot 2' \
+  "${tmp}/model.out" \
+  "unlabeled volume in slot 2 is not reported as divergence"
+
+expect_grep "OK label" "${tmp}/label.out" "volume in slot 4 was not labeled"
+expect_grep '^  Drive-2: volume "000004HD" from slot 4$' \
+  "${tmp}/model-labeled.out" \
+  "model does not show the labeled volume in drive 2"
+expect_not_grep 'Volume "000004HD"' "${tmp}/model-labeled.out" \
+  "labeled volume is reported as divergence"
+expect_grep 'Volume "000005HD": catalog not present, storage daemon slot 5' \
+  "${tmp}/model-labeled.out" \
+  "unlabeled volume in slot 5 is not reported as divergence"
+
+end_test

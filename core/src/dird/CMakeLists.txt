@@ -94,6 +94,7 @@ target_sources(
           scheduler_private.cc
           stats.cc
           storage.cc
+          storage_manager.cc
           ua.cc
           ua_acl.cc
           ua_audit.cc

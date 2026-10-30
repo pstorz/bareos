@@ -444,7 +444,8 @@ static struct ua_cmdstruct commands[] = {
     {NT_("status"), StatusCmd, T_("Report status"),
      NT_("all | dir=<dir-name> | director | scheduler | "
          "schedule=<schedule-name> | client=<client-name> | "
-         "storage=<storage-name> slots | days=<nr_days> | job=<job-name> | "
+         "storage=<storage-name> [slots | model] | days=<nr_days> | "
+         "job=<job-name> | "
          "subscriptions [clients] [plugins] [all] [anonymize] "
          "[client=<client-name>] | "
          "configuration"),
