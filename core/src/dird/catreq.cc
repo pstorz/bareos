@@ -40,6 +40,7 @@
 #include "dird/next_vol.h"
 #include "dird/director_jcr_impl.h"
 #include "dird/sd_cmds.h"
+#include "dird/volume_status_policy.h"
 #include "findlib/find.h"
 #include "lib/berrno.h"
 #include "lib/edit.h"
@@ -320,7 +321,17 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
     mr.VolWrites = sdmr.VolWrites;
     mr.Slot = sdmr.Slot;
     mr.InChanger = sdmr.InChanger;
-    bstrncpy(mr.VolStatus, sdmr.VolStatus, sizeof(mr.VolStatus));
+    {
+      std::string_view status
+          = ResolveVolumeStatus(mr.VolStatus, sdmr.VolStatus, label);
+      if (status != sdmr.VolStatus) {
+        Dmsg3(100,
+              "Volume \"%s\": keeping catalog status %s, storage daemon "
+              "reported %s\n",
+              mr.VolumeName, mr.VolStatus, sdmr.VolStatus);
+      }
+      bstrncpy(mr.VolStatus, std::string{status}.c_str(), sizeof(mr.VolStatus));
+    }
     mr.VolReadTime = sdmr.VolReadTime;
     mr.VolWriteTime = sdmr.VolWriteTime;
 

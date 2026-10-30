@@ -786,7 +786,7 @@ void DeviceControlRecord::mark_volume_not_inchanger()
   VolCatInfo.InChanger = false;
   dev->VolCatInfo.InChanger = false;
   Dmsg0(400, "update vol info in mount\n");
-  dcr->DirUpdateVolumeInfo(is_labeloperation::True); /* set new status */
+  dcr->DirUpdateVolumeInfo(is_labeloperation::False);
 }
 
 /**

@@ -24,6 +24,7 @@
 #include <thread>
 
 #include "dird/storage_manager.h"
+#include "dird/volume_status_policy.h"
 
 using namespace directordaemon::storage_manager;
 
@@ -272,3 +273,25 @@ TEST(storage_manager, describes_divergences)
   EXPECT_EQ(DescribeDivergence({"A1", std::nullopt, true, std::nullopt}),
             "Volume \"A1\": catalog not present, storage daemon unknown slot");
 }
+
+namespace {
+using directordaemon::ResolveVolumeStatus;
+
+// stale "Append" from the storage daemon must not undo director decisions
+static_assert(ResolveVolumeStatus("Used", "Append", false) == "Used");
+static_assert(ResolveVolumeStatus("Read-Only", "Append", false) == "Read-Only");
+static_assert(ResolveVolumeStatus("Disabled", "Append", false) == "Disabled");
+static_assert(ResolveVolumeStatus("Purged", "Append", false) == "Purged");
+static_assert(ResolveVolumeStatus("Full", "Append", false) == "Full");
+static_assert(ResolveVolumeStatus("Error", "Full", false) == "Error");
+// storage daemon observations are accepted
+static_assert(ResolveVolumeStatus("Append", "Full", false) == "Full");
+static_assert(ResolveVolumeStatus("Append", "Error", false) == "Error");
+static_assert(ResolveVolumeStatus("Used", "Error", false) == "Error");
+static_assert(ResolveVolumeStatus("Purged", "Append", true) == "Append");
+static_assert(ResolveVolumeStatus("Recycle", "Append", true) == "Append");
+static_assert(ResolveVolumeStatus("Unlabeled", "Append", false) == "Append");
+// relabel only grants Append, nothing else
+static_assert(ResolveVolumeStatus("Used", "Recycle", true) == "Used");
+static_assert(ResolveVolumeStatus("Append", "Append", false) == "Append");
+}  // namespace
