@@ -48,10 +48,12 @@ enum class AccessMode
   kAppend,
 };
 
-// Readers may share a volume, an appending job needs it exclusively.
+/* A volume is bound to one drive. Several jobs may use it there at the
+ * same time (concurrent appends or concurrent reads), but a drive cannot
+ * read and append the same volume at once. */
 constexpr bool LeasesConflict(AccessMode held, AccessMode requested)
 {
-  return held == AccessMode::kAppend || requested == AccessMode::kAppend;
+  return held != requested;
 }
 
 enum class DriveCandidate
@@ -122,7 +124,6 @@ enum class LeaseResult
   kAlreadyHeld,
   kConflict,
   kUnknownDrive,
-  kDriveBusy,
 };
 
 struct DriveChoice {

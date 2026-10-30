@@ -29,7 +29,7 @@ namespace directordaemon::storage_manager {
 static_assert(!LeasesConflict(AccessMode::kRead, AccessMode::kRead));
 static_assert(LeasesConflict(AccessMode::kRead, AccessMode::kAppend));
 static_assert(LeasesConflict(AccessMode::kAppend, AccessMode::kRead));
-static_assert(LeasesConflict(AccessMode::kAppend, AccessMode::kAppend));
+static_assert(!LeasesConflict(AccessMode::kAppend, AccessMode::kAppend));
 
 static_assert(ClassifyDrive({}) == DriveCandidate::kEmpty);
 static_assert(ClassifyDrive({.enabled = false}) == DriveCandidate::kUnusable);
@@ -157,24 +157,25 @@ LeaseResult StorageModel::AcquireLease(JobId job,
   auto [first, last] = leases_.equal_range(volume);
   for (auto it = first; it != last; ++it) {
     const VolumeLease& held = it->second;
-    if (held.job == job) {
-      return held.drive == drive_name ? LeaseResult::kAlreadyHeld
-                                      : LeaseResult::kConflict;
+    if (held.job == job && held.mode == mode && held.drive == drive_name) {
+      return LeaseResult::kAlreadyHeld;
     }
+    if (held.job == job) { continue; }
     if (held.drive != drive_name || LeasesConflict(held.mode, mode)) {
       return LeaseResult::kConflict;
     }
   }
 
-  // The drive may only be shared by jobs using the same volume.
-  if (drive->loaded_volume && *drive->loaded_volume != volume
-      && !drive->jobs.empty()) {
-    return LeaseResult::kDriveBusy;
-  }
-  for (const auto& [other_volume, lease] : leases_) {
-    if (lease.drive == drive_name && other_volume != volume) {
-      return LeaseResult::kDriveBusy;
-    }
+  // A job uses one volume per mode; a new one replaces the previous one.
+  std::erase_if(leases_, [&](const auto& kv) {
+    return kv.second.job == job && kv.second.mode == mode;
+  });
+  for (auto& other : drives_) {
+    bool still_used
+        = std::any_of(leases_.begin(), leases_.end(), [&](const auto& kv) {
+            return kv.second.job == job && kv.second.drive == other.name;
+          });
+    if (!still_used) { std::erase(other.jobs, job); }
   }
 
   leases_.emplace(volume, VolumeLease{job, mode, drive_name});

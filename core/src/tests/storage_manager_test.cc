@@ -84,7 +84,7 @@ TEST(storage_manager, falls_back_to_drive_needing_unload)
   EXPECT_EQ(choice->kind, DriveCandidate::kNeedsUnload);
 }
 
-TEST(storage_manager, append_lease_is_exclusive)
+TEST(storage_manager, appending_jobs_share_volume_on_one_drive)
 {
   StorageModel model("Tape");
   SetupChanger(model);
@@ -93,15 +93,18 @@ TEST(storage_manager, append_lease_is_exclusive)
   EXPECT_EQ(model.AcquireLease(1, "A1", AccessMode::kAppend, "Drive-0"),
             LeaseResult::kAlreadyHeld);
   EXPECT_EQ(model.AcquireLease(2, "A1", AccessMode::kAppend, "Drive-0"),
+            LeaseResult::kGranted);
+  EXPECT_EQ(model.AcquireLease(3, "A1", AccessMode::kAppend, "Drive-1"),
             LeaseResult::kConflict);
-  EXPECT_EQ(model.AcquireLease(2, "A1", AccessMode::kRead, "Drive-0"),
+  EXPECT_EQ(model.AcquireLease(3, "A1", AccessMode::kRead, "Drive-0"),
             LeaseResult::kConflict);
-  EXPECT_TRUE(model.IsLeasedByOther("A1", 2));
-  EXPECT_FALSE(model.IsLeasedByOther("A1", 1));
+  EXPECT_TRUE(model.IsLeasedByOther("A1", 3));
+  EXPECT_EQ(model.LeasesOf("A1").size(), 2u);
 
   model.ReleaseLeases(1);
+  model.ReleaseLeases(2);
   EXPECT_TRUE(model.LeasesOf("A1").empty());
-  EXPECT_EQ(model.AcquireLease(2, "A1", AccessMode::kAppend, "Drive-0"),
+  EXPECT_EQ(model.AcquireLease(3, "A1", AccessMode::kRead, "Drive-1"),
             LeaseResult::kGranted);
 }
 
@@ -118,34 +121,50 @@ TEST(storage_manager, read_leases_share_volume_on_same_drive_only)
   EXPECT_EQ(model.LeasesOf("A1").size(), 2u);
 }
 
-TEST(storage_manager, drive_cannot_serve_two_volumes)
+TEST(storage_manager, new_volume_replaces_lease_of_same_mode)
 {
   StorageModel model("Tape");
   SetupChanger(model);
   EXPECT_EQ(model.AcquireLease(1, "A1", AccessMode::kAppend, "Drive-0"),
             LeaseResult::kGranted);
-  EXPECT_EQ(model.AcquireLease(2, "A2", AccessMode::kAppend, "Drive-0"),
-            LeaseResult::kDriveBusy);
+  EXPECT_EQ(model.AcquireLease(1, "B1", AccessMode::kRead, "Drive-1"),
+            LeaseResult::kGranted);
+  // volume change during the job, another job still uses the drive
+  EXPECT_EQ(model.AcquireLease(2, "A1", AccessMode::kAppend, "Drive-0"),
+            LeaseResult::kGranted);
+  EXPECT_EQ(model.AcquireLease(1, "A2", AccessMode::kAppend, "Drive-0"),
+            LeaseResult::kGranted);
+  EXPECT_EQ(model.LeasesOf("A1").size(), 1u);
+  EXPECT_EQ(model.LeasesOf("B1").size(), 1u);
+
+  // appending on the other drive removes the job from its former drive
+  EXPECT_EQ(model.AcquireLease(1, "A3", AccessMode::kAppend, "Drive-1"),
+            LeaseResult::kGranted);
+  EXPECT_TRUE(model.LeasesOf("A2").empty());
+  EXPECT_EQ(model.Drives()[0].jobs, std::vector<JobId>{2});
+  EXPECT_EQ(model.Drives()[1].jobs, std::vector<JobId>{1});
   EXPECT_EQ(model.AcquireLease(2, "A2", AccessMode::kAppend, "Unknown"),
             LeaseResult::kUnknownDrive);
 }
 
-TEST(storage_manager, concurrent_append_leases_grant_exactly_one)
+TEST(storage_manager, concurrent_leases_bind_volume_to_one_drive)
 {
   StorageModel model("Tape");
   SetupChanger(model);
-  std::atomic<int> granted{0};
+  std::atomic<int> drive0{0};
+  std::atomic<int> drive1{0};
   std::vector<std::thread> threads;
   for (JobId job = 1; job <= 16; ++job) {
     threads.emplace_back([&, job] {
-      if (model.AcquireLease(job, "A1", AccessMode::kAppend, "Drive-0")
+      std::string drive = job % 2 ? "Drive-0" : "Drive-1";
+      if (model.AcquireLease(job, "A1", AccessMode::kAppend, drive)
           == LeaseResult::kGranted) {
-        ++granted;
+        ++(job % 2 ? drive0 : drive1);
       }
     });
   }
   for (auto& t : threads) { t.join(); }
-  EXPECT_EQ(granted, 1);
+  EXPECT_TRUE((drive0 == 8 && drive1 == 0) || (drive0 == 0 && drive1 == 8));
 }
 
 TEST(storage_manager, load_and_unload_track_slots)
