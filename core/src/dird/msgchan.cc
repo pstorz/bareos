@@ -41,6 +41,7 @@
 #include "dird/msgchan.h"
 #include "dird/quota.h"
 #include "dird/sd_cmds.h"
+#include "dird/storage_manager.h"
 #include "lib/berrno.h"
 #include "lib/bnet.h"
 #include "lib/edit.h"
@@ -445,6 +446,8 @@ extern "C" void MsgThreadCleanup(void* arg)
     jcr->dir_impl->sd_msg_thread_done = true;
     jcr->dir_impl->SD_msg_chan_started = false;
   }
+  // The storage daemon is done with its volumes.
+  storage_manager::GlobalStorageManager().ReleaseLeases(jcr->JobId);
 
   pthread_cond_broadcast(
       &jcr->dir_impl->nextrun_ready);    /* wakeup any waiting threads */

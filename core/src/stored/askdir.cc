@@ -53,12 +53,30 @@ namespace storagedaemon {
 static const int debuglevel = 50;
 static pthread_mutex_t vol_info_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+namespace {
+// How the director identifies the device in its storage model.
+struct DeviceIdentity {
+  explicit DeviceIdentity(const Device* dev)
+  {
+    if (dev && dev->device_resource) {
+      name = dev->device_resource->resource_name_;
+      if (dev->AttachedToAutochanger()) {
+        drive_index = dev->device_resource->drive_index;
+      }
+    }
+    BashSpaces(name);
+  }
+  std::string name{"*None*"};
+  int drive_index{-1};
+};
+}  // namespace
+
 /* Requests sent to the Director */
 inline constexpr const char Find_media[]
     = "CatReq Job=%s FindMedia=%d pool_name=%s media_type=%s "
-      "unwanted_volumes=%s\n";
+      "device=%s drive=%d unwanted_volumes=%s\n";
 inline constexpr const char Get_Vol_Info[]
-    = "CatReq Job=%s GetVolInfo VolName=%s write=%d\n";
+    = "CatReq Job=%s GetVolInfo VolName=%s write=%d device=%s drive=%d\n";
 inline constexpr const char Update_media[]
     = "CatReq Job=%s UpdateMedia VolName=%s"
       " VolJobs=%u VolFiles=%u VolBlocks=%u VolBytes=%s VolMounts=%u"
@@ -185,8 +203,10 @@ bool StorageDaemonDeviceControlRecord::DirGetVolumeInfo(
   lock_mutex(vol_info_mutex);
   setVolCatName(VolumeName);
   BashSpaces(getVolCatName());
+  DeviceIdentity identity(dev);
   dir->fsend(Get_Vol_Info, jcr->Job, getVolCatName(),
-             (writing == GET_VOL_INFO_FOR_WRITE) ? 1 : 0);
+             (writing == GET_VOL_INFO_FOR_WRITE) ? 1 : 0, identity.name.c_str(),
+             identity.drive_index);
   Dmsg1(debuglevel, ">dird %s", dir->msg);
   UnbashSpaces(getVolCatName());
   ok = DoGetVolumeInfo(this);
@@ -257,8 +277,10 @@ bool StorageDaemonDeviceControlRecord::DirFindNextAppendableVolume()
       BashSpaces(media_type);
       BashSpaces(pool_name);
       BashSpaces(unwanted_volumes.c_str());
+      DeviceIdentity identity(dev);
       dir->fsend(Find_media, jcr->Job, static_cast<int>(vol_index), pool_name,
-                 media_type, unwanted_volumes.c_str());
+                 media_type, identity.name.c_str(), identity.drive_index,
+                 unwanted_volumes.c_str());
       UnbashSpaces(media_type);
       UnbashSpaces(pool_name);
       UnbashSpaces(unwanted_volumes.c_str());

@@ -274,13 +274,63 @@ TEST(storage_manager, describes_model)
 
   std::vector<std::string> expected{
       "Storage \"Tape\": 2 drive(s)",
-      "  Drive-0: volume \"A1\" from slot 1, JobId 42 (append)",
+      "  Drive-0: volume \"A1\" from slot 1, JobId 42 (append \"A1\")",
       "  Drive-1: empty, command pending",
       "  Slot 1: empty",
       "  Slot 2: \"A2\"",
       "  Slot 3: empty",
   };
   EXPECT_EQ(DescribeModel(model), expected);
+}
+
+TEST(storage_manager, binds_devices_to_drives)
+{
+  StorageModel model("Tape");
+  SetupChanger(model);
+  EXPECT_EQ(model.BindDevice("tape0", 0), "Drive-0");
+  EXPECT_EQ(model.BindDevice("tape1", 1), "Drive-1");
+  EXPECT_EQ(model.BindDevice("tape0", 0), "Drive-0");
+  // a second device claiming an already bound drive index is kept apart
+  EXPECT_EQ(model.BindDevice("other", 0), "other");
+  EXPECT_EQ(model.BindDevice("other", std::nullopt), "other");
+  EXPECT_EQ(model.BindDevice("file", std::nullopt), "file");
+
+  // inventory refresh keeps device bindings, standalone devices and leases
+  ASSERT_EQ(model.AcquireLease(1, "F1", AccessMode::kAppend, "file"),
+            LeaseResult::kGranted);
+  SetupChanger(model);
+  auto drives = model.Drives();
+  ASSERT_EQ(drives.size(), 4u);
+  EXPECT_EQ(drives[0].device, "tape0");
+  EXPECT_FALSE(drives[2].changer);
+  EXPECT_EQ(model.LeasesOf("F1").size(), 1u);
+  // standalone devices are never chosen for changer volumes
+  model.VolumeLoaded("Drive-0", "A1", 1);
+  model.VolumeLoaded("Drive-1", "A2", 2);
+  model.AcquireLease(2, "A1", AccessMode::kAppend, "Drive-0");
+  model.AcquireLease(3, "A2", AccessMode::kAppend, "Drive-1");
+  EXPECT_FALSE(model.ChooseDrive("B9"));
+
+  EXPECT_EQ(DescribeModel(model)[1],
+            "  Drive-0: volume \"A1\" from slot 1, device \"tape0\", JobId 2 "
+            "(append \"A1\")");
+}
+
+TEST(storage_manager, registry_releases_leases_of_job)
+{
+  StorageManager manager;
+  auto tape = manager.Get("Tape");
+  auto file = manager.Get("File");
+  SetupChanger(*tape);
+  std::string drive = file->BindDevice("FileStorage", std::nullopt);
+  tape->AcquireLease(1, "A1", AccessMode::kAppend, "Drive-0");
+  file->AcquireLease(1, "F1", AccessMode::kAppend, drive);
+  file->AcquireLease(2, "F2", AccessMode::kAppend, drive);
+
+  manager.ReleaseLeases(1);
+  EXPECT_TRUE(tape->Leases().empty());
+  EXPECT_TRUE(file->LeasesOf("F1").empty());
+  EXPECT_EQ(file->LeasesOf("F2").size(), 1u);
 }
 
 TEST(storage_manager, describes_divergences)

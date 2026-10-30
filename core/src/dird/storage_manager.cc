@@ -71,7 +71,11 @@ void StorageModel::SetInventory(std::vector<DriveState> drives,
   for (auto& drive : drives) {
     if (const DriveState* old = FindDrive(drive.name)) {
       drive.jobs = old->jobs;
+      drive.device = old->device;
     }
+  }
+  for (auto& old : drives_) {
+    if (!old.changer) { drives.push_back(std::move(old)); }
   }
   drives_ = std::move(drives);
   slots_ = std::move(slots);
@@ -131,6 +135,7 @@ std::optional<DriveChoice> StorageModel::ChooseDrive(
 
   std::optional<DriveChoice> best;
   for (const auto& drive : drives_) {
+    if (!drive.changer) { continue; }
     DriveFacts facts{.enabled = drive.enabled,
                      .pending = drive.pending,
                      .in_use = !drive.jobs.empty(),
@@ -200,6 +205,35 @@ std::vector<VolumeLease> StorageModel::LeasesOf(const std::string& volume) const
   auto [first, last] = leases_.equal_range(volume);
   for (auto it = first; it != last; ++it) { result.push_back(it->second); }
   return result;
+}
+
+std::multimap<std::string, VolumeLease> StorageModel::Leases() const
+{
+  std::lock_guard lock(mutex_);
+  return leases_;
+}
+
+std::string StorageModel::BindDevice(const std::string& device,
+                                     std::optional<int> drive_index)
+{
+  std::lock_guard lock(mutex_);
+  if (drive_index) {
+    DriveState* drive = FindDrive(DriveName(*drive_index));
+    if (drive && drive->changer
+        && (drive->device.empty() || drive->device == device)) {
+      drive->device = device;
+      return drive->name;
+    }
+  }
+  for (const auto& drive : drives_) {
+    if (drive.device == device) { return drive.name; }
+  }
+  DriveState drive;
+  drive.name = device;
+  drive.device = device;
+  drive.changer = false;
+  drives_.push_back(std::move(drive));
+  return device;
 }
 
 bool StorageModel::IsLeasedByOther(const std::string& volume, JobId job) const
@@ -330,6 +364,7 @@ std::vector<std::string> DescribeModel(const StorageModel& model)
 {
   std::vector<std::string> lines;
   auto drives = model.Drives();
+  auto leases = model.Leases();
   lines.push_back("Storage \"" + model.StorageName()
                   + "\": " + std::to_string(drives.size()) + " drive(s)");
   for (const auto& drive : drives) {
@@ -344,9 +379,13 @@ std::vector<std::string> DescribeModel(const StorageModel& model)
     }
     if (!drive.enabled) { line += ", disabled"; }
     if (drive.pending) { line += ", command pending"; }
-    for (const auto& lease : model.LeasesOf(drive.loaded_volume.value_or(""))) {
+    if (!drive.device.empty() && drive.device != drive.name) {
+      line += ", device \"" + drive.device + "\"";
+    }
+    for (const auto& [volume, lease] : leases) {
+      if (lease.drive != drive.name) { continue; }
       line += ", JobId " + std::to_string(lease.job) + " ("
-              + ModeName(lease.mode) + ")";
+              + ModeName(lease.mode) + " \"" + volume + "\")";
     }
     lines.push_back(std::move(line));
   }
@@ -390,6 +429,12 @@ void StorageManager::Remove(const std::string& storage_name)
 {
   std::lock_guard lock(mutex_);
   models_.erase(storage_name);
+}
+
+void StorageManager::ReleaseLeases(JobId job)
+{
+  std::lock_guard lock(mutex_);
+  for (auto& [name, model] : models_) { model->ReleaseLeases(job); }
 }
 
 std::vector<std::string> StorageManager::StorageNames() const

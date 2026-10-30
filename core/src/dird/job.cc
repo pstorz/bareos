@@ -44,6 +44,7 @@
 #include "dird/sd_cmds.h"
 #include "dird/stats.h"
 #include "dird/storage.h"
+#include "dird/storage_manager.h"
 #include "dird/ua_cmds.h"
 #include "dird/ua_db.h"
 #include "dird/ua_input.h"
@@ -1547,6 +1548,7 @@ void DirdFreeJcrPointers(JobControlRecord* jcr)
 void DirdFreeJcr(JobControlRecord* jcr)
 {
   Dmsg0(200, "Start dird FreeJcr\n");
+  storage_manager::GlobalStorageManager().ReleaseLeases(jcr->JobId);
 
   if (jcr->dir_impl->mig_jcr) {
     FreeJcr(jcr->dir_impl->mig_jcr);

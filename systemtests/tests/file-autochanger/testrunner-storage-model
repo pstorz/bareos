@@ -48,6 +48,18 @@ label barcodes slots=4 drive=2 pool=Differential yes
 status storage=File model
 @$out ${tmp}/release.out
 release drive=2
+@$out ${tmp}/job.out
+run job=backup-bareos-fd level=Full pool=Differential storage=File yes
+wait
+messages
+@$out ${tmp}/model-after-job.out
+status storage=File model
+@$out ${tmp}/release.out
+release drive=0
+release drive=1
+release drive=2
+@# later tests expect no previous backup
+purge jobs client=bareos-fd yes
 END_OF_DATA
 
 run_bconsole "$@"
@@ -73,5 +85,12 @@ expect_not_grep 'Volume "000004HD"' "${tmp}/model-labeled.out" \
 expect_grep 'Volume "000005HD": catalog not present, storage daemon slot 5' \
   "${tmp}/model-labeled.out" \
   "unlabeled volume in slot 5 is not reported as divergence"
+
+expect_grep "Backup OK" "${tmp}/job.out" "backup was not successful"
+expect_grep 'volume "000004HD" from slot 4, device "File[1-4]"$' \
+  "${tmp}/model-after-job.out" \
+  "model does not map the used device to its drive"
+expect_not_grep "JobId" "${tmp}/model-after-job.out" \
+  "volume lease was not released at the end of the job"
 
 end_test

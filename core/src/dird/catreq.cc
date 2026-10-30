@@ -40,6 +40,7 @@
 #include "dird/next_vol.h"
 #include "dird/director_jcr_impl.h"
 #include "dird/sd_cmds.h"
+#include "dird/storage_manager.h"
 #include "dird/volume_status_policy.h"
 #include "findlib/find.h"
 #include "lib/berrno.h"
@@ -51,9 +52,10 @@ namespace directordaemon {
 
 inline constexpr const char Find_media[]
     = "CatReq Job=%127s FindMedia=%d pool_name=%127s media_type=%127s "
-      "unwanted_volumes=%s\n";
+      "device=%127s drive=%d unwanted_volumes=%s\n";
 inline constexpr const char Get_Vol_Info[]
-    = "CatReq Job=%127s GetVolInfo VolName=%127s write=%d\n";
+    = "CatReq Job=%127s GetVolInfo VolName=%127s write=%d device=%127s "
+      "drive=%d\n";
 inline constexpr const char Update_media[]
     = "CatReq Job=%127s UpdateMedia VolName=%s"
       " VolJobs=%u VolFiles=%u VolBlocks=%u VolBytes=%lld VolMounts=%u"
@@ -116,6 +118,31 @@ static int SendVolumeInfoToStorageDaemon(JobControlRecord* jcr,
   return status;
 }
 
+namespace {
+// Drive of the storage model the requesting storage daemon device maps to.
+struct AppendTarget {
+  std::shared_ptr<storage_manager::StorageModel> model;
+  std::string drive;
+};
+
+std::optional<AppendTarget> GetAppendTarget(JobControlRecord* jcr,
+                                            char* device,
+                                            int drive_index)
+{
+  StorageResource* store = jcr->dir_impl->res.write_storage;
+  if (jcr->JobId == 0 || !store) { return std::nullopt; }
+  UnbashSpaces(device);
+  auto model
+      = storage_manager::GlobalStorageManager().Get(store->resource_name_);
+  std::optional<int> index;
+  if (drive_index >= 0) { index = drive_index; }
+  std::string drive = model->BindDevice(device, index);
+  return AppendTarget{std::move(model), std::move(drive)};
+}
+
+constexpr int kMaxLeaseAttempts = 10;
+}  // namespace
+
 void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
 {
   MediaDbRecord mr, sdmr;
@@ -123,7 +150,8 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
   char Job[MAX_NAME_LENGTH];
   char pool_name[MAX_NAME_LENGTH];
   PoolMem unwanted_volumes(PM_MESSAGE);
-  int index, ok, label, writing;
+  int index, ok, label, writing, drive_index;
+  char device[MAX_NAME_LENGTH];
   POOLMEM* omsg;
   uint32_t Stripe, Copy;
   uint64_t MediaId;
@@ -150,8 +178,8 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
   // Find next appendable medium for SD
   unwanted_volumes.check_size(bs->message_length);
   if (bsscanf(bs->msg, Find_media, &Job, &index, &pool_name, &mr.MediaType,
-              unwanted_volumes.c_str())
-      == 5) {
+              &device, &drive_index, unwanted_volumes.c_str())
+      == 7) {
     PoolDbRecord pr;
     bstrncpy(pr.Name, pool_name, sizeof(pr.Name));
     UnbashSpaces(pr.Name);
@@ -160,8 +188,34 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
       mr.PoolId = pr.PoolId;
       SetStorageidInMr(jcr->dir_impl->res.write_storage, &mr);
       mr.ScratchPoolId = pr.ScratchPoolId;
-      ok = FindNextVolumeForAppend(jcr, &mr, index, unwanted_volumes.c_str(),
-                                   fnv_create_vol, fnv_prune);
+      /* A volume appended to by another job on another drive cannot be
+       * used here. Lease the candidate in the storage model, skip it if it
+       * is held elsewhere. */
+      auto target = GetAppendTarget(jcr, device, drive_index);
+      std::string unwanted{unwanted_volumes.c_str()};
+      const MediaDbRecord request = mr;
+      for (int attempt = 1;; ++attempt) {
+        mr = request;
+        // like the storage daemon, skip one more row per unwanted volume
+        ok = FindNextVolumeForAppend(jcr, &mr, index + attempt - 1,
+                                     unwanted.c_str(), fnv_create_vol,
+                                     fnv_prune);
+        if (!ok || !target) { break; }
+        if (target->model->AcquireLease(jcr->JobId, mr.VolumeName,
+                                        storage_manager::AccessMode::kAppend,
+                                        target->drive)
+            != storage_manager::LeaseResult::kConflict) {
+          break;
+        }
+        Dmsg2(050, "find_media: Volume %s is in use on another drive than %s\n",
+              mr.VolumeName, target->drive.c_str());
+        if (attempt == kMaxLeaseAttempts) {
+          ok = false;
+          break;
+        }
+        if (!unwanted.empty()) { unwanted += ','; }
+        unwanted += mr.VolumeName;
+      }
       Dmsg3(050, "find_media ok=%d idx=%d vol=%s\n", ok, index, mr.VolumeName);
     }
 
@@ -171,8 +225,9 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
       bs->fsend(T_("1901 No Media.\n"));
       Dmsg0(500, "1901 No Media.\n");
     }
-  } else if (bsscanf(bs->msg, Get_Vol_Info, &Job, &mr.VolumeName, &writing)
-             == 3) {
+  } else if (bsscanf(bs->msg, Get_Vol_Info, &Job, &mr.VolumeName, &writing,
+                     &device, &drive_index)
+             == 5) {
     // Request to find specific Volume information
     Dmsg1(100, "CatReq GetVolInfo Vol=%s\n", mr.VolumeName);
 
@@ -197,6 +252,14 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
           /* Now try recycling if necessary
            *   reason set non-NULL if we cannot use it */
           CheckIfVolumeValidOrRecyclable(jcr, &mr, &reason);
+        }
+        if (auto target = GetAppendTarget(jcr, device, drive_index);
+            !reason && target
+            && target->model->AcquireLease(jcr->JobId, mr.VolumeName,
+                                           storage_manager::AccessMode::kAppend,
+                                           target->drive)
+                   == storage_manager::LeaseResult::kConflict) {
+          reason = T_("in use by another job on another drive");
         }
       }
 

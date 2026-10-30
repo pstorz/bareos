@@ -86,6 +86,8 @@ constexpr DriveCandidate ClassifyDrive(const DriveFacts& f)
 
 struct DriveState {
   std::string name;
+  std::string device;  // storage daemon device, once known
+  bool changer{true};  // false: standalone device, not in the inventory
   bool enabled{true};
   bool pending{false};
   std::optional<std::string> loaded_volume;
@@ -159,9 +161,16 @@ class StorageModel {
                            const std::string& drive);
   void ReleaseLeases(JobId job);
   std::vector<VolumeLease> LeasesOf(const std::string& volume) const;
+  std::multimap<std::string, VolumeLease> Leases() const;
   bool IsLeasedByOther(const std::string& volume, JobId job) const;
 
   // Record the result of executed SD commands.
+  /* Map a storage daemon device to a drive of the model: autochanger
+   * drives by their index, other devices by name (added on first use).
+   * Returns the drive name. */
+  std::string BindDevice(const std::string& device,
+                         std::optional<int> drive_index);
+
   void MarkPending(const std::string& drive, bool pending);
   bool VolumeLoaded(const std::string& drive,
                     const std::string& volume,
@@ -215,6 +224,7 @@ class StorageManager {
   std::shared_ptr<StorageModel> Find(const std::string& storage_name) const;
   void Remove(const std::string& storage_name);
   std::vector<std::string> StorageNames() const;
+  void ReleaseLeases(JobId job);
 
  private:
   mutable std::mutex mutex_;

@@ -1550,7 +1550,9 @@ status
 
    For an autochanger, :bcommand:`status storage=<storage-name> model` fetches the current
    inventory from the Storage Daemon and shows the Director's model of the autochanger: the
-   volume in each drive and slot, and which jobs use a drive. It also lists all volumes whose
+   volume in each drive and slot, the Storage Daemon device of each drive and which jobs
+   append to or read which volume on a drive. While a job appends to a volume on a drive, the
+   Director does not offer this volume to jobs on other drives. It also lists all volumes whose
    location in the catalog (:strong:`Slot` and :strong:`InChanger`) differs from the inventory.
    This includes labeled volumes that the catalog places in the wrong slot and volumes that
    are in the autochanger but not in the catalog. Use :bcommand:`update slots` to fix a
