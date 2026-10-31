@@ -139,16 +139,10 @@ int AutoloadDevice(DeviceControlRecord* dcr, int writing, BareosSocket* dir)
         dcr->VolCatInfo.Slot, dcr->VolCatInfo.InChanger, dcr->getVolCatName());
 
   /* Handle autoloaders here.  If we cannot autoload it, we will return 0 so
-   * that the sysop will be asked to load it. */
-  if (writing && (!IsSlotNumberValid(wanted_slot))) {
-    if (dir) { return 0; /* For user, bail out right now */ }
-
-    // this really should not be here
-    if (dcr->DirFindNextAppendableVolume()) {
-      wanted_slot = dcr->VolCatInfo.InChanger ? dcr->VolCatInfo.Slot : 0;
-    } else {
-      wanted_slot = 0;
-    }
+   * that the sysop will be asked to load it. The director chose the volume
+   * and knows its slot; without a slot the volume is not in the changer. */
+  if (writing && (!IsSlotNumberValid(wanted_slot)) && dir) {
+    return 0; /* For user, bail out right now */
   }
   Dmsg1(400, "Want changer slot=%hd\n", wanted_slot);
 
