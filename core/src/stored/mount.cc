@@ -298,7 +298,7 @@ read_volume:
    *  before writing the overflow block.
    *
    *  If the tape is marked as Recycle, we rewrite the label. */
-  recycle = bstrcmp(dev->VolCatInfo.VolCatStatus, "Recycle");
+  recycle = dev->VolCatInfo.relabel;
   if (dev->VolHdr.LabelType == PRE_LABEL || recycle) {
     if (!dcr->RewriteVolumeLabel(recycle)) {
       MarkVolumeInError();
@@ -718,7 +718,7 @@ int DeviceControlRecord::TryAutolabel(bool opened)
   if (!opened && dev->IsTape()) { return try_default; }
   if (dev->HasCap(CAP_LABEL)
       && (VolCatInfo.VolCatBytes == 0
-          || (!dev->IsTape() && bstrcmp(VolCatInfo.VolCatStatus, "Recycle")))) {
+          || (!dev->IsTape() && VolCatInfo.relabel))) {
     Dmsg0(150, "Create volume label\n");
     /* Create a new Volume label and write it to the device */
     if (!WriteNewVolumeLabelToDev(dcr, VolumeName, pool_name,

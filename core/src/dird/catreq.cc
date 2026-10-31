@@ -84,7 +84,7 @@ inline constexpr const char OK_media[]
       " MaxVolJobs=%u MaxVolFiles=%u InChanger=%d VolReadTime=%s"
       " VolWriteTime=%s EndFile=%u EndBlock=%u LabelType=%d"
       " MediaId=%s EncryptionKey=%s MinBlocksize=%" PRIu32
-      " MaxBlocksize=%" PRIu32 "\n";
+      " MaxBlocksize=%" PRIu32 " Relabel=%d\n";
 inline constexpr const char OK_create[] = "1000 OK CreateJobMedia\n";
 inline constexpr const char OK_delete[] = "1000 OK DeleteNullJobmediaRecords\n";
 
@@ -112,7 +112,8 @@ static int SendVolumeInfoToStorageDaemon(JobControlRecord* jcr,
       mr->MaxVolJobs, mr->MaxVolFiles, mr->InChanger,
       edit_int64(mr->VolReadTime, ed4), edit_int64(mr->VolWriteTime, ed5),
       mr->EndFile, mr->EndBlock, mr->LabelType, edit_uint64(mr->MediaId, ed6),
-      mr->EncrKey, mr->MinBlocksize, mr->MaxBlocksize);
+      mr->EncrKey, mr->MinBlocksize, mr->MaxBlocksize,
+      MustRewriteLabel(mr->VolStatus) ? 1 : 0);
   UnbashSpaces(mr->VolumeName);
   Dmsg2(100, "Vol Info for %s: %s", jcr->Job, sd->msg);
   return status;

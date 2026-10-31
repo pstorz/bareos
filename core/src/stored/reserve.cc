@@ -967,7 +967,7 @@ static bool IsMaxJobsOk(DeviceControlRecord* dcr)
     QueueReserveMessage(jcr);
     return false;
   }
-  if (bstrcmp(dcr->VolCatInfo.VolCatStatus, "Recycle")) { return true; }
+  if (dcr->VolCatInfo.relabel) { return true; }
   if (dcr->VolCatInfo.VolCatMaxJobs > 0
       && dcr->VolCatInfo.VolCatMaxJobs
              <= (dcr->VolCatInfo.VolCatJobs + dev->NumReserved())) {

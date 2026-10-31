@@ -499,7 +499,7 @@ TEST(storage_manager, orders_devices_for_job)
 
 static_assert(CheckJobCommand("JobId=1 BackupFormat=native\n", -1, 20, 0)
               == JobCommandCheck::kVersionMismatch);
-static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=2\n",
+static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=3\n",
                               20,
                               20,
                               kDirSdProtocolVersion)
@@ -558,3 +558,7 @@ static_assert(!CanAppendToLoadedVolume({.status = "Append",
                                         .same_pool = true,
                                         .same_media_type = true,
                                         .unwanted = true}));
+
+static_assert(directordaemon::MustRewriteLabel("Recycle"));
+static_assert(!directordaemon::MustRewriteLabel("Append"));
+static_assert(!directordaemon::MustRewriteLabel("Purged"));

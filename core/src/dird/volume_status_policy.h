@@ -48,7 +48,14 @@ constexpr std::string_view ResolveVolumeStatus(std::string_view catalog,
   return catalog;
 }
 
-// Whether a volume in a comma separated volume list.
+/* The director decides whether the storage daemon rewrites the label of
+ * a volume before appending to it: a recycled volume starts anew. */
+constexpr bool MustRewriteLabel(std::string_view status)
+{
+  return status == "Recycle";
+}
+
+// Whether a volume is in a comma separated volume list.
 constexpr bool VolumeListContains(std::string_view list,
                                   std::string_view volume)
 {

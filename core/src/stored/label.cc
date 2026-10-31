@@ -1120,6 +1120,7 @@ bool DeviceControlRecord::RewriteVolumeLabel(bool recycle)
   dev->VolCatInfo.VolFirstWritten = time(NULL);
   bstrncpy(dev->VolCatInfo.VolCatStatus, "Append",
            sizeof(dev->VolCatInfo.VolCatStatus));
+  dev->VolCatInfo.relabel = false;
   dev->setVolCatName(dcr->VolumeName);
   if (!dcr->DirUpdateVolumeInfo(
           is_labeloperation::True)) { /* indicate doing relabel */

@@ -28,8 +28,9 @@
  * Increment it on every incompatible change; director and storage daemon
  * only run jobs together if both use the same version.
  *   1: FindMedia and GetVolInfo carry the device and drive index
- *   2: inventory command, director orders the devices to reserve */
-inline constexpr int kDirSdProtocolVersion = 2;
+ *   2: inventory command, director orders the devices to reserve
+ *   3: volume info tells the storage daemon to rewrite the label */
+inline constexpr int kDirSdProtocolVersion = 3;
 
 enum class JobCommandCheck
 {
