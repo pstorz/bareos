@@ -27,8 +27,9 @@
 /* Version of the job protocol between director and storage daemon.
  * Increment it on every incompatible change; director and storage daemon
  * only run jobs together if both use the same version.
- *   1: FindMedia and GetVolInfo carry the device and drive index */
-inline constexpr int kDirSdProtocolVersion = 1;
+ *   1: FindMedia and GetVolInfo carry the device and drive index
+ *   2: inventory command, director orders the devices to reserve */
+inline constexpr int kDirSdProtocolVersion = 2;
 
 enum class JobCommandCheck
 {

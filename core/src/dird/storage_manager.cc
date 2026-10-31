@@ -408,6 +408,59 @@ std::vector<DeviceInventoryEntry> DevicesOfStorage(
   return result;
 }
 
+std::vector<std::string> OrderDevices(
+    const std::vector<DeviceInventoryEntry>& inventory,
+    const std::vector<std::string>& storage_devices,
+    const DeviceRequest& request)
+{
+  struct Candidate {
+    int preference;
+    int users;
+    std::string device;
+  };
+  std::vector<Candidate> candidates;
+  auto add = [&](const DeviceInventoryEntry& entry) {
+    if (request.append ? entry.read_only : entry.write_only) { return; }
+    if (!request.media_type.empty() && entry.media_type != request.media_type) {
+      return;
+    }
+    for (const auto& c : candidates) {
+      if (c.device == entry.device) { return; }
+    }
+    DeviceUse use{
+        .append_request = request.append,
+        .prefer_mounted = request.prefer_mounted,
+        .unavailable = entry.unmounted,
+        .reading = entry.reading,
+        .has_volume = !entry.volume.empty(),
+        .same_pool = !entry.pool.empty() && entry.pool == request.pool,
+        .users = entry.writers + entry.reserved,
+    };
+    candidates.push_back({DevicePreference(use), use.users, entry.device});
+  };
+
+  for (const auto& name : storage_devices) {
+    for (const auto& entry : inventory) {
+      if (entry.device == name) {
+        add(entry);
+      } else if (!entry.changer.empty() && entry.changer == name
+                 && entry.autoselect) {
+        add(entry);
+      }
+    }
+  }
+  std::stable_sort(candidates.begin(), candidates.end(),
+                   [](const Candidate& a, const Candidate& b) {
+                     if (a.preference != b.preference) {
+                       return a.preference < b.preference;
+                     }
+                     return a.users < b.users;
+                   });
+  std::vector<std::string> ordered;
+  for (auto& c : candidates) { ordered.push_back(std::move(c.device)); }
+  return ordered;
+}
+
 std::vector<std::string> DescribeModel(const StorageModel& model)
 {
   std::vector<std::string> lines;

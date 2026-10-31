@@ -550,8 +550,8 @@ static inline void FreeVolList(changer_vol_list_t* vol_list)
   }
 }
 
-bool RefreshDeviceInventory(BareosSocket* sd,
-                            const std::vector<StorageResource*>& stores)
+std::optional<std::vector<DeviceInventoryEntry>> QueryDeviceInventory(
+    BareosSocket* sd)
 {
   sd->fsend("%s", kInventoryCommand.data());
   std::vector<DeviceInventoryEntry> inventory;
@@ -562,8 +562,13 @@ bool RefreshDeviceInventory(BareosSocket* sd,
       Dmsg1(100, "Unexpected inventory line: %s", sd->msg);
     }
   }
-  if (sd->message_length != BNET_EOD) { return false; }
+  if (sd->message_length != BNET_EOD) { return std::nullopt; }
+  return inventory;
+}
 
+void ApplyDeviceInventory(const std::vector<DeviceInventoryEntry>& inventory,
+                          const std::vector<StorageResource*>& stores)
+{
   for (auto* store : stores) {
     std::vector<std::string> names;
     for (const auto& device : store->devices) { names.push_back(device.name); }
@@ -571,6 +576,14 @@ bool RefreshDeviceInventory(BareosSocket* sd,
         .Get(store->resource_name_)
         ->UpdateDevices(storage_manager::DevicesOfStorage(inventory, names));
   }
+}
+
+bool RefreshDeviceInventory(BareosSocket* sd,
+                            const std::vector<StorageResource*>& stores)
+{
+  auto inventory = QueryDeviceInventory(sd);
+  if (!inventory) { return false; }
+  ApplyDeviceInventory(*inventory, stores);
   return true;
 }
 

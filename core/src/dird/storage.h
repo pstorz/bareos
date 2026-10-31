@@ -25,7 +25,10 @@
 #include "ndmp/smc.h"
 #include "dird/dird.h"
 
+#include <optional>
 #include <vector>
+
+#include "lib/device_inventory.h"
 
 template <typename T> class alist;
 
@@ -87,9 +90,14 @@ slot_number_t GetBareosSlotNumberByElementAddress(
     slot_number_t element_addr);
 bool IsSameStorageDaemon(StorageResource* read_storage,
                          StorageResource* write_storage);
-/* Ask the storage daemon for the state of its devices and update the
- * storage model of the given storages. Returns false if the storage
- * daemon did not answer with an inventory. */
+/* Ask the storage daemon for the state of its devices; nullopt if it
+ * did not answer with an inventory. */
+std::optional<std::vector<DeviceInventoryEntry>> QueryDeviceInventory(
+    BareosSocket* sd);
+// Update the storage model of the given storages from an inventory.
+void ApplyDeviceInventory(const std::vector<DeviceInventoryEntry>& inventory,
+                          const std::vector<StorageResource*>& stores);
+// Query the inventory and apply it; false if it could not be queried.
 bool RefreshDeviceInventory(BareosSocket* sd,
                             const std::vector<StorageResource*>& stores);
 } /* namespace directordaemon */

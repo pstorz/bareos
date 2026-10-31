@@ -159,9 +159,10 @@ TEST_F(ReservationTest, use_cmd_illegal_dev)
   job->jcr->dir_bsock = bsock.get();
 
   EXPECT_CALL(*bsock, recv())
-      .WillOnce(BSOCK_RECV(bsock.get(),
-                           "use storage=sssss media_type=mtmtm pool_name=ppppp "
-                           "pool_type=ptptp append=1 copy=0 stripe=0"))
+      .WillOnce(
+          BSOCK_RECV(bsock.get(),
+                     "use storage=sssss media_type=mtmtm pool_name=ppppp "
+                     "pool_type=ptptp append=1 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "illegal device command"));
 
   EXPECT_CALL(*bsock, send()).Times(1).WillRepeatedly(Return(true));
@@ -179,15 +180,17 @@ TEST_F(ReservationTest, use_cmd_reserve_read_twice_success)
   job1->jcr->dir_bsock = job2->jcr->dir_bsock = bsock.get();
 
   EXPECT_CALL(*bsock, recv())
-      .WillOnce(BSOCK_RECV(bsock.get(),
-                           "use storage=sssss media_type=File pool_name=ppppp "
-                           "pool_type=ptptp append=0 copy=0 stripe=0"))
+      .WillOnce(
+          BSOCK_RECV(bsock.get(),
+                     "use storage=sssss media_type=File pool_name=ppppp "
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=auto1"))
       .WillOnce(Return(BNET_EOD))  // end of device commands
       .WillOnce(Return(BNET_EOD))  // end of storage command
-      .WillOnce(BSOCK_RECV(bsock.get(),
-                           "use storage=sssss media_type=File pool_name=ppppp "
-                           "pool_type=ptptp append=0 copy=0 stripe=0"))
+      .WillOnce(
+          BSOCK_RECV(bsock.get(),
+                     "use storage=sssss media_type=File pool_name=ppppp "
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=auto1"))
       .WillOnce(Return(BNET_EOD))   // end of device commands
       .WillOnce(Return(BNET_EOD));  // end of storage command
@@ -203,8 +206,8 @@ TEST_F(ReservationTest, use_cmd_reserve_read_twice_success)
   ASSERT_STREQ(bsock->msg, "3000 OK use device device=auto1dev3\n");
 }
 
-// Test reserving broken device
-TEST_F(ReservationTest, use_cmd_reserve_broken)
+// Test that the drive order chosen by the director is followed
+TEST_F(ReservationTest, use_cmd_reserve_in_director_order)
 {
   auto bsock = std::make_unique<BareosSocketMock>();
   auto job1 = std::make_unique<TestJob>(111u);
@@ -213,7 +216,32 @@ TEST_F(ReservationTest, use_cmd_reserve_broken)
   EXPECT_CALL(*bsock, recv())
       .WillOnce(BSOCK_RECV(bsock.get(),
                            "use storage=sssss media_type=File pool_name=ppppp "
-                           "pool_type=ptptp append=0 copy=0 stripe=0"))
+                           "pool_type=ptptp append=0 copy=0 stripe=0 "
+                           "ordered=1"))
+      .WillOnce(BSOCK_RECV(bsock.get(), "use device=auto1dev3"))
+      .WillOnce(BSOCK_RECV(bsock.get(), "use device=auto1dev2"))
+      .WillOnce(Return(BNET_EOD))   // end of device commands
+      .WillOnce(Return(BNET_EOD));  // end of storage command
+
+  EXPECT_CALL(*bsock, send()).Times(1).WillRepeatedly(Return(true));
+
+  bsock->recv();
+  ASSERT_EQ(use_cmd(job1->jcr), true);
+  ASSERT_STREQ(bsock->msg, "3000 OK use device device=auto1dev3\n");
+}
+
+// Test reserving broken device
+TEST_F(ReservationTest, use_cmd_reserve_broken)
+{
+  auto bsock = std::make_unique<BareosSocketMock>();
+  auto job1 = std::make_unique<TestJob>(111u);
+  job1->jcr->dir_bsock = bsock.get();
+
+  EXPECT_CALL(*bsock, recv())
+      .WillOnce(
+          BSOCK_RECV(bsock.get(),
+                     "use storage=sssss media_type=File pool_name=ppppp "
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=single1"))
       .WillOnce(Return(BNET_EOD))   // end of device commands
       .WillOnce(Return(BNET_EOD));  // end of storage command
@@ -235,9 +263,10 @@ TEST_F(ReservationTest, use_cmd_reserve_wrong_mediatype)
   job1->jcr->dir_bsock = bsock.get();
 
   EXPECT_CALL(*bsock, recv())
-      .WillOnce(BSOCK_RECV(bsock.get(),
-                           "use storage=sssss media_type=File pool_name=ppppp "
-                           "pool_type=ptptp append=0 copy=0 stripe=0"))
+      .WillOnce(
+          BSOCK_RECV(bsock.get(),
+                     "use storage=sssss media_type=File pool_name=ppppp "
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=single2"))
       .WillOnce(Return(BNET_EOD))   // end of device commands
       .WillOnce(Return(BNET_EOD));  // end of storage command
@@ -260,15 +289,17 @@ TEST_F(ReservationTest, use_cmd_reserve_read_twice_wait)
   job1->jcr->dir_bsock = job2->jcr->dir_bsock = bsock.get();
 
   EXPECT_CALL(*bsock, recv())
-      .WillOnce(BSOCK_RECV(bsock.get(),
-                           "use storage=sssss media_type=File pool_name=ppppp "
-                           "pool_type=ptptp append=0 copy=0 stripe=0"))
+      .WillOnce(
+          BSOCK_RECV(bsock.get(),
+                     "use storage=sssss media_type=File pool_name=ppppp "
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=single3"))
       .WillOnce(Return(BNET_EOD))  // end of device commands
       .WillOnce(Return(BNET_EOD))  // end of storage command
-      .WillOnce(BSOCK_RECV(bsock.get(),
-                           "use storage=sssss media_type=File pool_name=ppppp "
-                           "pool_type=ptptp append=0 copy=0 stripe=0"))
+      .WillOnce(
+          BSOCK_RECV(bsock.get(),
+                     "use storage=sssss media_type=File pool_name=ppppp "
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=single3"))
       .WillOnce(Return(BNET_EOD))   // end of device commands
       .WillOnce(Return(BNET_EOD));  // end of storage command
@@ -296,7 +327,7 @@ TEST_F(ReservationTest, use_cmd_append_reserves_write_only)
       .WillOnce(
           BSOCK_RECV(bsock.get(),
                      "use storage=sssss media_type=FileRWOnly pool_name=ppppp "
-                     "pool_type=ptptp append=1 copy=0 stripe=0"))
+                     "pool_type=ptptp append=1 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly1"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly2"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=writeonly1"))
@@ -325,7 +356,7 @@ TEST_F(ReservationTest, use_cmd_non_append_reserves_read_only)
       .WillOnce(
           BSOCK_RECV(bsock.get(),
                      "use storage=sssss media_type=FileRWOnly pool_name=ppppp "
-                     "pool_type=ptptp append=0 copy=0 stripe=0"))
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=writeonly1"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=writeonly2"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly1"))
@@ -355,7 +386,7 @@ TEST_F(ReservationTest, use_cmd_non_append_reserves_read_only_with_wait)
       .WillOnce(
           BSOCK_RECV(bsock.get(),
                      "use storage=sssss media_type=FileRWOnly pool_name=ppppp "
-                     "pool_type=ptptp append=0 copy=0 stripe=0"))
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly1"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly2"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=writeonly1"))
@@ -365,7 +396,7 @@ TEST_F(ReservationTest, use_cmd_non_append_reserves_read_only_with_wait)
       .WillOnce(
           BSOCK_RECV(bsock.get(),
                      "use storage=sssss media_type=FileRWOnly pool_name=ppppp "
-                     "pool_type=ptptp append=0 copy=0 stripe=0"))
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly1"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly2"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=writeonly1"))
@@ -375,7 +406,7 @@ TEST_F(ReservationTest, use_cmd_non_append_reserves_read_only_with_wait)
       .WillOnce(
           BSOCK_RECV(bsock.get(),
                      "use storage=sssss media_type=FileRWOnly pool_name=ppppp "
-                     "pool_type=ptptp append=0 copy=0 stripe=0"))
+                     "pool_type=ptptp append=0 copy=0 stripe=0 ordered=0"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly1"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=readonly2"))
       .WillOnce(BSOCK_RECV(bsock.get(), "use device=writeonly1"))

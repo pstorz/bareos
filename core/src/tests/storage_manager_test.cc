@@ -459,11 +459,77 @@ TEST(storage_manager, device_inventory_updates_drives)
   EXPECT_TRUE(model.Drives()[1].sd->unmounted);
 }
 
+TEST(storage_manager, orders_devices_for_job)
+{
+  DeviceInventoryEntry d0 = ChangerDevice("D0", 0);
+  d0.writers = 1;
+  d0.pool = "Full";
+  d0.volume = "A1";
+  DeviceInventoryEntry d1 = ChangerDevice("D1", 1);
+  d1.volume = "A2";
+  DeviceInventoryEntry d2 = ChangerDevice("D2", 2);
+  DeviceInventoryEntry d3 = ChangerDevice("D3", 3);
+  d3.autoselect = false;
+  DeviceInventoryEntry d4 = ChangerDevice("D4", 4);
+  d4.read_only = true;
+  DeviceInventoryEntry other;
+  other.device = "Other";
+  other.media_type = "File";
+  std::vector<DeviceInventoryEntry> inventory{d0, d1, d2, d3, d4, other};
+
+  DeviceRequest request{.append = true, .pool = "Full", .media_type = "LTO"};
+  using Order = std::vector<std::string>;
+  EXPECT_EQ(OrderDevices(inventory, {"Tape Changer"}, request),
+            (Order{"D2", "D1", "D0"}));
+
+  request.prefer_mounted = true;
+  EXPECT_EQ(OrderDevices(inventory, {"Tape Changer"}, request),
+            (Order{"D0", "D2", "D1"}));
+
+  request.append = false;
+  EXPECT_EQ(OrderDevices(inventory, {"Tape Changer"}, request),
+            (Order{"D1", "D2", "D4", "D0"}));
+
+  // explicitly named devices are used even without autoselect
+  EXPECT_EQ(OrderDevices(inventory, {"D3", "Other"}, request), (Order{"D3"}));
+  EXPECT_TRUE(OrderDevices(inventory, {"Unknown"}, request).empty());
+}
+
 static_assert(CheckJobCommand("JobId=1 BackupFormat=native\n", -1, 20, 0)
               == JobCommandCheck::kVersionMismatch);
-static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=1\n", 20, 20, 1)
+static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=2\n",
+                              20,
+                              20,
+                              kDirSdProtocolVersion)
               == JobCommandCheck::kOk);
 static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=99\n", 20, 20, 99)
               == JobCommandCheck::kVersionMismatch);
 static_assert(CheckJobCommand("JobId= SdProtocolVersion=1\n", -1, 20, 1)
               == JobCommandCheck::kMalformed);
+
+// free drives first, so jobs spread over the drives
+static_assert(DevicePreference({}) < DevicePreference({.has_volume = true}));
+static_assert(DevicePreference({.has_volume = true, .same_pool = true})
+              < DevicePreference({.has_volume = true}));
+static_assert(DevicePreference({.has_volume = true})
+              < DevicePreference({.same_pool = true, .users = 1}));
+static_assert(DevicePreference({.same_pool = true, .users = 1})
+              < DevicePreference({.users = 1}));
+// with prefer mounted volumes, share a drive appending to the same pool
+static_assert(
+    DevicePreference({.prefer_mounted = true, .same_pool = true, .users = 1})
+    < DevicePreference(
+        {.prefer_mounted = true, .has_volume = true, .same_pool = true}));
+static_assert(DevicePreference({.prefer_mounted = true,
+                                .has_volume = true,
+                                .same_pool = true})
+              < DevicePreference({.prefer_mounted = true}));
+static_assert(DevicePreference({.prefer_mounted = true})
+              < DevicePreference({.prefer_mounted = true, .users = 1}));
+// reading and unmounted drives last
+static_assert(DevicePreference({.users = 1})
+              < DevicePreference({.reading = true}));
+static_assert(DevicePreference({.reading = true})
+              < DevicePreference({.unavailable = true}));
+static_assert(DevicePreference({.append_request = false})
+              < DevicePreference({.append_request = false, .users = 1}));

@@ -42,6 +42,7 @@
 #include "dird/msgchan.h"
 #include "dird/quota.h"
 #include "dird/sd_cmds.h"
+#include "dird/storage.h"
 #include "dird/storage_manager.h"
 #include "lib/berrno.h"
 #include "lib/bnet.h"
@@ -49,6 +50,8 @@
 #include "lib/util.h"
 #include "lib/thread_specific_data.h"
 #include "lib/watchdog.h"
+
+#include <algorithm>
 
 namespace {
 
@@ -63,7 +66,7 @@ inline constexpr const char jobcmd[]
       "Protocol=%d BackupFormat=%s SdProtocolVersion=%d\n";
 inline constexpr const char use_storage[]
     = "use storage=%s media_type=%s pool_name=%s "
-      "pool_type=%s append=%d copy=%d stripe=%d\n";
+      "pool_type=%s append=%d copy=%d stripe=%d ordered=%d\n";
 inline constexpr const char use_device[] = "use device=%s\n";
 // static char query_device[] =
 //   "query device=%s";
@@ -123,78 +126,84 @@ static inline bool SendBootstrapFileToSd(JobControlRecord* jcr,
   return true;
 }
 
-bool ReserveReadDevice(JobControlRecord* jcr,
-                       alist<StorageResource*>* read_storage)
+/* Reserve one device of the given storages. The director asks the
+ * storage daemon for the state of its devices and sends the drives in the
+ * order it prefers; the storage daemon takes the first usable one. */
+static bool ReserveDevice(JobControlRecord* jcr,
+                          alist<StorageResource*>* storages,
+                          bool append,
+                          std::string pool_name,
+                          std::string pool_type,
+                          std::string& reserved_device)
 {
   BareosSocket* sd_socket = jcr->store_bsock;
-  PoolMem device_name;
-  std::string StoreName{};
-  std::string pool_name{};
-  std::string pool_type{};
-  std::string media_type{};
-  bool ok = true;
+  const char* direction = append ? "write" : "read";
+  std::string device_name{};
   int copy = 0;
   int stripe = 0;
-  /* We have two loops here. The first comes from the
-   *  Storage = associated with the Job, and we need
-   *  to attach to each one.
-   * The inner loop loops over all the alternative devices
-   *  associated with each Storage. It selects the first
-   *  available one.
-   * */
-  // Do read side of storage daemon
-  if (read_storage) {
-    // For the moment, only migrate, copy and vbackup have rpool
-    if (jcr->is_JobType(JT_MIGRATE) || jcr->is_JobType(JT_COPY)
-        || (jcr->is_JobType(JT_BACKUP) && jcr->is_JobLevel(L_VIRTUAL_FULL))) {
-      pool_type = jcr->dir_impl->res.rpool->pool_type;
-      pool_name = jcr->dir_impl->res.rpool->resource_name_;
-    } else {
-      pool_type = jcr->dir_impl->res.pool->pool_type;
-      pool_name = jcr->dir_impl->res.pool->resource_name_;
+
+  std::vector<StorageResource*> stores;
+  for (auto* storage : storages) { stores.push_back(storage); }
+  auto inventory = QueryDeviceInventory(sd_socket);
+  if (inventory) { ApplyDeviceInventory(*inventory, stores); }
+
+  storage_manager::DeviceRequest request;
+  request.append = append;
+  request.prefer_mounted = jcr->dir_impl->res.job->PreferMountedVolumes;
+  request.pool = pool_name;
+
+  BashSpaces(pool_type);
+  BashSpaces(pool_name);
+  for (auto* storage : stores) {
+    Dmsg2(100, "%s storage=%s\n", direction, storage->resource_name_);
+    std::vector<std::string> configured;
+    for (auto& dev : storage->devices) { configured.push_back(dev.name); }
+    std::vector<std::string> devices;
+    if (inventory) {
+      request.media_type = storage->media_type;
+      devices = storage_manager::OrderDevices(*inventory, configured, request);
     }
-    BashSpaces(pool_type);
-    BashSpaces(pool_name);
-    for (auto* storage : read_storage) {
-      Dmsg1(100, "Rstore=%s\n", storage->resource_name_);
-      StoreName = storage->resource_name_;
-      BashSpaces(StoreName);
-      media_type = storage->media_type;
-      BashSpaces(media_type);
-      sd_socket->fsend(use_storage, StoreName.c_str(), media_type.c_str(),
-                       pool_name.c_str(), pool_type.c_str(), 0, copy, stripe);
-      Dmsg1(100, "read_storage >stored: %s", sd_socket->msg);
-      /* Loop over alternative storage Devices until one is OK */
-      for (auto& dev : storage->devices) {
-        PmStrcpy(device_name, dev.name.c_str());
-        BashSpaces(device_name);
-        sd_socket->fsend(use_device, device_name.c_str());
-        Dmsg1(100, ">stored: %s", sd_socket->msg);
-      }
-      sd_socket->signal(BNET_EOD);  // end of Device
+    const bool ordered = !devices.empty();
+    if (!ordered) { devices = configured; }
+
+    std::string StoreName = storage->resource_name_;
+    BashSpaces(StoreName);
+    std::string media_type = storage->media_type;
+    BashSpaces(media_type);
+    sd_socket->fsend(use_storage, StoreName.c_str(), media_type.c_str(),
+                     pool_name.c_str(), pool_type.c_str(), append ? 1 : 0, copy,
+                     stripe, ordered ? 1 : 0);
+    Dmsg1(100, ">stored: %s", sd_socket->msg);
+    for (auto& device : devices) {
+      device_name = device;
+      BashSpaces(device_name);
+      sd_socket->fsend(use_device, device_name.c_str());
+      Dmsg1(100, ">stored: %s", sd_socket->msg);
     }
-    sd_socket->signal(BNET_EOD);  // end of Storages
-    if (BgetDirmsg(sd_socket) > 0) {
-      Dmsg1(100, "<stored: %s", sd_socket->msg);
-      // ****FIXME**** save actual device name
-      ok = bsscanf(sd_socket->msg, OK_device, device_name.c_str()) == 1;
-    } else {
-      ok = false;
-    }
+    sd_socket->signal(BNET_EOD);  // end of Devices
+  }
+  sd_socket->signal(BNET_EOD);  // end of Storages
+
+  bool ok = false;
+  if (BgetDirmsg(sd_socket) > 0) {
+    Dmsg1(100, "<stored: %s", sd_socket->msg);
+    PoolMem reply_device;
+    ok = bsscanf(sd_socket->msg, OK_device, reply_device.c_str()) == 1;
     if (ok) {
-      UnbashSpaces(device_name.c_str());
-      Jmsg(jcr, M_INFO, 0, T_("Using Device \"%s\" to read.\n"),
-           device_name.c_str());
+      UnbashSpaces(reply_device.c_str());
+      reserved_device = reply_device.c_str();
+      Jmsg(jcr, M_INFO, 0, T_("Using Device \"%s\" to %s.\n"),
+           reserved_device.c_str(), direction);
     }
   }
-
   if (!ok) {
-    if (jcr->store_bsock->msg[0]) {
+    std::replace(device_name.begin(), device_name.end(), '\x01', ' ');
+    if (sd_socket->msg[0]) {
       Jmsg(jcr, M_FATAL, 0,
            T_("\n"
               "     Storage daemon didn't accept Device \"%s\" because:\n     "
               "%s\n"),
-           device_name.c_str(), jcr->store_bsock->msg);
+           device_name.c_str(), sd_socket->msg);
     } else {
       Jmsg(jcr, M_FATAL, 0,
            T_("\n"
@@ -202,83 +211,30 @@ bool ReserveReadDevice(JobControlRecord* jcr,
            device_name.c_str());
     }
   }
-
   return ok;
+}
+
+bool ReserveReadDevice(JobControlRecord* jcr,
+                       alist<StorageResource*>* read_storage)
+{
+  if (!read_storage) { return true; }
+  // For the moment, only migrate, copy and vbackup have rpool
+  PoolResource* pool = jcr->dir_impl->res.pool;
+  if (jcr->is_JobType(JT_MIGRATE) || jcr->is_JobType(JT_COPY)
+      || (jcr->is_JobType(JT_BACKUP) && jcr->is_JobLevel(L_VIRTUAL_FULL))) {
+    pool = jcr->dir_impl->res.rpool;
+  }
+  return ReserveDevice(jcr, read_storage, false, pool->resource_name_,
+                       pool->pool_type, jcr->dir_impl->read_device);
 }
 
 bool ReserveWriteDevice(JobControlRecord* jcr,
                         alist<StorageResource*>* write_storage)
 {
-  PoolMem device_name;
-  std::string StoreName{};
-  std::string pool_name{};
-  std::string pool_type{};
-  std::string media_type{};
-  bool ok = true;
-  int copy = 0;
-  int stripe = 0;
-  /* We have two loops here. The first comes from the
-   *  Storage = associated with the Job, and we need
-   *  to attach to each one.
-   * The inner loop loops over all the alternative devices
-   *  associated with each Storage. It selects the first
-   *  available one.
-   * */
-  // Do write side of storage daemon
-  if (write_storage) {
-    pool_type = jcr->dir_impl->res.pool->pool_type;
-    pool_name = jcr->dir_impl->res.pool->resource_name_;
-    BashSpaces(pool_type);
-    BashSpaces(pool_name);
-    for (auto* storage : write_storage) {
-      StoreName = storage->resource_name_;
-      BashSpaces(StoreName);
-      media_type = storage->media_type;
-      BashSpaces(media_type);
-      jcr->store_bsock->fsend(use_storage, StoreName.c_str(),
-                              media_type.c_str(), pool_name.c_str(),
-                              pool_type.c_str(), 1, copy, stripe);
-
-      Dmsg1(100, "write_storage >stored: %s", jcr->store_bsock->msg);
-      // Loop over alternative storage Devices until one is OK
-      for (auto& dev : storage->devices) {
-        PmStrcpy(device_name, dev.name.c_str());
-        BashSpaces(device_name);
-        jcr->store_bsock->fsend(use_device, device_name.c_str());
-        Dmsg1(100, ">stored: %s", jcr->store_bsock->msg);
-      }
-      jcr->store_bsock->signal(BNET_EOD);  // end of Devices
-    }
-    jcr->store_bsock->signal(BNET_EOD);  // end of Storages
-    if (BgetDirmsg(jcr->store_bsock) > 0) {
-      Dmsg1(100, "<stored: %s", jcr->store_bsock->msg);
-      // ****FIXME**** save actual device name
-      ok = bsscanf(jcr->store_bsock->msg, OK_device, device_name.c_str()) == 1;
-    } else {
-      ok = false;
-    }
-    if (ok) {
-      UnbashSpaces(device_name.c_str());
-      Jmsg(jcr, M_INFO, 0, T_("Using Device \"%s\" to write.\n"),
-           device_name.c_str());
-    }
-  }
-  if (!ok) {
-    if (jcr->store_bsock->msg[0]) {
-      Jmsg(jcr, M_FATAL, 0,
-           T_("\n"
-              "     Storage daemon didn't accept Device \"%s\" because:\n     "
-              "%s\n"),
-           device_name.c_str(), jcr->store_bsock->msg);
-    } else {
-      Jmsg(jcr, M_FATAL, 0,
-           T_("\n"
-              "     Storage daemon didn't accept Device \"%s\" command.\n"),
-           device_name.c_str());
-    }
-  }
-
-  return ok;
+  if (!write_storage) { return true; }
+  PoolResource* pool = jcr->dir_impl->res.pool;
+  return ReserveDevice(jcr, write_storage, true, pool->resource_name_,
+                       pool->pool_type, jcr->dir_impl->write_device);
 }
 
 bool ReserveReadAndWriteDevices(JobControlRecord* jcr,

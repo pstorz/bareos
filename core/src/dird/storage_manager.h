@@ -219,6 +219,53 @@ struct Inventory {
 
 std::string DriveName(int drive_index);
 
+/* Facts about one device, from the point of view of a job that wants
+ * to reserve it. */
+struct DeviceUse {
+  bool append_request{true};
+  bool prefer_mounted{false};
+  bool unavailable{false};  // unmounted by the operator
+  bool reading{false};
+  bool has_volume{false};
+  bool same_pool{false};  // reserved for or holding the job's pool
+  int users{0};           // writers and reservations
+};
+
+/* Preference of a device for a job, lower is better. Without "Prefer
+ * Mounted Volumes" a free drive is best, so jobs spread over the drives;
+ * with it, a drive already appending to the job's pool is best. */
+constexpr int DevicePreference(const DeviceUse& d)
+{
+  if (d.unavailable) { return 9; }
+  if (!d.append_request) { return (d.users == 0 && !d.reading) ? 0 : 5; }
+  if (d.reading) { return 8; }
+  if (d.prefer_mounted) {
+    if (d.users > 0) { return d.same_pool ? 0 : 7; }
+    if (d.has_volume) { return d.same_pool ? 1 : 3; }
+    return 2;
+  }
+  if (d.users == 0) {
+    if (!d.has_volume) { return 0; }
+    return d.same_pool ? 1 : 2;
+  }
+  return d.same_pool ? 3 : 7;
+}
+
+struct DeviceRequest {
+  bool append{true};
+  bool prefer_mounted{false};
+  std::string pool;
+  std::string media_type;
+};
+
+/* The drives of a director storage that can serve the request, best
+ * first. Autochangers are expanded into their autoselect drives. An
+ * empty result means the inventory does not know the storage. */
+std::vector<std::string> OrderDevices(
+    const std::vector<DeviceInventoryEntry>& inventory,
+    const std::vector<std::string>& storage_devices,
+    const DeviceRequest& request);
+
 /* The devices of an inventory that belong to a director storage, given
  * the device names configured there (autochangers or single devices). */
 std::vector<DeviceInventoryEntry> DevicesOfStorage(

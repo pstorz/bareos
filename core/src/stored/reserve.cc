@@ -67,7 +67,8 @@ static bool FindSuitableDeviceForJob(JobControlRecord* jcr,
 /* Requests from the Director daemon */
 inline constexpr const char use_storage[]
     = "use storage=%127s media_type=%127s "
-      "pool_name=%127s pool_type=%127s append=%d copy=%d stripe=%d\n";
+      "pool_name=%127s pool_type=%127s append=%d copy=%d stripe=%d "
+      "ordered=%d\n";
 inline constexpr const char use_device[] = "use device=%127s\n";
 
 /* Responses sent to Director daemon */
@@ -195,6 +196,13 @@ bool TryReserveAfterUse(JobControlRecord* jcr, bool append)
   memset(&rctx, 0, sizeof(ReserveContext));
   rctx.append = append;
 
+  /* The director chose the order of the drives, only take the first one
+   * that can be used instead of searching with our own preferences. */
+  bool dir_ordered = false;
+  for (auto& store : jcr->sd_impl->dirstores) {
+    if (store.append == append && store.dir_ordered) { dir_ordered = true; }
+  }
+
   for (; !fail && !jcr->IsJobCanceled();) {
     std::unique_lock reservation_lock(*reservation_mutex);
     ClearReserveMessages(jcr);
@@ -202,7 +210,14 @@ bool TryReserveAfterUse(JobControlRecord* jcr, bool append)
     rctx.have_volume = false;
     rctx.VolumeName[0] = 0;
     rctx.any_drive = false;
-    if (!jcr->sd_impl->PreferMountedVols) {
+    if (dir_ordered) {
+      rctx.any_drive = true;
+      rctx.PreferMountedVols = false;
+      rctx.exact_match = false;
+      rctx.autochanger_only = false;
+      rctx.try_low_use_drive = false;
+      if ((found = FindSuitableDeviceForJob(jcr, rctx))) { break; }
+    } else if (!jcr->sd_impl->PreferMountedVols) {
       /* Here we try to find a drive that is not used.
        * This will maximize the use of available drives. */
       rctx.num_writers = 20000000; /* start with impossible number */
@@ -222,20 +237,22 @@ bool TryReserveAfterUse(JobControlRecord* jcr, bool append)
       if ((found = FindSuitableDeviceForJob(jcr, rctx))) { break; }
     }
 
-    /* Now we look for a drive that may or may not be in use.
-     * Look for an exact Volume match all drives */
-    rctx.PreferMountedVols = true;
-    rctx.exact_match = true;
-    rctx.autochanger_only = false;
-    if ((found = FindSuitableDeviceForJob(jcr, rctx))) { break; }
+    if (!dir_ordered) {
+      /* Now we look for a drive that may or may not be in use.
+       * Look for an exact Volume match all drives */
+      rctx.PreferMountedVols = true;
+      rctx.exact_match = true;
+      rctx.autochanger_only = false;
+      if ((found = FindSuitableDeviceForJob(jcr, rctx))) { break; }
 
-    // Look for any mounted drive
-    rctx.exact_match = false;
-    if ((found = FindSuitableDeviceForJob(jcr, rctx))) { break; }
+      // Look for any mounted drive
+      rctx.exact_match = false;
+      if ((found = FindSuitableDeviceForJob(jcr, rctx))) { break; }
 
-    // Try any drive
-    rctx.any_drive = true;
-    if ((found = FindSuitableDeviceForJob(jcr, rctx))) { break; }
+      // Try any drive
+      rctx.any_drive = true;
+      if ((found = FindSuitableDeviceForJob(jcr, rctx))) { break; }
+    }
 
     // during WaitForDevice()
     reservation_lock.unlock();
@@ -274,7 +291,7 @@ static bool UseDeviceCmd(JobControlRecord* jcr)
   BareosSocket* dir = jcr->dir_bsock;
   int32_t append;
   bool ok = true;
-  int32_t Copy, Stripe;
+  int32_t Copy, Stripe, dir_ordered;
 
   /* If there are multiple devices, the director sends us
    * use_device for each device that it wants to use. */
@@ -282,9 +299,9 @@ static bool UseDeviceCmd(JobControlRecord* jcr)
     Dmsg1(debuglevel, "<dird: %s", dir->msg);
     auto res = bsscanf(dir->msg, use_storage, StoreName.c_str(),
                        media_type.c_str(), pool_name.c_str(), pool_type.c_str(),
-                       &append, &Copy, &Stripe);
+                       &append, &Copy, &Stripe, &dir_ordered);
 
-    if (res != 7) { ok = false; }
+    if (res != 8) { ok = false; }
 
     if (!ok) { break; }
 
@@ -297,6 +314,7 @@ static bool UseDeviceCmd(JobControlRecord* jcr)
     auto& storage
         = storages.emplace_back(append, StoreName.c_str(), media_type.c_str(),
                                 pool_name.c_str(), pool_type.c_str());
+    storage.dir_ordered = dir_ordered != 0;
 
     // Now get all devices
     while (dir->recv() >= 0) {
@@ -564,6 +582,9 @@ int SearchResForDevice(JobControlRecord* jcr, ReserveContext& rctx)
     foreach_res (rctx.device_resource, R_DEVICE) {
       Dmsg2(debuglevel, "Try match res=%s wanted %s\n",
             rctx.device_resource->resource_name_, rctx.device_name);
+
+      // the template of multiplied devices is no usable device
+      if (rctx.device_resource->count > 1) { continue; }
 
       // Find resource, and make sure we were able to open it
       if (bstrcmp(rctx.device_name, rctx.device_resource->resource_name_)) {

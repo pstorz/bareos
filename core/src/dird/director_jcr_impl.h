@@ -148,6 +148,8 @@ struct DirectorJcrImpl {
   int32_t reschedule_count{};           /**< Number of times rescheduled */
   int32_t FDVersion{};                  /**< File daemon version number */
   int64_t spool_size{};                 /**< Spool size for this job */
+  std::string read_device{};   /**< SD device reserved for reading */
+  std::string write_device{};  /**< SD device reserved for writing */
   std::atomic<bool> sd_msg_thread_done{};   /**< Set when Storage message thread done */
   bool IgnoreDuplicateJobChecking{};    /**< Set in migration jobs */
   bool IgnoreLevelPoolOverrides{};       /**< Set if a cmdline pool was specified */

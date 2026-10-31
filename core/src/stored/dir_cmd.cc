@@ -614,6 +614,8 @@ static bool InventoryCmd(JobControlRecord* jcr)
   DeviceResource* device_resource;
 
   foreach_res (device_resource, R_DEVICE) {
+    // the template of multiplied devices is no usable device
+    if (device_resource->count > 1) { continue; }
     dir->fsend("%s",
                FormatDeviceInventory(InventoryOf(device_resource)).c_str());
   }

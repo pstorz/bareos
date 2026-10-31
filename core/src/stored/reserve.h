@@ -46,6 +46,7 @@ namespace storagedaemon {
 
 struct director_storage {
   bool append;
+  bool dir_ordered{false};  // device_names are drives in the DIR's order
   std::vector<std::string> device_names{};
   std::string name{}, media_type{}, pool_name{}, pool_type{};
 
