@@ -411,25 +411,47 @@ TEST(storage_manager, describes_divergences)
 }
 
 namespace {
-using directordaemon::ResolveVolumeStatus;
+using directordaemon::StatusAfterVolumeEvent;
 
-// stale "Append" from the storage daemon must not undo director decisions
-static_assert(ResolveVolumeStatus("Used", "Append", false) == "Used");
-static_assert(ResolveVolumeStatus("Read-Only", "Append", false) == "Read-Only");
-static_assert(ResolveVolumeStatus("Disabled", "Append", false) == "Disabled");
-static_assert(ResolveVolumeStatus("Purged", "Append", false) == "Purged");
-static_assert(ResolveVolumeStatus("Full", "Append", false) == "Full");
-static_assert(ResolveVolumeStatus("Error", "Full", false) == "Error");
-// storage daemon observations are accepted
-static_assert(ResolveVolumeStatus("Append", "Full", false) == "Full");
-static_assert(ResolveVolumeStatus("Append", "Error", false) == "Error");
-static_assert(ResolveVolumeStatus("Used", "Error", false) == "Error");
-static_assert(ResolveVolumeStatus("Purged", "Append", true) == "Append");
-static_assert(ResolveVolumeStatus("Recycle", "Append", true) == "Append");
-static_assert(ResolveVolumeStatus("Unlabeled", "Append", false) == "Append");
-// relabel only grants Append, nothing else
-static_assert(ResolveVolumeStatus("Used", "Recycle", true) == "Used");
-static_assert(ResolveVolumeStatus("Append", "Append", false) == "Append");
+// without an event the director keeps its own decisions
+static_assert(StatusAfterVolumeEvent("Used", VolumeEvent::kNone, true)
+              == "Used");
+static_assert(StatusAfterVolumeEvent("Purged", VolumeEvent::kNone, true)
+              == "Purged");
+static_assert(StatusAfterVolumeEvent("Full", VolumeEvent::kNone, true)
+              == "Full");
+static_assert(StatusAfterVolumeEvent("Append", VolumeEvent::kNone, true)
+              == "Append");
+// storage daemon observations
+static_assert(StatusAfterVolumeEvent("Append", VolumeEvent::kFull, true)
+              == "Full");
+static_assert(StatusAfterVolumeEvent("Error", VolumeEvent::kFull, true)
+              == "Error");
+static_assert(StatusAfterVolumeEvent("Used", VolumeEvent::kError, true)
+              == "Error");
+static_assert(StatusAfterVolumeEvent("Recycle", VolumeEvent::kLabeled, false)
+              == "Append");
+// data on a manually created Unlabeled volume makes it appendable
+static_assert(StatusAfterVolumeEvent("Unlabeled", VolumeEvent::kNone, true)
+              == "Append");
+static_assert(StatusAfterVolumeEvent("Unlabeled", VolumeEvent::kNone, false)
+              == "Unlabeled");
+
+static_assert(ParseVolumeEvent("full") == VolumeEvent::kFull);
+static_assert(ParseVolumeEvent("none") == VolumeEvent::kNone);
+static_assert(ParseVolumeEvent(VolumeEventName(VolumeEvent::kLabeled))
+              == VolumeEvent::kLabeled);
+static_assert(ParseVolumeEvent(VolumeEventName(VolumeEvent::kError))
+              == VolumeEvent::kError);
+static_assert(!ParseVolumeEvent("Append").has_value());
+
+static_assert(VolumeEventFromLocalStatus("Append", true)
+              == VolumeEvent::kLabeled);
+static_assert(VolumeEventFromLocalStatus("Full", false) == VolumeEvent::kFull);
+static_assert(VolumeEventFromLocalStatus("Error", false)
+              == VolumeEvent::kError);
+static_assert(VolumeEventFromLocalStatus("Append", false)
+              == VolumeEvent::kNone);
 }  // namespace
 
 namespace {

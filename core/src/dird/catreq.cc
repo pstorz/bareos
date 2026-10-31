@@ -62,9 +62,8 @@ inline constexpr const char Drive_event[]
 inline constexpr const char Update_media[]
     = "CatReq Job=%127s UpdateMedia VolName=%s"
       " VolJobs=%u VolFiles=%u VolBlocks=%u VolBytes=%lld VolMounts=%u"
-      " VolErrors=%u VolWrites=%u MaxVolBytes=%lld EndTime=%lld VolStatus=%10s"
-      " Slot=%d relabel=%d InChanger=%d VolReadTime=%lld VolWriteTime=%lld"
-      " VolFirstWritten=%lld\n";
+      " VolErrors=%u VolWrites=%u MaxVolBytes=%lld EndTime=%lld VolEvent=%15s"
+      " VolReadTime=%lld VolWriteTime=%lld VolFirstWritten=%lld\n";
 inline constexpr const char Create_job_media[]
     = "CatReq Job=%127s CreateJobMedia "
       " FirstIndex=%u LastIndex=%u StartFile=%u EndFile=%u "
@@ -290,6 +289,7 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
   JobMediaDbRecord jm;
   char Job[MAX_NAME_LENGTH];
   char pool_name[MAX_NAME_LENGTH];
+  char volume_event_name[16];
   PoolMem unwanted_volumes(PM_MESSAGE);
   int index, ok, label, writing, drive_index;
   char device[MAX_NAME_LENGTH];
@@ -435,15 +435,18 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
                      &sdmr.VolJobs, &sdmr.VolFiles, &sdmr.VolBlocks,
                      &sdmr.VolBytes, &sdmr.VolMounts, &sdmr.VolErrors,
                      &sdmr.VolWrites, &sdmr.MaxVolBytes, &VolLastWritten,
-                     &sdmr.VolStatus, &sdmr.Slot, &label, &sdmr.InChanger,
-                     &sdmr.VolReadTime, &sdmr.VolWriteTime, &VolFirstWritten)
-             == 18) {
+                     volume_event_name, &sdmr.VolReadTime, &sdmr.VolWriteTime,
+                     &VolFirstWritten)
+             == 15) {
     /* Request to update Media record. Comes typically at the end
      * of a Storage daemon Job Session, when labeling/relabeling a
      * Volume, or when an EOF mark is written. */
     DbLocker _{jcr->db};
-    Dmsg3(400, "Update media %s oldStat=%s newStat=%s\n", sdmr.VolumeName,
-          mr.VolStatus, sdmr.VolStatus);
+    Dmsg2(400, "Update media %s event=%s\n", sdmr.VolumeName,
+          volume_event_name);
+    const VolumeEvent volume_event
+        = ParseVolumeEvent(volume_event_name).value_or(VolumeEvent::kNone);
+    label = volume_event == VolumeEvent::kLabeled;
     bstrncpy(mr.VolumeName, sdmr.VolumeName,
              sizeof(mr.VolumeName)); /* copy Volume name */
     UnbashSpaces(mr.VolumeName);
@@ -535,16 +538,13 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
     mr.VolMounts = sdmr.VolMounts;
     mr.VolErrors = sdmr.VolErrors;
     mr.VolWrites = sdmr.VolWrites;
-    mr.Slot = sdmr.Slot;
-    mr.InChanger = sdmr.InChanger;
     {
       std::string_view status
-          = ResolveVolumeStatus(mr.VolStatus, sdmr.VolStatus, label);
-      if (status != sdmr.VolStatus) {
-        Dmsg3(100,
-              "Volume \"%s\": keeping catalog status %s, storage daemon "
-              "reported %s\n",
-              mr.VolumeName, mr.VolStatus, sdmr.VolStatus);
+          = StatusAfterVolumeEvent(mr.VolStatus, volume_event, mr.VolBytes > 0);
+      if (status != mr.VolStatus) {
+        Dmsg4(100, "Volume \"%s\": status %s -> %s after event %s\n",
+              mr.VolumeName, mr.VolStatus, std::string{status}.c_str(),
+              volume_event_name);
       }
       bstrncpy(mr.VolStatus, std::string{status}.c_str(), sizeof(mr.VolStatus));
     }

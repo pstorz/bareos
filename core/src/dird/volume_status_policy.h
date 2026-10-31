@@ -24,27 +24,34 @@
 
 #include <string_view>
 
+#include "include/dir_sd_protocol.h"
+
 namespace directordaemon {
 
 /*
- * The director owns the volume status. The storage daemon sends the status
- * from its cached copy of the catalog record, which may be stale. Only the
- * transitions the storage daemon observes itself are accepted:
- *  - a (re)label writes a fresh label: Append
- *  - end of medium: Full
+ * The director owns the volume status. The storage daemon only reports
+ * what it observed on the volume and the director derives the status:
+ *  - a (re)label wrote a fresh label: Append
+ *  - end of medium: Full, unless the volume is already in Error
  *  - I/O or label errors: Error
  *  - data written to a manually created Unlabeled volume: Append
- * Every other reported status is ignored and the catalog status is kept.
+ * Otherwise the catalog status is kept.
  */
-constexpr std::string_view ResolveVolumeStatus(std::string_view catalog,
-                                               std::string_view reported,
-                                               bool relabeled)
+constexpr std::string_view StatusAfterVolumeEvent(std::string_view catalog,
+                                                  VolumeEvent event,
+                                                  bool has_data)
 {
-  if (reported == catalog) { return catalog; }
-  if (relabeled && reported == "Append") { return reported; }
-  if (reported == "Error") { return reported; }
-  if (reported == "Full" && catalog != "Error") { return reported; }
-  if (reported == "Append" && catalog == "Unlabeled") { return reported; }
+  switch (event) {
+    case VolumeEvent::kLabeled:
+      return "Append";
+    case VolumeEvent::kError:
+      return "Error";
+    case VolumeEvent::kFull:
+      return catalog == "Error" ? catalog : "Full";
+    case VolumeEvent::kNone:
+      break;
+  }
+  if (catalog == "Unlabeled" && has_data) { return "Append"; }
   return catalog;
 }
 

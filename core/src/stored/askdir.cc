@@ -46,6 +46,7 @@
 #include "lib/berrno.h"
 #include "lib/bsock.h"
 #include "lib/serial.h"
+#include "include/dir_sd_protocol.h"
 #include <cinttypes>
 
 namespace storagedaemon {
@@ -83,9 +84,8 @@ inline constexpr const char Drive_event[]
 inline constexpr const char Update_media[]
     = "CatReq Job=%s UpdateMedia VolName=%s"
       " VolJobs=%u VolFiles=%u VolBlocks=%u VolBytes=%s VolMounts=%u"
-      " VolErrors=%u VolWrites=%u MaxVolBytes=%s EndTime=%s VolStatus=%s"
-      " Slot=%d relabel=%d InChanger=%d VolReadTime=%s VolWriteTime=%s"
-      " VolFirstWritten=%s\n";
+      " VolErrors=%u VolWrites=%u MaxVolBytes=%s EndTime=%s VolEvent=%s"
+      " VolReadTime=%s VolWriteTime=%s VolFirstWritten=%s\n";
 inline constexpr const char Create_job_media[]
     = "CatReq Job=%s CreateJobMedia"
       " FirstIndex=%u LastIndex=%u StartFile=%u EndFile=%u"
@@ -343,7 +343,6 @@ bool StorageDaemonDeviceControlRecord::DirUpdateVolumeInfo(
   BareosSocket* dir = jcr->dir_bsock;
   VolumeCatalogInfo* vol = &dev->VolCatInfo;
   char ed1[50], ed2[50], ed3[50], ed4[50], ed5[50], ed6[50];
-  int InChanger;
   bool ok = false;
   PoolMem volume_name;
 
@@ -374,14 +373,14 @@ bool StorageDaemonDeviceControlRecord::DirUpdateVolumeInfo(
   vol->VolLastWritten = time(NULL);
   PmStrcpy(volume_name, vol->VolCatName);
   BashSpaces(volume_name);
-  InChanger = vol->InChanger;
+  const std::string event_name{VolumeEventName(VolumeEventFromLocalStatus(
+      vol->VolCatStatus, label == is_labeloperation::True))};
   dir->fsend(
       Update_media, jcr->Job, volume_name.c_str(), vol->VolCatJobs,
       vol->VolCatFiles, vol->VolCatBlocks, edit_uint64(vol->VolCatBytes, ed1),
       vol->VolCatMounts, vol->VolCatErrors, vol->VolCatWrites,
       edit_uint64(vol->VolCatMaxBytes, ed2),
-      edit_uint64(vol->VolLastWritten, ed6), vol->VolCatStatus, vol->Slot,
-      to_underlying(label), InChanger, /* bool in structure */
+      edit_uint64(vol->VolLastWritten, ed6), event_name.c_str(),
       edit_int64(vol->VolReadTime, ed3), edit_int64(vol->VolWriteTime, ed4),
       edit_uint64(vol->VolFirstWritten, ed5));
   Dmsg1(debuglevel, ">dird %s", dir->msg);

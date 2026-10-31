@@ -22,6 +22,7 @@
 #ifndef BAREOS_INCLUDE_DIR_SD_PROTOCOL_H_
 #define BAREOS_INCLUDE_DIR_SD_PROTOCOL_H_
 
+#include <optional>
 #include <string_view>
 
 /* Version of the job protocol between director and storage daemon.
@@ -30,8 +31,55 @@
  *   1: FindMedia and GetVolInfo carry the device and drive index
  *   2: inventory command, director orders the devices to reserve
  *   3: volume info tells the storage daemon to rewrite the label
- *   4: drive events report autochanger loads and unloads */
-inline constexpr int kDirSdProtocolVersion = 4;
+ *   4: drive events report autochanger loads and unloads
+ *   5: UpdateMedia reports a volume event instead of status, slot and
+ *      InChanger */
+inline constexpr int kDirSdProtocolVersion = 5;
+
+/* What the storage daemon observed on a volume. It reports facts only;
+ * the director decides the resulting volume status. */
+enum class VolumeEvent
+{
+  kNone,
+  kLabeled,
+  kFull,
+  kError
+};
+
+constexpr std::string_view VolumeEventName(VolumeEvent event)
+{
+  switch (event) {
+    case VolumeEvent::kLabeled:
+      return "labeled";
+    case VolumeEvent::kFull:
+      return "full";
+    case VolumeEvent::kError:
+      return "error";
+    case VolumeEvent::kNone:
+      break;
+  }
+  return "none";
+}
+
+constexpr std::optional<VolumeEvent> ParseVolumeEvent(std::string_view name)
+{
+  for (auto event : {VolumeEvent::kNone, VolumeEvent::kLabeled,
+                     VolumeEvent::kFull, VolumeEvent::kError}) {
+    if (VolumeEventName(event) == name) { return event; }
+  }
+  return std::nullopt;
+}
+
+/* The storage daemon marks a volume Full or Error locally to stop
+ * writing to it; report that observation to the director. */
+constexpr VolumeEvent VolumeEventFromLocalStatus(std::string_view status,
+                                                 bool labeled)
+{
+  if (labeled) { return VolumeEvent::kLabeled; }
+  if (status == "Error") { return VolumeEvent::kError; }
+  if (status == "Full") { return VolumeEvent::kFull; }
+  return VolumeEvent::kNone;
+}
 
 enum class JobCommandCheck
 {
