@@ -36,6 +36,7 @@
 #include "include/auth_protocol_types.h"
 #include "lib/parse_conf.h"
 #include "lib/util.h"
+#include "lib/edit.h"
 
 #if HAVE_NDMP
 #  include "ndmp/ndmagents.h"
@@ -44,6 +45,10 @@
 #include "dird/ndmp_dma_storage.h"
 #include "dird/storage.h"
 #include "dird/storage_manager.h"
+#include "dird/next_vol.h"
+#include "dird/ua.h"
+#include "dird/ua_server.h"
+#include "cats/cats.h"
 
 namespace directordaemon {
 
@@ -551,12 +556,15 @@ static inline void FreeVolList(changer_vol_list_t* vol_list)
 }
 
 std::optional<std::vector<DeviceInventoryEntry>> QueryDeviceInventory(
-    BareosSocket* sd)
+    BareosSocket* sd,
+    std::string* epoch)
 {
   sd->fsend("%s", kInventoryCommand.data());
   std::vector<DeviceInventoryEntry> inventory;
   while (sd->recv() >= 0) {
-    if (auto entry = ParseDeviceInventory(sd->msg)) {
+    if (auto sd_epoch = ParseInventoryEpoch(sd->msg)) {
+      if (epoch) { *epoch = std::move(*sd_epoch); }
+    } else if (auto entry = ParseDeviceInventory(sd->msg)) {
       Dmsg1(150, "<stored: %s", sd->msg);
       inventory.push_back(std::move(*entry));
     } else {
@@ -568,24 +576,125 @@ std::optional<std::vector<DeviceInventoryEntry>> QueryDeviceInventory(
 }
 
 void ApplyDeviceInventory(const std::vector<DeviceInventoryEntry>& inventory,
-                          const std::vector<StorageResource*>& stores)
+                          const std::vector<StorageResource*>& stores,
+                          const std::string& epoch)
 {
   for (auto* store : stores) {
     std::vector<std::string> names;
     for (const auto& device : store->devices) { names.push_back(device.name); }
-    storage_manager::GlobalStorageManager()
-        .Get(store->resource_name_)
-        ->UpdateDevices(storage_manager::DevicesOfStorage(inventory, names));
+    auto model
+        = storage_manager::GlobalStorageManager().Get(store->resource_name_);
+    if (!epoch.empty() && model->NoteStorageDaemonEpoch(epoch)) {
+      Dmsg1(50, "Storage daemon of storage %s restarted, slots unknown\n",
+            store->resource_name_);
+    }
+    model->UpdateDevices(storage_manager::DevicesOfStorage(inventory, names));
   }
 }
 
 bool RefreshDeviceInventory(BareosSocket* sd,
                             const std::vector<StorageResource*>& stores)
 {
-  auto inventory = QueryDeviceInventory(sd);
+  std::string epoch;
+  auto inventory = QueryDeviceInventory(sd, &epoch);
   if (!inventory) { return false; }
-  ApplyDeviceInventory(*inventory, stores);
+  ApplyDeviceInventory(*inventory, stores, epoch);
   return true;
+}
+
+namespace {
+int CatalogLocationOfVolume(void* ctx, int, char** row)
+{
+  auto* catalog
+      = static_cast<std::vector<storage_manager::CatalogVolumeLocation>*>(ctx);
+  catalog->push_back({row[0], atoi(row[1]), str_to_uint64(row[2]) != 0});
+  return 0;
+}
+
+void ApplyCatalogFix(JobControlRecord* jcr,
+                     StorageResource* store,
+                     const storage_manager::Divergence& divergence,
+                     const storage_manager::CatalogFix& fix)
+{
+  MediaDbRecord mr;
+  bstrncpy(mr.VolumeName, divergence.volume.c_str(), sizeof(mr.VolumeName));
+  if (!jcr->db->GetMediaRecord(jcr, &mr)) { return; }
+
+  if (fix.kind == storage_manager::CatalogFixKind::kSetSlot) {
+    Jmsg(jcr, M_INFO, 0,
+         T_("Volume \"%s\" is in slot %d of storage \"%s\", the catalog said "
+            "slot %d%s. Updating the catalog.\n"),
+         mr.VolumeName, fix.slot, store->resource_name_, mr.Slot,
+         mr.InChanger ? "" : " (not in changer)");
+    mr.Slot = fix.slot;
+    mr.InChanger = 1;
+    SetStorageidInMr(store, &mr);
+    if (!jcr->db->MakeInchangerUnique(jcr, &mr)) { return; }
+  } else {
+    Jmsg(jcr, M_INFO, 0,
+         T_("Volume \"%s\" is not in storage \"%s\", the catalog said slot "
+            "%d. Updating the catalog.\n"),
+         mr.VolumeName, store->resource_name_, mr.Slot);
+    mr.InChanger = 0;
+    SetStorageidInMr(nullptr, &mr);
+  }
+  if (!jcr->db->UpdateMediaRecord(jcr, &mr)) {
+    Jmsg(jcr, M_WARNING, 0, T_("Catalog error updating Media record. %s"),
+         jcr->db->strerror());
+  }
+}
+
+// Correct Slot and InChanger in the catalog from a fresh changer listing.
+void ReconcileCatalogSlots(JobControlRecord* jcr,
+                           StorageResource* store,
+                           const storage_manager::StorageModel& model)
+{
+  if (!jcr->db) { return; }
+  DbLocker _{jcr->db};
+  std::vector<storage_manager::CatalogVolumeLocation> catalog;
+  PoolMem query;
+  char ed1[50];
+  Mmsg(query,
+       "SELECT VolumeName, Slot, InChanger FROM Media WHERE StorageId=%s",
+       edit_int64(store->StorageId, ed1));
+  if (!jcr->db->SqlQuery(query.c_str(), CatalogLocationOfVolume, &catalog)) {
+    Dmsg1(50, "Query failed: %s\n", jcr->db->strerror());
+    return;
+  }
+  for (const auto& divergence : model.FindDivergences(catalog)) {
+    auto fix = storage_manager::CatalogFixFor(
+        divergence.catalog_slot, divergence.in_storage, divergence.actual_slot);
+    if (fix.kind != storage_manager::CatalogFixKind::kNone) {
+      ApplyCatalogFix(jcr, store, divergence, fix);
+    }
+  }
+}
+}  // namespace
+
+void EnsureSlotInventory(JobControlRecord* jcr, StorageResource* store)
+{
+  if (!store->autochanger || store->Protocol != APT_NATIVE) { return; }
+  auto model
+      = storage_manager::GlobalStorageManager().Get(store->resource_name_);
+  if (!model->BeginSlotRefresh()) { return; }
+
+  Dmsg1(100, "Listing the changer of storage %s, slots unknown\n",
+        store->resource_name_);
+  JobControlRecord* control_jcr
+      = new_control_jcr("*StorageInventory*", JT_SYSTEM);
+  control_jcr->dir_impl->res.write_storage = store;
+  if (ConnectToStorageDaemon(control_jcr, store, 10, me->SDConnectTimeout,
+                             false)) {
+    UaContext ua{control_jcr};
+    changer_vol_list_t* vol_list = get_vol_list_from_storage(
+        &ua, store, true /* listall */, false /* scan */, false /* cached */);
+    if (vol_list) { StorageReleaseVolList(store, vol_list); }
+    CloseSdBsock(&ua);
+  }
+  FreeJcr(control_jcr);
+  model->EndSlotRefresh();
+
+  if (model->SlotsKnown()) { ReconcileCatalogSlots(jcr, store, *model); }
 }
 
 // Feed a complete changer listing into the director side storage model.

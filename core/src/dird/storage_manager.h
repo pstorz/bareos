@@ -150,6 +150,36 @@ constexpr std::optional<int> CorrectedSlot(const CatalogSlot& catalog,
   return actual;
 }
 
+enum class CatalogFixKind
+{
+  kNone,
+  kSetSlot,       // the volume is in the changer, in this slot
+  kNotInChanger,  // the catalog places the volume in the changer wrongly
+};
+
+struct CatalogFix {
+  CatalogFixKind kind{CatalogFixKind::kNone};
+  int slot{};
+  bool operator==(const CatalogFix&) const = default;
+};
+
+/* How to correct the catalog for a volume whose catalog location differs
+ * from a fresh changer listing. A volume known to be in the changer at
+ * an unknown slot is left alone. */
+constexpr CatalogFix CatalogFixFor(std::optional<int> catalog_slot,
+                                   bool in_storage,
+                                   std::optional<int> actual_slot)
+{
+  if (in_storage) {
+    if (!actual_slot || *actual_slot <= 0 || catalog_slot == actual_slot) {
+      return {};
+    }
+    return {CatalogFixKind::kSetSlot, *actual_slot};
+  }
+  if (catalog_slot) { return {CatalogFixKind::kNotInChanger, 0}; }
+  return {};
+}
+
 struct DriveChoice {
   std::string drive;
   DriveCandidate kind{DriveCandidate::kUnusable};
@@ -179,6 +209,15 @@ class StorageModel {
   std::optional<int> KnownSlotOfVolume(const std::string& volume) const;
   // Operator commands moved volumes without telling the model.
   void InvalidateSlots();
+  bool SlotsKnown() const;
+  /* Only one caller refreshes outdated slots at a time: true if the
+   * caller must list the changer and then call EndSlotRefresh(). */
+  bool BeginSlotRefresh();
+  void EndSlotRefresh();
+  /* Remember the start time of the storage daemon. A restarted storage
+   * daemon may have found other volumes in the changer, so the slots
+   * become unknown. Returns true if a restart was detected. */
+  bool NoteStorageDaemonEpoch(const std::string& epoch);
 
   // Pick the best drive to use for a volume; nullopt if none is usable.
   std::optional<DriveChoice> ChooseDrive(const std::string& volume) const;
@@ -232,6 +271,8 @@ class StorageModel {
   std::vector<DriveState> drives_;
   std::vector<SlotState> slots_;
   bool slots_valid_{false};
+  bool slot_refresh_running_{false};
+  std::optional<std::string> sd_epoch_;
   std::multimap<std::string, VolumeLease> leases_;
 };
 

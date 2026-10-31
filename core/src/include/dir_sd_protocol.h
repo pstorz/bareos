@@ -33,8 +33,9 @@
  *   3: volume info tells the storage daemon to rewrite the label
  *   4: drive events report autochanger loads and unloads
  *   5: UpdateMedia reports a volume event instead of status, slot and
- *      InChanger */
-inline constexpr int kDirSdProtocolVersion = 5;
+ *      InChanger
+ *   6: the inventory starts with the epoch of the storage daemon */
+inline constexpr int kDirSdProtocolVersion = 6;
 
 /* What the storage daemon observed on a volume. It reports facts only;
  * the director decides the resulting volume status. */

@@ -241,6 +241,51 @@ static_assert(
     CorrectedSlot({.slot = 4, .in_changer = true, .same_storage = false}, 4)
     == 4);
 
+TEST(storage_manager, only_one_caller_refreshes_unknown_slots)
+{
+  StorageModel model("Tape");
+  EXPECT_FALSE(model.SlotsKnown());
+  EXPECT_TRUE(model.BeginSlotRefresh());
+  EXPECT_FALSE(model.BeginSlotRefresh());
+  SetupChanger(model);
+  model.EndSlotRefresh();
+  EXPECT_TRUE(model.SlotsKnown());
+  EXPECT_FALSE(model.BeginSlotRefresh());
+  model.InvalidateSlots();
+  EXPECT_TRUE(model.BeginSlotRefresh());
+  // a failed listing leaves the slots unknown, the next caller retries
+  model.EndSlotRefresh();
+  EXPECT_TRUE(model.BeginSlotRefresh());
+}
+
+TEST(storage_manager, storage_daemon_restart_makes_slots_unknown)
+{
+  StorageModel model("Tape");
+  SetupChanger(model);
+  EXPECT_FALSE(model.NoteStorageDaemonEpoch("100-1"));
+  EXPECT_TRUE(model.SlotsKnown());
+  EXPECT_FALSE(model.NoteStorageDaemonEpoch("100-1"));
+  EXPECT_TRUE(model.SlotsKnown());
+  EXPECT_TRUE(model.NoteStorageDaemonEpoch("200-2"));
+  EXPECT_FALSE(model.SlotsKnown());
+}
+
+using directordaemon::storage_manager::CatalogFix;
+using directordaemon::storage_manager::CatalogFixFor;
+using directordaemon::storage_manager::CatalogFixKind;
+// catalog and changer agree, or the changer does not know the slot
+static_assert(CatalogFixFor(4, true, 4) == CatalogFix{});
+static_assert(CatalogFixFor(4, true, std::nullopt) == CatalogFix{});
+static_assert(CatalogFixFor(std::nullopt, false, std::nullopt) == CatalogFix{});
+// the volume is in another slot or missing from the catalog changer view
+static_assert(CatalogFixFor(5, true, 4)
+              == CatalogFix{CatalogFixKind::kSetSlot, 4});
+static_assert(CatalogFixFor(std::nullopt, true, 4)
+              == CatalogFix{CatalogFixKind::kSetSlot, 4});
+// the catalog places a volume in the changer that is not there
+static_assert(CatalogFixFor(4, false, std::nullopt)
+              == CatalogFix{CatalogFixKind::kNotInChanger, 0});
+
 TEST(storage_manager, knows_bound_devices)
 {
   StorageModel model("Tape");
@@ -489,6 +534,10 @@ TEST(device_inventory, format_and_parse_round_trip)
   EXPECT_EQ(*parsed, empty);
 
   EXPECT_FALSE(ParseDeviceInventory("3900 Invalid command: inventory\n"));
+  EXPECT_FALSE(ParseInventoryEpoch(FormatDeviceInventory(empty).c_str()));
+  EXPECT_EQ(ParseInventoryEpoch(FormatInventoryEpoch(1700000000, 42).c_str()),
+            "1700000000-42");
+  EXPECT_FALSE(ParseDeviceInventory(FormatInventoryEpoch(1, 2).c_str()));
 }
 
 TEST(device_inventory, selects_devices_of_storage)

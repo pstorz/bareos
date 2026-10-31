@@ -37,6 +37,8 @@ inline constexpr const char kScan[]
       "blocked=%d reading=%d appending=%d writers=%d reserved=%d slot=%d "
       "volume=%127s pool=%127s";
 inline constexpr std::string_view kNone = "*None*";
+inline constexpr const char kEpochFormat[] = "storage epoch=%lld-%lld\n";
+inline constexpr const char kEpochScan[] = "storage epoch=%127s";
 
 std::string Encode(const std::string& value)
 {
@@ -95,4 +97,18 @@ std::optional<DeviceInventoryEntry> ParseDeviceInventory(const char* line)
   e.reading = reading != 0;
   e.appending = appending != 0;
   return e;
+}
+
+std::string FormatInventoryEpoch(long long start_time, long long pid)
+{
+  PoolMem line;
+  Mmsg(line, kEpochFormat, start_time, pid);
+  return line.c_str();
+}
+
+std::optional<std::string> ParseInventoryEpoch(const char* line)
+{
+  char epoch[128];
+  if (bsscanf(line, kEpochScan, epoch) != 1) { return std::nullopt; }
+  return std::string{epoch};
 }

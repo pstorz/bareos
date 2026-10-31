@@ -134,4 +134,51 @@ expect_grep 'Read lease on volume 000004HD in Drive-' \
 expect_not_grep "JobId" "${tmp}/model-after-restore.out" \
   "read lease was not released at the end of the restore"
 
+# A restarted storage daemon may see other volumes in the changer: the
+# director notices the restart, lists the changer again and corrects the
+# catalog before the next job.
+cat <<END_OF_DATA >"$tmp/bconcmds-restart"
+@$out ${NULL_DEV}
+status storage=File model
+update volume=000004HD slot=6
+END_OF_DATA
+run_bconsole "$tmp/bconcmds-restart"
+
+"${BAREOS_SCRIPTS_DIR}"/bareos-ctl-sd stop
+"${BAREOS_SCRIPTS_DIR}"/bareos-ctl-sd start
+sleep 2
+
+cat <<END_OF_DATA >"$tmp/bconcmds-restart"
+@$out ${NULL_DEV}
+messages
+setdebug level=100 trace=1 director
+@$out ${tmp}/job-after-restart.out
+run job=backup-bareos-fd level=Full pool=Differential storage=File yes
+wait
+messages
+@$out ${tmp}/list-after-restart.out
+setdebug level=0 trace=0 director
+list volume=000004HD
+@$out ${NULL_DEV}
+release drive=0
+release drive=1
+release drive=2
+purge jobs client=bareos-fd yes
+END_OF_DATA
+run_bconsole "$tmp/bconcmds-restart"
+
+expect_grep "Backup OK" "${tmp}/job-after-restart.out" \
+  "backup after a storage daemon restart was not successful"
+expect_grep 'Storage daemon of storage File restarted' \
+  "${working_dir}/bareos-dir.trace" \
+  "director did not notice the storage daemon restart"
+expect_grep 'Listing the changer of storage File' \
+  "${working_dir}/bareos-dir.trace" \
+  "director did not list the changer after the restart"
+expect_grep 'Volume "000004HD" is in slot 4 of storage "File", the catalog said slot 6' \
+  "${tmp}/job-after-restart.out" \
+  "director did not correct the catalog after the restart"
+expect_grep '| *000004HD *|.*| *4 *|' "${tmp}/list-after-restart.out" \
+  "catalog slot was not corrected after the restart"
+
 end_test

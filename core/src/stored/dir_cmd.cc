@@ -613,6 +613,10 @@ static bool InventoryCmd(JobControlRecord* jcr)
   BareosSocket* dir = jcr->dir_bsock;
   DeviceResource* device_resource;
 
+  dir->fsend("%s",
+             FormatInventoryEpoch(static_cast<long long>(daemon_start_time),
+                                  static_cast<long long>(getpid()))
+                 .c_str());
   foreach_res (device_resource, R_DEVICE) {
     // the template of multiplied devices is no usable device
     if (device_resource->count > 1) { continue; }

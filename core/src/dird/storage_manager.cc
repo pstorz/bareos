@@ -144,6 +144,35 @@ void StorageModel::InvalidateSlots()
   slots_valid_ = false;
 }
 
+bool StorageModel::SlotsKnown() const
+{
+  std::lock_guard lock(mutex_);
+  return slots_valid_;
+}
+
+bool StorageModel::BeginSlotRefresh()
+{
+  std::lock_guard lock(mutex_);
+  if (slots_valid_ || slot_refresh_running_) { return false; }
+  slot_refresh_running_ = true;
+  return true;
+}
+
+void StorageModel::EndSlotRefresh()
+{
+  std::lock_guard lock(mutex_);
+  slot_refresh_running_ = false;
+}
+
+bool StorageModel::NoteStorageDaemonEpoch(const std::string& epoch)
+{
+  std::lock_guard lock(mutex_);
+  const bool restarted = sd_epoch_ && *sd_epoch_ != epoch;
+  sd_epoch_ = epoch;
+  if (restarted) { slots_valid_ = false; }
+  return restarted;
+}
+
 std::optional<DriveChoice> StorageModel::ChooseDrive(
     const std::string& volume) const
 {

@@ -161,11 +161,13 @@ static bool ReserveDevice(JobControlRecord* jcr,
 
   std::vector<StorageResource*> stores;
   for (auto* storage : storages) { stores.push_back(storage); }
-  auto inventory = QueryDeviceInventory(sd_socket);
+  std::string epoch;
+  auto inventory = QueryDeviceInventory(sd_socket, &epoch);
   if (inventory) {
-    ApplyDeviceInventory(*inventory, stores);
+    ApplyDeviceInventory(*inventory, stores, epoch);
     SetPoolsFromCatalog(jcr, *inventory);
   }
+  for (auto* store : stores) { EnsureSlotInventory(jcr, store); }
 
   storage_manager::DeviceRequest request;
   request.append = append;

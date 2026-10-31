@@ -96,10 +96,18 @@ bool IsSameStorageDaemon(StorageResource* read_storage,
 /* Ask the storage daemon for the state of its devices; nullopt if it
  * did not answer with an inventory. */
 std::optional<std::vector<DeviceInventoryEntry>> QueryDeviceInventory(
-    BareosSocket* sd);
-// Update the storage model of the given storages from an inventory.
+    BareosSocket* sd,
+    std::string* epoch = nullptr);
+/* Update the storage model of the given storages from an inventory and
+ * the epoch of the storage daemon that sent it. */
 void ApplyDeviceInventory(const std::vector<DeviceInventoryEntry>& inventory,
-                          const std::vector<StorageResource*>& stores);
+                          const std::vector<StorageResource*>& stores,
+                          const std::string& epoch = {});
+/* Make sure the storage model knows the slots of an autochanger: list
+ * the changer if they are unknown (director start, operator commands,
+ * storage daemon restart) and correct Slot and InChanger in the catalog
+ * from the listing. */
+void EnsureSlotInventory(JobControlRecord* jcr, StorageResource* store);
 // Query the inventory and apply it; false if it could not be queried.
 bool RefreshDeviceInventory(BareosSocket* sd,
                             const std::vector<StorageResource*>& stores);

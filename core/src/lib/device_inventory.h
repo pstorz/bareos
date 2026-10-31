@@ -56,4 +56,9 @@ inline constexpr std::string_view kInventoryCommand = "inventory\n";
 std::string FormatDeviceInventory(const DeviceInventoryEntry& entry);
 std::optional<DeviceInventoryEntry> ParseDeviceInventory(const char* line);
 
+/* The inventory starts with the epoch of the storage daemon: it changes
+ * when the storage daemon restarts. */
+std::string FormatInventoryEpoch(long long start_time, long long pid);
+std::optional<std::string> ParseInventoryEpoch(const char* line);
+
 #endif  // BAREOS_LIB_DEVICE_INVENTORY_H_
