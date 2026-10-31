@@ -460,6 +460,20 @@ VolumeReservationItem* reserve_volume(DeviceControlRecord* dcr,
                 dcr->dev->print_name());
         }
 
+        const int other_drive = vol->dev->AttachedToAutochanger()
+                                    ? vol->dev->device_resource->drive_index
+                                    : -1;
+        const auto instruction = dcr->DirChangerInstruction(VolumeName);
+        if (!MayTakeVolumeFromDrive(instruction, other_drive)) {
+          Mmsg(dcr->jcr->errmsg,
+               T_("Volume \"%s\" is in device %s, the director did not ask "
+                  "to move it (changer action %s).\n"),
+               VolumeName, vol->dev->print_name(),
+               std::string{ChangerActionName(instruction.action)}.c_str());
+          Dmsg1(debuglevel, "%s", dcr->jcr->errmsg);
+          vol = NULL;
+          goto get_out;
+        }
         if (!vol->dev->IsBusy() && !vol->IsSwapping()) {
           slot_number_t slot;
 

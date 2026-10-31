@@ -86,7 +86,7 @@ inline constexpr const char OK_media[]
       " MaxVolJobs=%u MaxVolFiles=%u InChanger=%d VolReadTime=%s"
       " VolWriteTime=%s EndFile=%u EndBlock=%u LabelType=%d"
       " MediaId=%s EncryptionKey=%s MinBlocksize=%" PRIu32
-      " MaxBlocksize=%" PRIu32 " Relabel=%d\n";
+      " MaxBlocksize=%" PRIu32 " Relabel=%d Changer=%s FromDrive=%d\n";
 inline constexpr const char OK_create[] = "1000 OK CreateJobMedia\n";
 inline constexpr const char OK_delete[] = "1000 OK DeleteNullJobmediaRecords\n";
 
@@ -98,7 +98,8 @@ inline constexpr const char OK_delete[] = "1000 OK DeleteNullJobmediaRecords\n";
 // Requests from the Storage daemon
 static int SendVolumeInfoToStorageDaemon(JobControlRecord* jcr,
                                          BareosSocket* sd,
-                                         MediaDbRecord* mr)
+                                         MediaDbRecord* mr,
+                                         ChangerInstruction changer = {})
 {
   int status;
   char ed1[50], ed2[50], ed3[50], ed4[50], ed5[50], ed6[50];
@@ -115,7 +116,9 @@ static int SendVolumeInfoToStorageDaemon(JobControlRecord* jcr,
       edit_int64(mr->VolReadTime, ed4), edit_int64(mr->VolWriteTime, ed5),
       mr->EndFile, mr->EndBlock, mr->LabelType, edit_uint64(mr->MediaId, ed6),
       mr->EncrKey, mr->MinBlocksize, mr->MaxBlocksize,
-      MustRewriteLabel(mr->VolStatus) ? 1 : 0);
+      MustRewriteLabel(mr->VolStatus) ? 1 : 0,
+      std::string{ChangerActionName(changer.action)}.c_str(),
+      changer.from_drive);
   UnbashSpaces(mr->VolumeName);
   Dmsg2(100, "Vol Info for %s: %s", jcr->Job, sd->msg);
   return status;
@@ -280,6 +283,22 @@ void ReconcileVolumeLocation(JobControlRecord* jcr,
   }
 }
 
+/* The director decides how the drive gets the volume: whether the
+ * storage daemon may take it from another drive. */
+ChangerInstruction PlanVolumeChange(JobControlRecord* jcr,
+                                    const std::optional<AppendTarget>& target,
+                                    const char* volume)
+{
+  if (!target) { return {}; }
+  auto instruction
+      = target->model->PlanVolumeChange(target->drive, volume, jcr->JobId);
+  Dmsg4(100, "Changer action for volume %s in %s: %s from drive %d\n", volume,
+        target->drive.c_str(),
+        std::string{ChangerActionName(instruction.action)}.c_str(),
+        instruction.from_drive);
+  return instruction;
+}
+
 constexpr int kMaxLeaseAttempts = 10;
 
 /* Offer the volume already loaded in the drive if the job may append to
@@ -358,6 +377,7 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
               &device, &drive_index, unwanted_volumes.c_str())
       == 7) {
     PoolDbRecord pr;
+    std::optional<AppendTarget> target;
     bstrncpy(pr.Name, pool_name, sizeof(pr.Name));
     UnbashSpaces(pr.Name);
     ok = jcr->db->GetPoolRecord(jcr, &pr);
@@ -368,7 +388,7 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
       /* A volume appended to by another job on another drive cannot be
        * used here. Lease the candidate in the storage model, skip it if it
        * is held elsewhere. */
-      auto target = GetAppendTarget(jcr, device, drive_index);
+      target = GetAppendTarget(jcr, device, drive_index);
       std::string unwanted{unwanted_volumes.c_str()};
       const MediaDbRecord request = mr;
       const bool prefer_loaded
@@ -407,7 +427,8 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
     }
 
     if (ok) {
-      SendVolumeInfoToStorageDaemon(jcr, bs, &mr);
+      SendVolumeInfoToStorageDaemon(
+          jcr, bs, &mr, PlanVolumeChange(jcr, target, mr.VolumeName));
     } else {
       bs->fsend(T_("1901 No Media.\n"));
       Dmsg0(500, "1901 No Media.\n");
@@ -457,9 +478,10 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
       }
 
       if (reason == NULL) {
-        ReconcileVolumeLocation(jcr, GetJobDrive(jcr, device, drive_index),
-                                &mr);
-        SendVolumeInfoToStorageDaemon(jcr, bs, &mr);
+        auto target = GetJobDrive(jcr, device, drive_index);
+        ReconcileVolumeLocation(jcr, target, &mr);
+        SendVolumeInfoToStorageDaemon(
+            jcr, bs, &mr, PlanVolumeChange(jcr, target, mr.VolumeName));
       } else {
         /* Not suitable volume */
         bs->fsend(T_("1998 Volume \"%s\" catalog status is %s, %s.\n"),

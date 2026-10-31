@@ -468,6 +468,38 @@ std::vector<Divergence> StorageModel::FindDivergences(
   return result;
 }
 
+ChangerInstruction StorageModel::PlanVolumeChange(const std::string& drive,
+                                                  const std::string& volume,
+                                                  JobId job) const
+{
+  std::lock_guard lock(mutex_);
+  VolumeWhereabouts w;
+  w.known = slots_valid_;
+  const DriveState* requesting = FindDrive(drive);
+  w.changer_drive
+      = requesting && requesting->changer && DriveIndexOf(drive).has_value();
+  for (const auto& d : drives_) {
+    if (d.loaded_volume != volume) { continue; }
+    if (d.name == drive) {
+      w.in_requesting_drive = true;
+      continue;
+    }
+    auto index = DriveIndexOf(d.name);
+    if (!d.changer || !index) { continue; }
+    w.other_drive = index;
+    w.other_drive_busy = d.pending;
+    for (const auto& [leased, lease] : leases_) {
+      if (lease.drive == d.name && lease.job != job) {
+        w.other_drive_busy = true;
+      }
+    }
+  }
+  for (const auto& slot : slots_) {
+    if (slot.volume == volume) { w.in_slot = true; }
+  }
+  return PlanChange(w);
+}
+
 std::string DriveName(int drive_index)
 {
   return "Drive-" + std::to_string(drive_index);

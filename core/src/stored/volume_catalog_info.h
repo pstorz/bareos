@@ -24,6 +24,7 @@
 #define BAREOS_STORED_VOLUME_CATALOG_INFO_H_
 
 #include "include/bareos.h"
+#include "include/dir_sd_protocol.h"
 
 namespace storagedaemon {
 
@@ -61,6 +62,7 @@ struct VolumeCatalogInfo {
                                 */
   uint32_t VolMinBlocksize{0}; /**< Volume Minimum Blocksize */
   uint32_t VolMaxBlocksize{0}; /**< Volume Maximum Blocksize */
+  ChangerInstruction changer{}; /**< how the director wants it loaded */
 };
 /* clang-format on */
 

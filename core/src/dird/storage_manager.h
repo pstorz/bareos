@@ -39,6 +39,7 @@
 #include <string_view>
 #include <vector>
 
+#include "include/dir_sd_protocol.h"
 #include "lib/device_inventory.h"
 
 namespace directordaemon::storage_manager {
@@ -181,6 +182,46 @@ constexpr CatalogFix CatalogFixFor(std::optional<int> catalog_slot,
   return {};
 }
 
+/* Drive index of an autochanger drive of the model ("Drive-<n>"). */
+constexpr std::optional<int> DriveIndexOf(std::string_view drive)
+{
+  constexpr std::string_view prefix = "Drive-";
+  if (!drive.starts_with(prefix) || drive.size() == prefix.size()) {
+    return std::nullopt;
+  }
+  int index = 0;
+  for (char c : drive.substr(prefix.size())) {
+    if (c < '0' || c > '9' || index > 100000) { return std::nullopt; }
+    index = index * 10 + (c - '0');
+  }
+  return index;
+}
+
+// Where the storage model knows a volume to be, seen from one drive.
+struct VolumeWhereabouts {
+  bool known{false};          // the model holds a current changer listing
+  bool changer_drive{false};  // the requesting drive is an autochanger drive
+  bool in_requesting_drive{false};
+  std::optional<int> other_drive;  // index of another drive holding it
+  bool other_drive_busy{false};    // another job uses that drive
+  bool in_slot{false};
+};
+
+/* How the requesting drive gets the volume. Without a current listing
+ * or outside of an autochanger the storage daemon decides as before. */
+constexpr ChangerInstruction PlanChange(const VolumeWhereabouts& w)
+{
+  if (!w.known || !w.changer_drive) { return {}; }
+  if (w.in_requesting_drive) { return {ChangerAction::kMounted, -1}; }
+  if (w.other_drive) {
+    return {
+        w.other_drive_busy ? ChangerAction::kBusy : ChangerAction::kTransfer,
+        *w.other_drive};
+  }
+  if (w.in_slot) { return {ChangerAction::kLoad, -1}; }
+  return {};
+}
+
 struct DriveChoice {
   std::string drive;
   DriveCandidate kind{DriveCandidate::kUnusable};
@@ -219,6 +260,12 @@ class StorageModel {
    * daemon may have found other volumes in the changer, so the slots
    * become unknown. Returns true if a restart was detected. */
   bool NoteStorageDaemonEpoch(const std::string& epoch);
+
+  /* Decide how a drive gets a volume for a job, see PlanChange(). The
+   * drive holding it is busy if another job holds a lease there. */
+  ChangerInstruction PlanVolumeChange(const std::string& drive,
+                                      const std::string& volume,
+                                      JobId job) const;
 
   // Pick the best drive to use for a volume; nullopt if none is usable.
   std::optional<DriveChoice> ChooseDrive(const std::string& volume) const;

@@ -108,7 +108,8 @@ inline constexpr const char OK_media[]
       " Slot=%ld MaxVolJobs=%lu MaxVolFiles=%lu InChanger=%ld"
       " VolReadTime=%lld VolWriteTime=%lld EndFile=%lu EndBlock=%lu"
       " LabelType=%ld MediaId=%lld EncryptionKey=%127s"
-      " MinBlocksize=%lu MaxBlocksize=%lu Relabel=%ld\n";
+      " MinBlocksize=%lu MaxBlocksize=%lu Relabel=%ld Changer=%15s"
+      " FromDrive=%d\n";
 inline constexpr const char OK_create[] = "1000 OK CreateJobMedia\n";
 
 /**
@@ -132,6 +133,8 @@ static bool DoGetVolumeInfo(DeviceControlRecord* dcr)
   int n;
   int32_t InChanger;
   int32_t relabel;
+  char changer_action[16]{};
+  int32_t from_drive = -1;
 
   dcr->setVolCatInfo(false);
   if (dir->recv() <= 0) {
@@ -148,8 +151,9 @@ static bool DoGetVolumeInfo(DeviceControlRecord* dcr)
               &vol.Slot, &vol.VolCatMaxJobs, &vol.VolCatMaxFiles, &InChanger,
               &vol.VolReadTime, &vol.VolWriteTime, &vol.EndFile, &vol.EndBlock,
               &vol.LabelType, &vol.VolMediaId, vol.VolEncrKey,
-              &vol.VolMinBlocksize, &vol.VolMaxBlocksize, &relabel);
-  if (n != 25) {
+              &vol.VolMinBlocksize, &vol.VolMaxBlocksize, &relabel,
+              changer_action, &from_drive);
+  if (n != 27) {
     Dmsg3(debuglevel, "Bad response from Dir fields=%d, len=%d: %s", n,
           dir->message_length, dir->msg);
     Mmsg(jcr->errmsg, T_("Error getting Volume info: %s"), dir->msg);
@@ -157,6 +161,7 @@ static bool DoGetVolumeInfo(DeviceControlRecord* dcr)
   }
   vol.InChanger = InChanger; /* bool in structure */
   vol.relabel = relabel != 0;
+  vol.changer = {ParseChangerAction(changer_action), from_drive};
   vol.is_valid = true;
   UnbashSpaces(vol.VolCatName);
   bstrncpy(dcr->VolumeName, vol.VolCatName, sizeof(dcr->VolumeName));

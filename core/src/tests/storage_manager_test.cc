@@ -270,6 +270,75 @@ TEST(storage_manager, storage_daemon_restart_makes_slots_unknown)
   EXPECT_FALSE(model.SlotsKnown());
 }
 
+TEST(storage_manager, plans_how_a_drive_gets_a_volume)
+{
+  StorageModel model("Tape");
+  using I = ChangerInstruction;
+  // without a changer listing the storage daemon decides
+  EXPECT_EQ(model.PlanVolumeChange("Drive-0", "A1", 1), I{});
+  SetupChanger(model);
+  EXPECT_EQ(model.PlanVolumeChange("Drive-0", "A1", 1),
+            (I{ChangerAction::kLoad, -1}));
+  EXPECT_EQ(model.PlanVolumeChange("Drive-0", "X", 1), I{});
+
+  ASSERT_TRUE(model.VolumeLoaded("Drive-1", "A2", 2));
+  EXPECT_EQ(model.PlanVolumeChange("Drive-1", "A2", 1),
+            (I{ChangerAction::kMounted, -1}));
+  EXPECT_EQ(model.PlanVolumeChange("Drive-0", "A2", 1),
+            (I{ChangerAction::kTransfer, 1}));
+
+  // a job reading in drive 1 keeps the volume there
+  ASSERT_EQ(model.AcquireLease(2, "A2", AccessMode::kRead, "Drive-1"),
+            LeaseResult::kGranted);
+  EXPECT_EQ(model.PlanVolumeChange("Drive-0", "A2", 1),
+            (I{ChangerAction::kBusy, 1}));
+  EXPECT_EQ(model.PlanVolumeChange("Drive-0", "A2", 2),
+            (I{ChangerAction::kTransfer, 1}));
+  model.ReleaseLeases(2);
+  model.MarkPending("Drive-1", true);
+  EXPECT_EQ(model.PlanVolumeChange("Drive-0", "A2", 1),
+            (I{ChangerAction::kBusy, 1}));
+
+  model.InvalidateSlots();
+  EXPECT_EQ(model.PlanVolumeChange("Drive-0", "A2", 1), I{});
+}
+
+static_assert(DriveIndexOf("Drive-12") == 12);
+static_assert(!DriveIndexOf("Drive-"));
+static_assert(!DriveIndexOf("Drive-1a"));
+static_assert(!DriveIndexOf("FileStorage"));
+
+static_assert(PlanChange({.known = true,
+                          .changer_drive = false,
+                          .in_requesting_drive = true,
+                          .other_drive = std::nullopt,
+                          .other_drive_busy = false,
+                          .in_slot = false})
+              == ChangerInstruction{});
+static_assert(PlanChange({.known = true,
+                          .changer_drive = true,
+                          .in_requesting_drive = false,
+                          .other_drive = 3,
+                          .other_drive_busy = false,
+                          .in_slot = true})
+              == ChangerInstruction{ChangerAction::kTransfer, 3});
+static_assert(PlanChange({.known = true,
+                          .changer_drive = true,
+                          .in_requesting_drive = false,
+                          .other_drive = std::nullopt,
+                          .other_drive_busy = false,
+                          .in_slot = false})
+              == ChangerInstruction{});
+
+static_assert(ParseChangerAction(ChangerActionName(ChangerAction::kTransfer))
+              == ChangerAction::kTransfer);
+static_assert(ParseChangerAction("bogus") == ChangerAction::kUnknown);
+static_assert(MayTakeVolumeFromDrive({}, 2));
+static_assert(MayTakeVolumeFromDrive({ChangerAction::kTransfer, 2}, 2));
+static_assert(!MayTakeVolumeFromDrive({ChangerAction::kTransfer, 1}, 2));
+static_assert(!MayTakeVolumeFromDrive({ChangerAction::kLoad, -1}, 2));
+static_assert(!MayTakeVolumeFromDrive({ChangerAction::kBusy, 2}, 2));
+
 using directordaemon::storage_manager::CatalogFix;
 using directordaemon::storage_manager::CatalogFixFor;
 using directordaemon::storage_manager::CatalogFixKind;

@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2012 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2025 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -140,6 +140,12 @@ class DeviceControlRecord {
   bool FoundInUse() const { return found_in_use_; }
 
   bool haveVolCatInfo() const { return VolCatInfo.is_valid; }
+  // The changer action the director sent with the info for this volume.
+  ChangerInstruction DirChangerInstruction(const char* volume) const
+  {
+    if (!volume || !bstrcmp(VolCatInfo.VolCatName, volume)) { return {}; }
+    return VolCatInfo.changer;
+  }
   void setVolCatName(const char* name)
   {
     bstrncpy(VolCatInfo.VolCatName, name, sizeof(VolCatInfo.VolCatName));

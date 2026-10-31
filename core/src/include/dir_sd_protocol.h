@@ -34,8 +34,68 @@
  *   4: drive events report autochanger loads and unloads
  *   5: UpdateMedia reports a volume event instead of status, slot and
  *      InChanger
- *   6: the inventory starts with the epoch of the storage daemon */
-inline constexpr int kDirSdProtocolVersion = 6;
+ *   6: the inventory starts with the epoch of the storage daemon
+ *   7: volume info carries the changer action the director decided */
+inline constexpr int kDirSdProtocolVersion = 7;
+
+/* How the requesting drive gets the volume, decided by the director from
+ * its storage model and sent with the volume info. */
+enum class ChangerAction
+{
+  kUnknown,   // no decision, the storage daemon acts on its own
+  kMounted,   // already in the requesting drive
+  kLoad,      // load it from its slot
+  kTransfer,  // take it from the idle drive from_drive
+  kBusy       // another job uses it in drive from_drive, do not take it
+};
+
+struct ChangerInstruction {
+  ChangerAction action{ChangerAction::kUnknown};
+  int from_drive{-1};
+  constexpr bool operator==(const ChangerInstruction&) const = default;
+};
+
+constexpr std::string_view ChangerActionName(ChangerAction action)
+{
+  switch (action) {
+    case ChangerAction::kMounted:
+      return "mounted";
+    case ChangerAction::kLoad:
+      return "load";
+    case ChangerAction::kTransfer:
+      return "transfer";
+    case ChangerAction::kBusy:
+      return "busy";
+    case ChangerAction::kUnknown:
+      break;
+  }
+  return "unknown";
+}
+
+constexpr ChangerAction ParseChangerAction(std::string_view name)
+{
+  for (auto action : {ChangerAction::kMounted, ChangerAction::kLoad,
+                      ChangerAction::kTransfer, ChangerAction::kBusy}) {
+    if (ChangerActionName(action) == name) { return action; }
+  }
+  return ChangerAction::kUnknown;
+}
+
+/* May the storage daemon move the volume it finds in another drive of the
+ * autochanger (drive index other_drive) into the requesting drive? Only
+ * if the director asked for exactly that transfer, or decided nothing. */
+constexpr bool MayTakeVolumeFromDrive(const ChangerInstruction& instruction,
+                                      int other_drive)
+{
+  switch (instruction.action) {
+    case ChangerAction::kUnknown:
+      return true;
+    case ChangerAction::kTransfer:
+      return instruction.from_drive == other_drive;
+    default:
+      return false;
+  }
+}
 
 /* What the storage daemon observed on a volume. It reports facts only;
  * the director decides the resulting volume status. */

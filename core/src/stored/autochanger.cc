@@ -198,7 +198,27 @@ int AutoloadDevice(DeviceControlRecord* dcr, int writing, BareosSocket* dir)
       }
 
       auto* other_device = FindDriveForSlot(dcr, wanted_slot);
+      const auto instruction = dcr->DirChangerInstruction(dcr->VolumeName);
+      if (other_device
+          && !MayTakeVolumeFromDrive(instruction, other_device->drive_index)) {
+        Jmsg(jcr, M_WARNING, 0,
+             T_("Volume \"%s\" wanted on %s is in device %s, the director "
+                "did not ask to move it (changer action %s).\n"),
+             dcr->VolumeName, dcr->dev->print_name(),
+             other_device->print_name(),
+             std::string{ChangerActionName(instruction.action)}.c_str());
+        VolumeUnused(dcr);
+        UnlockChanger(dcr);
+        goto bail_out;
+      }
       if (other_device) {
+        if (instruction.action == ChangerAction::kTransfer) {
+          Jmsg(jcr, M_INFO, 0,
+               T_("Moving Volume \"%s\" from %s to %s as the director "
+                  "asked.\n"),
+               dcr->VolumeName, other_device->print_name(),
+               dcr->dev->print_name());
+        }
         int retries = 0;
         while (retries < 3
                && (other_device->IsBusy() || other_device->IsBlocked())) {
