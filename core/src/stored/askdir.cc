@@ -34,6 +34,7 @@
 #include "lib/parse_conf.h"
 #include "stored/stored.h"
 #include "stored/stored_globals.h"
+#include "stored/stored_jcr_impl.h"
 
 #include "include/jcr.h"
 #include "lib/crypto_cache.h"
@@ -744,17 +745,17 @@ void ReportDriveEvent(JobControlRecord* jcr,
                       int slot,
                       const char* volume)
 {
-  if (!jcr || jcr->JobId == 0 || !jcr->dir_bsock || !dev
-      || !dev->AttachedToAutochanger()) {
+  if (!jcr || !jcr->dir_bsock || !dev || !dev->AttachedToAutochanger()) {
     return;
   }
+  if (jcr->JobId == 0 && !jcr->sd_impl->report_drive_events) { return; }
   DeviceIdentity identity(dev);
   std::string name{(volume && volume[0]) ? volume : "*None*"};
   BashSpaces(name);
   // no reply, the director only records the event
-  jcr->dir_bsock->fsend(Drive_event, jcr->Job, identity.name.c_str(),
-                        identity.drive_index, loaded ? "load" : "unload", slot,
-                        name.c_str());
+  jcr->dir_bsock->fsend(Drive_event, jcr->Job[0] ? jcr->Job : "*Operator*",
+                        identity.name.c_str(), identity.drive_index,
+                        loaded ? "load" : "unload", slot, name.c_str());
   Dmsg1(debuglevel, ">dird %s", jcr->dir_bsock->msg);
 }
 

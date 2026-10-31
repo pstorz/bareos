@@ -78,6 +78,8 @@ void StorageReleaseVolList(StorageResource* store,
                            changer_vol_list_t* vol_list);
 void StorageFreeVolList(StorageResource* store, changer_vol_list_t* vol_list);
 void InvalidateVolList(StorageResource* store);
+// Drop the cached changer listing, but keep the slots of the storage model.
+void InvalidateCachedVolList(StorageResource* store);
 /* Volumes were moved by an operator command, the slot inventory of the
  * storage model is outdated until the next changer listing. */
 void InvalidateStorageModel(StorageResource* store);

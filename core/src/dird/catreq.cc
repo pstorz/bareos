@@ -186,9 +186,10 @@ void LeaseReadVolume(JobControlRecord* jcr,
 
 std::optional<AppendTarget> GetJobDrive(JobControlRecord* jcr,
                                         char* device,
-                                        int drive_index)
+                                        int drive_index,
+                                        bool operator_command = false)
 {
-  if (jcr->JobId == 0) { return std::nullopt; }
+  if (jcr->JobId == 0 && !operator_command) { return std::nullopt; }
   UnbashSpaces(device);
   std::shared_ptr<storage_manager::StorageModel> chosen;
   for (StorageResource* store :
@@ -217,7 +218,8 @@ void ApplyDriveEvent(JobControlRecord* jcr,
                      int slot,
                      char* volume)
 {
-  auto target = GetJobDrive(jcr, device, drive_index);
+  // operator commands (mount, unmount, release) report their changes too
+  auto target = GetJobDrive(jcr, device, drive_index, true);
   if (!target) { return; }
   UnbashSpaces(volume);
   std::string reported = bstrcmp(volume, "*None*") ? "" : volume;

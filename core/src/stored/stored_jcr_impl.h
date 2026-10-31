@@ -3,7 +3,7 @@
 
    Copyright (C) 2000-2012 Free Software Foundation Europe e.V.
    Copyright (C) 2011-2012 Planets Communications B.V.
-   Copyright (C) 2013-2024 Bareos GmbH & Co. KG
+   Copyright (C) 2013-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -90,6 +90,7 @@ struct StoredJcrImpl {
   int64_t spool_size{};           /**< Spool size for this job */
   bool spool_data{};              /**< Set to spool data */
   storagedaemon::DirectorResource* director{}; /**< Director resource */
+  bool report_drive_events{};     /**< Operator command of the director */
   alist<const char*>* plugin_options{};        /**< Specific Plugin Options sent by DIR */
   std::vector<storagedaemon::director_storage> dirstores{};           /**< List of storage devices sent by DIR */
   std::vector<std::string> reserve_msgs{};          /**< Reserve fail messages */

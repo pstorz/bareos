@@ -1010,6 +1010,11 @@ void InvalidateStorageModel(StorageResource* store)
 void InvalidateVolList(StorageResource* store)
 {
   InvalidateStorageModel(store);
+  InvalidateCachedVolList(store);
+}
+
+void InvalidateCachedVolList(StorageResource* store)
+{
   const std::lock_guard lock{store->runtime_storage_status->changer_lock};
   if (store->runtime_storage_status->vol_list) {
     Dmsg1(100, "Invalidating volume list at %p\n",

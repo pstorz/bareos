@@ -2560,7 +2560,13 @@ static void DoMountCmd(UaContext* ua, const char* cmd)
     }
   }
 
-  InvalidateVolList(store.store);
+  if (store.store->Protocol == APT_NATIVE) {
+    /* The storage daemon reported its loads and unloads as drive events,
+     * the storage model is up to date. */
+    InvalidateCachedVolList(store.store);
+  } else {
+    InvalidateVolList(store.store);
+  }
 }
 
 // mount [storage=<name>] [drive=nn] [slot=mm]

@@ -984,6 +984,8 @@ static DeviceControlRecord* FindDevice(JobControlRecord* jcr,
 // Mount command from Director
 static bool MountCmd(JobControlRecord* jcr)
 {
+  // the director applies the loads and unloads to its storage model
+  jcr->sd_impl->report_drive_events = true;
   PoolMem devname;
   BareosSocket* dir = jcr->dir_bsock;
   Device* dev;
@@ -1158,6 +1160,8 @@ static bool MountCmd(JobControlRecord* jcr)
 // unmount command from Director
 static bool UnmountCmd(JobControlRecord* jcr)
 {
+  // the director applies the loads and unloads to its storage model
+  jcr->sd_impl->report_drive_events = true;
   PoolMem devname;
   BareosSocket* dir = jcr->dir_bsock;
   Device* dev;
@@ -1252,6 +1256,8 @@ static bool UnmountCmd(JobControlRecord* jcr)
  */
 static bool ReleaseCmd(JobControlRecord* jcr)
 {
+  // the director applies the loads and unloads to its storage model
+  jcr->sd_impl->report_drive_events = true;
   PoolMem devname;
   BareosSocket* dir = jcr->dir_bsock;
   Device* dev;

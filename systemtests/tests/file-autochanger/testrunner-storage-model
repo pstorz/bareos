@@ -196,9 +196,6 @@ messages
 setdebug level=0 trace=0 director
 status storage=File model
 @$out ${NULL_DEV}
-release drive=0
-release drive=1
-release drive=2
 purge jobs client=bareos-fd yes
 END_OF_DATA
 run_bconsole "$tmp/bconcmds-transfer"
@@ -214,5 +211,41 @@ expect_grep 'Moving Volume "000008HD" from' "${tmp}/job-transfer.out" \
   "storage daemon did not move the volume as the director asked"
 expect_grep '^  Drive-0: volume "000008HD"' "${tmp}/model-after-transfer.out" \
   "model does not show the moved volume in drive 0"
+
+# Operator unloads are reported as drive events: the director keeps
+# the slots of its model and needs no new changer listing.
+cat <<END_OF_DATA >"$tmp/bconcmds-operator"
+@$out ${tmp}/operator-mount.out
+mount storage=File slot=8 drive=0
+setdebug level=100 trace=1 director
+@$out ${tmp}/operator-release.out
+release storage=File drive=0
+@$out ${tmp}/job-after-release.out
+run job=backup-bareos-fd level=Full pool=Full-0 storage=File yes
+wait
+messages
+@$out ${NULL_DEV}
+setdebug level=0 trace=0 director
+release drive=0
+release drive=1
+release drive=2
+purge jobs client=bareos-fd yes
+END_OF_DATA
+trace_lines=$(wc -l <"${working_dir}/bareos-dir.trace")
+run_bconsole "$tmp/bconcmds-operator"
+tail -n +"$((trace_lines + 1))" "${working_dir}/bareos-dir.trace" \
+  >"${tmp}/trace-operator.out"
+
+expect_grep 'DriveEvent: Drive-0 unloaded into slot 8' \
+  "${tmp}/trace-operator.out" \
+  "director did not apply the unload of the release command"
+expect_grep "Backup OK" "${tmp}/job-after-release.out" \
+  "backup after the release was not successful"
+expect_grep 'Changer action for volume 000008HD in Drive-0: load' \
+  "${tmp}/trace-operator.out" \
+  "director did not plan to load the released volume from its slot"
+expect_not_grep 'Listing the changer of storage File' \
+  "${tmp}/trace-operator.out" \
+  "director listed the changer again after the release"
 
 end_test
