@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+
+#   BAREOS® - Backup Archiving REcovery Open Sourced
+#
+#   Copyright (C) 2026-2026 Bareos GmbH & Co. KG
+#
+#   This program is Free Software; you can redistribute it and/or
+#   modify it under the terms of version three of the GNU Affero General Public
+#   License as published by the Free Software Foundation and included
+#   in the file LICENSE.
+#
+#   This program is distributed in the hope that it will be useful, but
+#   WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+#   Affero General Public License for more details.
+#
+#   You should have received a copy of the GNU Affero General Public License
+#   along with this program; if not, write to the Free Software
+#   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+#   02110-1301, USA.
+
+set -e
+set -o pipefail
+set -u
+
+TestName="$(basename "$(pwd)")"
+export TestName
+
+# shellcheck source=../../environment.in
+. ./environment
+
+# shellcheck source=../../scripts/functions
+. "${BAREOS_SCRIPTS_DIR}"/functions
+
+# Concurrent jobs of several pools append to small volumes and take new
+# volumes from the scratch pool at the same time. The director decides about volumes, drives and slots, so
+# no job may get a volume that is in use, loaded elsewhere or in a wrong
+# slot.
+
+start_test
+
+# every autochanger move takes AUTOCHANGER_ROBOT_DELAY seconds
+export BCONSOLE_TIMEOUT=900s
+jobs=6
+
+cat <<END_OF_DATA >"$tmp/bconcmds"
+@$out ${NULL_DEV}
+messages
+@$out ${tmp}/race-label.out
+label barcodes slots=10-21 drive=0 pool=Scratch yes
+release drive=0
+@# let the jobs use all drives
+setdevice storage=File device=File2 autoselect=yes
+setdevice storage=File device=File3 autoselect=yes
+setdevice storage=File device=File4 autoselect=yes
+END_OF_DATA
+
+run_bconsole "$@"
+
+{
+  echo "@$out ${tmp}/race-jobs.out"
+  for ((i = 0; i < jobs; i++)); do
+    echo "run job=backup-bareos-fd level=Full pool=Race-$((i % 3)) storage=File yes"
+  done
+  echo "wait"
+  echo "messages"
+  echo "@$out ${tmp}/race-volumes.out"
+  for ((i = 0; i < 3; i++)); do
+    echo "list volumes pool=Race-${i}"
+  done
+  echo "@$out ${tmp}/race-model.out"
+  echo "status storage=File model"
+  echo "@$out ${NULL_DEV}"
+  for drive in 0 1 2 3; do
+    echo "release drive=${drive}"
+  done
+  for device in File2 File3 File4; do
+    echo "setdevice storage=File device=${device} autoselect=no"
+  done
+  echo "@# later tests expect no previous backup"
+  echo "purge jobs client=bareos-fd yes"
+} >"$tmp/bconcmds"
+
+run_bconsole "$@"
+
+ok_jobs="$(grep -c "Termination:.*Backup OK" "${tmp}/race-jobs.out" || true)"
+if [[ "${ok_jobs}" != "${jobs}" ]]; then
+  echo "expected ${jobs} successful backups, got ${ok_jobs}" >&2
+  estat=1
+fi
+# the emulated tape drives cannot backspace at the end of a volume
+grep -v "Backspace file at EOT failed" "${tmp}/race-jobs.out" \
+  >"${tmp}/race-jobs-filtered.out"
+expect_not_grep "Fatal error\|ERR=\|Error:\|Warning:" \
+  "${tmp}/race-jobs-filtered.out" \
+  "jobs reported errors or warnings"
+used_drives="$(grep -o 'Using Device "File[0-9]"' "${tmp}/race-jobs.out" \
+  | sort -u | wc -l)"
+if ((used_drives < 3)); then
+  echo "expected the pools to use 3 drives, got ${used_drives}" >&2
+  estat=1
+fi
+expect_not_grep "in use\|Wrong Volume\|update slots" "${tmp}/race-jobs.out" \
+  "jobs raced for volumes or found wrong slots"
+expect_grep "End of medium on Volume" "${tmp}/race-jobs.out" \
+  "jobs did not change volumes"
+expect_not_grep '| Error ' "${tmp}/race-volumes.out" \
+  "a volume was marked in error"
+expect_not_grep 'Volume "0000\(1[0-9]\|2[01]\)HD"' "${tmp}/race-model.out" \
+  "catalog and storage daemon disagree about a volume"
+
+end_test

@@ -557,6 +557,7 @@ std::optional<std::vector<DeviceInventoryEntry>> QueryDeviceInventory(
   std::vector<DeviceInventoryEntry> inventory;
   while (sd->recv() >= 0) {
     if (auto entry = ParseDeviceInventory(sd->msg)) {
+      Dmsg1(150, "<stored: %s", sd->msg);
       inventory.push_back(std::move(*entry));
     } else {
       Dmsg1(100, "Unexpected inventory line: %s", sd->msg);

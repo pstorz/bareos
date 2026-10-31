@@ -1,6 +1,6 @@
 #   BAREOS® - Backup Archiving REcovery Open Sourced
 #
-#   Copyright (C) 2023-2023 Bareos GmbH & Co. KG
+#   Copyright (C) 2023-2026 Bareos GmbH & Co. KG
 #
 #   This program is Free Software; you can redistribute it and/or
 #   modify it under the terms of version three of the GNU Affero General Public
@@ -19,3 +19,8 @@
 
 get_filename_component(BASENAME ${CMAKE_CURRENT_BINARY_DIR} NAME)
 create_systemtest(${SYSTEMTEST_PREFIX} ${BASENAME})
+
+# every autochanger move of the emulated robot takes several seconds
+set_tests_properties(
+  ${SYSTEMTEST_PREFIX}${BASENAME}:volume-race PROPERTIES TIMEOUT 900
+)

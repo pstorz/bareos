@@ -121,10 +121,13 @@ Implemented so far (DIR-SD protocol version 4):
   drive events. The Director keeps the storage model current with them,
   sends the slot where the volume really is and corrects `Slot` and
   `InChanger` in the catalog.
+* The `file-autochanger` system test `volume-race` runs six concurrent
+  jobs in three pools on four drives with small volumes and checks that
+  no volume conflicts, wrong volumes or catalog divergences occur.
 
 Still open: the persistent control connection, volume events instead of
-status, Director driven load and unload, read sequencing and the removal of the legacy selection code in the Storage
-Daemon.
+status, Director driven load and unload, read sequencing and the removal
+of the legacy selection code in the Storage Daemon.
 
 ### Positive Consequences
 
