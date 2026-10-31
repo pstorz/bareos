@@ -66,8 +66,8 @@ run_bconsole "$@"
 
 expect_grep 'Storage "File": 4 drive(s)' "${tmp}/model.out" \
   "model does not contain the drives of the autochanger"
-expect_grep '^  Drive-3: ' "${tmp}/model.out" \
-  "model does not list drive 3"
+expect_grep '^  Drive-3: empty, device "File4"$' "${tmp}/model.out" \
+  "model does not map device File4 to drive 3"
 expect_grep '^  Slot 2: "000002HD"$' "${tmp}/model.out" \
   "model does not contain the volume in slot 2"
 expect_grep '^  Slot 34: empty$' "${tmp}/model.out" \
@@ -77,7 +77,7 @@ expect_grep 'Volume "000002HD": catalog not present, storage daemon slot 2' \
   "unlabeled volume in slot 2 is not reported as divergence"
 
 expect_grep "OK label" "${tmp}/label.out" "volume in slot 4 was not labeled"
-expect_grep '^  Drive-2: volume "000004HD" from slot 4$' \
+expect_grep '^  Drive-2: volume "000004HD" from slot 4, device "File3"$' \
   "${tmp}/model-labeled.out" \
   "model does not show the labeled volume in drive 2"
 expect_not_grep 'Volume "000004HD"' "${tmp}/model-labeled.out" \
@@ -87,9 +87,9 @@ expect_grep 'Volume "000005HD": catalog not present, storage daemon slot 5' \
   "unlabeled volume in slot 5 is not reported as divergence"
 
 expect_grep "Backup OK" "${tmp}/job.out" "backup was not successful"
-expect_grep 'volume "000004HD" from slot 4, device "File[1-4]"$' \
+expect_grep 'volume "000004HD" from slot 4, appending, device "File[1-4]"$' \
   "${tmp}/model-after-job.out" \
-  "model does not map the used device to its drive"
+  "model does not show the drive used by the job"
 expect_not_grep "JobId" "${tmp}/model-after-job.out" \
   "volume lease was not released at the end of the job"
 

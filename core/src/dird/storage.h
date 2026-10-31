@@ -1,7 +1,7 @@
 /*
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2018-2022 Bareos GmbH & Co. KG
+   Copyright (C) 2018-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -24,6 +24,8 @@
 
 #include "ndmp/smc.h"
 #include "dird/dird.h"
+
+#include <vector>
 
 template <typename T> class alist;
 
@@ -85,5 +87,10 @@ slot_number_t GetBareosSlotNumberByElementAddress(
     slot_number_t element_addr);
 bool IsSameStorageDaemon(StorageResource* read_storage,
                          StorageResource* write_storage);
+/* Ask the storage daemon for the state of its devices and update the
+ * storage model of the given storages. Returns false if the storage
+ * daemon did not answer with an inventory. */
+bool RefreshDeviceInventory(BareosSocket* sd,
+                            const std::vector<StorageResource*>& stores);
 } /* namespace directordaemon */
 #endif  // BAREOS_DIRD_STORAGE_H_

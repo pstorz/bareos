@@ -72,6 +72,7 @@ void StorageModel::SetInventory(std::vector<DriveState> drives,
     if (const DriveState* old = FindDrive(drive.name)) {
       drive.jobs = old->jobs;
       drive.device = old->device;
+      drive.sd = old->sd;
     }
   }
   for (auto& old : drives_) {
@@ -244,6 +245,36 @@ bool StorageModel::IsLeasedByOther(const std::string& volume, JobId job) const
                      [&](const auto& kv) { return kv.second.job != job; });
 }
 
+void StorageModel::UpdateDevices(
+    const std::vector<DeviceInventoryEntry>& devices)
+{
+  std::lock_guard lock(mutex_);
+  for (const auto& entry : devices) {
+    const bool changer = !entry.changer.empty() && entry.drive_index >= 0;
+    std::string name = changer ? DriveName(entry.drive_index) : entry.device;
+    DriveState* drive = FindDrive(name);
+    if (!drive) {
+      DriveState added;
+      added.name = name;
+      added.changer = changer;
+      drives_.push_back(std::move(added));
+      drive = &drives_.back();
+    }
+    drive->device = entry.device;
+    drive->enabled = !entry.unmounted;
+    /* For changer drives the changer inventory knows what is loaded even
+     * if the SD did not read the label yet, so only add knowledge. */
+    if (!entry.volume.empty()) {
+      drive->loaded_volume = entry.volume;
+      if (entry.slot > 0) { drive->loaded_from_slot = entry.slot; }
+    } else if (!changer) {
+      drive->loaded_volume.reset();
+      drive->loaded_from_slot.reset();
+    }
+    drive->sd = entry;
+  }
+}
+
 void StorageModel::MarkPending(const std::string& drive_name, bool pending)
 {
   std::lock_guard lock(mutex_);
@@ -360,6 +391,23 @@ static std::string ModeName(AccessMode mode)
   return mode == AccessMode::kAppend ? "append" : "read";
 }
 
+std::vector<DeviceInventoryEntry> DevicesOfStorage(
+    const std::vector<DeviceInventoryEntry>& inventory,
+    const std::vector<std::string>& storage_devices)
+{
+  std::vector<DeviceInventoryEntry> result;
+  for (const auto& entry : inventory) {
+    for (const auto& name : storage_devices) {
+      if (name == entry.device
+          || (!entry.changer.empty() && name == entry.changer)) {
+        result.push_back(entry);
+        break;
+      }
+    }
+  }
+  return result;
+}
+
 std::vector<std::string> DescribeModel(const StorageModel& model)
 {
   std::vector<std::string> lines;
@@ -379,6 +427,17 @@ std::vector<std::string> DescribeModel(const StorageModel& model)
     }
     if (!drive.enabled) { line += ", disabled"; }
     if (drive.pending) { line += ", command pending"; }
+    if (drive.sd) {
+      if (drive.sd->reading) { line += ", reading"; }
+      if (drive.sd->appending) { line += ", appending"; }
+      if (drive.sd->writers) {
+        line += ", " + std::to_string(drive.sd->writers) + " writer(s)";
+      }
+      if (drive.sd->reserved) {
+        line += ", " + std::to_string(drive.sd->reserved) + " reservation(s)";
+      }
+      if (drive.sd->blocked && !drive.sd->unmounted) { line += ", blocked"; }
+    }
     if (!drive.device.empty() && drive.device != drive.name) {
       line += ", device \"" + drive.device + "\"";
     }

@@ -550,6 +550,30 @@ static inline void FreeVolList(changer_vol_list_t* vol_list)
   }
 }
 
+bool RefreshDeviceInventory(BareosSocket* sd,
+                            const std::vector<StorageResource*>& stores)
+{
+  sd->fsend("%s", kInventoryCommand.data());
+  std::vector<DeviceInventoryEntry> inventory;
+  while (sd->recv() >= 0) {
+    if (auto entry = ParseDeviceInventory(sd->msg)) {
+      inventory.push_back(std::move(*entry));
+    } else {
+      Dmsg1(100, "Unexpected inventory line: %s", sd->msg);
+    }
+  }
+  if (sd->message_length != BNET_EOD) { return false; }
+
+  for (auto* store : stores) {
+    std::vector<std::string> names;
+    for (const auto& device : store->devices) { names.push_back(device.name); }
+    storage_manager::GlobalStorageManager()
+        .Get(store->resource_name_)
+        ->UpdateDevices(storage_manager::DevicesOfStorage(inventory, names));
+  }
+  return true;
+}
+
 // Feed a complete changer listing into the director side storage model.
 static void UpdateStorageModel(StorageResource* store,
                                dlist<vol_list_t>* contents)

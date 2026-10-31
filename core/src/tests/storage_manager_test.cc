@@ -366,6 +366,99 @@ static_assert(ResolveVolumeStatus("Used", "Recycle", true) == "Used");
 static_assert(ResolveVolumeStatus("Append", "Append", false) == "Append");
 }  // namespace
 
+namespace {
+DeviceInventoryEntry ChangerDevice(std::string name, int index)
+{
+  DeviceInventoryEntry entry;
+  entry.device = std::move(name);
+  entry.changer = "Tape Changer";
+  entry.drive_index = index;
+  entry.media_type = "LTO";
+  return entry;
+}
+}  // namespace
+
+TEST(device_inventory, format_and_parse_round_trip)
+{
+  DeviceInventoryEntry entry = ChangerDevice("Tape Drive 1", 1);
+  entry.autoselect = false;
+  entry.open = true;
+  entry.appending = true;
+  entry.writers = 2;
+  entry.reserved = 1;
+  entry.slot = 7;
+  entry.volume = "A 7";
+  entry.pool = "Full Pool";
+
+  auto parsed = ParseDeviceInventory(FormatDeviceInventory(entry).c_str());
+  ASSERT_TRUE(parsed);
+  EXPECT_EQ(*parsed, entry);
+
+  DeviceInventoryEntry empty;
+  empty.device = "File";
+  parsed = ParseDeviceInventory(FormatDeviceInventory(empty).c_str());
+  ASSERT_TRUE(parsed);
+  EXPECT_EQ(*parsed, empty);
+
+  EXPECT_FALSE(ParseDeviceInventory("3900 Invalid command: inventory\n"));
+}
+
+TEST(device_inventory, selects_devices_of_storage)
+{
+  DeviceInventoryEntry single;
+  single.device = "File";
+  std::vector<DeviceInventoryEntry> inventory{ChangerDevice("D0", 0),
+                                              ChangerDevice("D1", 1), single};
+
+  auto selected = DevicesOfStorage(inventory, {"Tape Changer"});
+  ASSERT_EQ(selected.size(), 2u);
+  EXPECT_EQ(selected[1].device, "D1");
+
+  selected = DevicesOfStorage(inventory, {"File", "D0"});
+  ASSERT_EQ(selected.size(), 2u);
+  EXPECT_EQ(selected[0].device, "D0");
+  EXPECT_EQ(selected[1].device, "File");
+}
+
+TEST(storage_manager, device_inventory_updates_drives)
+{
+  StorageModel model("Tape");
+  SetupChanger(model);
+  ASSERT_TRUE(model.VolumeLoaded("Drive-0", "A1", 1));
+
+  DeviceInventoryEntry d0 = ChangerDevice("D0", 0);  // label not read yet
+  DeviceInventoryEntry d1 = ChangerDevice("D1", 1);
+  d1.volume = "A2";
+  d1.slot = 2;
+  d1.unmounted = true;
+  DeviceInventoryEntry single;
+  single.device = "File";
+  single.volume = "F1";
+  model.UpdateDevices({d0, d1, single});
+
+  auto drives = model.Drives();
+  ASSERT_EQ(drives.size(), 3u);
+  EXPECT_EQ(drives[0].device, "D0");
+  EXPECT_EQ(drives[0].loaded_volume, "A1");
+  EXPECT_EQ(drives[1].device, "D1");
+  EXPECT_EQ(drives[1].loaded_volume, "A2");
+  EXPECT_EQ(drives[1].loaded_from_slot, 2);
+  EXPECT_FALSE(drives[1].enabled);
+  EXPECT_EQ(drives[2].name, "File");
+  EXPECT_FALSE(drives[2].changer);
+  EXPECT_EQ(drives[2].loaded_volume, "F1");
+  EXPECT_EQ(model.BindDevice("D1", 1), "Drive-1");
+
+  single.volume.clear();
+  model.UpdateDevices({single});
+  EXPECT_FALSE(model.Drives()[2].loaded_volume);
+
+  // a changer inventory keeps the device reports
+  SetupChanger(model);
+  ASSERT_TRUE(model.Drives()[1].sd);
+  EXPECT_TRUE(model.Drives()[1].sd->unmounted);
+}
+
 static_assert(CheckJobCommand("JobId=1 BackupFormat=native\n", -1, 20, 0)
               == JobCommandCheck::kVersionMismatch);
 static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=1\n", 20, 20, 1)

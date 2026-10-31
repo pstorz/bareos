@@ -58,6 +58,7 @@ target_sources(
           crypto_openssl.cc
           crypto_wrap.cc
           daemon.cc
+          device_inventory.cc
           devlock.cc
           dlist_string.cc
           edit.cc

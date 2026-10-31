@@ -38,6 +38,8 @@
 #include <string>
 #include <vector>
 
+#include "lib/device_inventory.h"
+
 namespace directordaemon::storage_manager {
 
 using JobId = std::uint32_t;
@@ -93,6 +95,7 @@ struct DriveState {
   std::optional<std::string> loaded_volume;
   std::optional<int> loaded_from_slot;
   std::vector<JobId> jobs;
+  std::optional<DeviceInventoryEntry> sd;  // last report of the SD
 };
 
 struct SlotState {
@@ -171,6 +174,10 @@ class StorageModel {
   std::string BindDevice(const std::string& device,
                          std::optional<int> drive_index);
 
+  /* Apply the device inventory of the storage daemon: binds devices to
+   * drives and updates loaded volumes and usage. */
+  void UpdateDevices(const std::vector<DeviceInventoryEntry>& devices);
+
   void MarkPending(const std::string& drive, bool pending);
   bool VolumeLoaded(const std::string& drive,
                     const std::string& volume,
@@ -211,6 +218,12 @@ struct Inventory {
 };
 
 std::string DriveName(int drive_index);
+
+/* The devices of an inventory that belong to a director storage, given
+ * the device names configured there (autochangers or single devices). */
+std::vector<DeviceInventoryEntry> DevicesOfStorage(
+    const std::vector<DeviceInventoryEntry>& inventory,
+    const std::vector<std::string>& storage_devices);
 Inventory BuildInventory(const std::vector<ChangerElement>& elements);
 
 // Human readable dump of the model, one line per entry.

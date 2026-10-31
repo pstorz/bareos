@@ -1806,6 +1806,12 @@ static void StatusContentApi(UaContext* ua, StorageResource* store)
 bail_out:
   if (vol_list) { StorageReleaseVolList(store, vol_list); }
   CloseSdBsock(ua);
+  if (BareosSocket* sd = open_sd_bsock(ua)) {
+    if (!RefreshDeviceInventory(sd, {store})) {
+      ua->WarningMsg(T_("Storage daemon did not report its devices.\n"));
+    }
+    CloseSdBsock(ua);
+  }
 
   return;
 }
@@ -1918,6 +1924,12 @@ static void StatusContentJson(UaContext* ua, StorageResource* store)
 bail_out:
   if (vol_list) { StorageReleaseVolList(store, vol_list); }
   CloseSdBsock(ua);
+  if (BareosSocket* sd = open_sd_bsock(ua)) {
+    if (!RefreshDeviceInventory(sd, {store})) {
+      ua->WarningMsg(T_("Storage daemon did not report its devices.\n"));
+    }
+    CloseSdBsock(ua);
+  }
 
   return;
 }
@@ -2094,6 +2106,12 @@ static void StatusModel(UaContext* ua, StorageResource* store)
       ua, store, true /* listall */, true /* scan */, false /* cached */);
   if (vol_list) { StorageReleaseVolList(store, vol_list); }
   CloseSdBsock(ua);
+  if (BareosSocket* sd = open_sd_bsock(ua)) {
+    if (!RefreshDeviceInventory(sd, {store})) {
+      ua->WarningMsg(T_("Storage daemon did not report its devices.\n"));
+    }
+    CloseSdBsock(ua);
+  }
 
   auto model
       = storage_manager::GlobalStorageManager().Find(store->resource_name_);

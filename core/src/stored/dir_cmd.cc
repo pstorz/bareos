@@ -76,6 +76,7 @@
 #include "lib/watchdog.h"
 #include "lib/global_resource.h"
 #include "lib/version.h"
+#include "lib/device_inventory.h"
 #include "include/jcr.h"
 
 #include <memory>
@@ -146,6 +147,7 @@ static bool MountCmd(JobControlRecord* jcr);
 static bool PassiveCmd(JobControlRecord* jcr);
 static bool PluginoptionsCmd(JobControlRecord* jcr);
 static bool ReadlabelCmd(JobControlRecord* jcr);
+static bool InventoryCmd(JobControlRecord* jcr);
 static bool ResolveCmd(JobControlRecord* jcr);
 static bool RelabelCmd(JobControlRecord* jcr);
 static bool ReleaseCmd(JobControlRecord* jcr);
@@ -194,9 +196,10 @@ static struct s_sd_dir_cmds cmds[] = {
     {"autochanger", ChangerCmd, false},
     {"bootstrap", BootstrapCmd, false},
     {"cancel", CancelCmd, false},
-    {"finish", FinishCmd, false}, /**< End of backup */
-    {"JobId=", job_cmd, false},   /**< Start Job */
-    {"label", LabelCmd, false},   /**< Label a tape */
+    {"finish", FinishCmd, false},       /**< End of backup */
+    {"JobId=", job_cmd, false},         /**< Start Job */
+    {"inventory", InventoryCmd, false}, /**< Report all devices */
+    {"label", LabelCmd, false},         /**< Label a tape */
     {"listen", ListenCmd, false}, /**< Listen for an incoming Storage Job */
     {"mount", MountCmd, false},
     {"nextrun", nextRunCmd,
@@ -570,6 +573,50 @@ static bool ResolveCmd(JobControlRecord* jcr)
   FreeAddresses(addr_list);
 
 bail_out:
+  dir->signal(BNET_EOD);
+  return true;
+}
+
+static DeviceInventoryEntry InventoryOf(DeviceResource* device_resource)
+{
+  DeviceInventoryEntry entry;
+  entry.device = device_resource->resource_name_;
+  if (device_resource->changer_res) {
+    entry.changer = device_resource->changer_res->resource_name_;
+    entry.drive_index = device_resource->drive_index;
+  }
+  entry.autoselect = device_resource->autoselect;
+  entry.media_type = device_resource->media_type;
+  entry.read_only = device_resource->access_mode == IODirection::READ;
+  entry.write_only = device_resource->access_mode == IODirection::WRITE;
+
+  if (Device* dev = device_resource->dev) {
+    dev->Lock();
+    entry.open = dev->IsOpen();
+    entry.unmounted = dev->IsDeviceUnmounted();
+    entry.blocked = dev->IsBlocked();
+    entry.reading = dev->CanRead();
+    entry.appending = dev->CanAppend();
+    entry.writers = dev->num_writers;
+    entry.reserved = dev->NumReserved();
+    if (dev->GetSlot() > 0) { entry.slot = dev->GetSlot(); }
+    entry.volume = dev->VolHdr.VolumeName;
+    entry.pool = dev->pool_name;
+    dev->Unlock();
+  }
+  return entry;
+}
+
+// Report the state of all devices, the director makes the decisions.
+static bool InventoryCmd(JobControlRecord* jcr)
+{
+  BareosSocket* dir = jcr->dir_bsock;
+  DeviceResource* device_resource;
+
+  foreach_res (device_resource, R_DEVICE) {
+    dir->fsend("%s",
+               FormatDeviceInventory(InventoryOf(device_resource)).c_str());
+  }
   dir->signal(BNET_EOD);
   return true;
 }
