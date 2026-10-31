@@ -106,7 +106,7 @@ The migration is done in phases, each in its own pull request:
 7. The Director sequences read volumes for restore, copy, migrate and verify.
 8. Remove legacy code and update the documentation.
 
-Implemented so far (DIR-SD protocol version 6):
+Implemented so far (DIR-SD protocol version 7):
 
 * The job command carries `SdProtocolVersion`; the Storage Daemon rejects
   other versions.
@@ -146,12 +146,19 @@ Implemented so far (DIR-SD protocol version 6):
   chooses the next volume and its lease. Moving a volume from an idle
   drive into the reserved one is only possible when the Director leased
   the volume to that drive.
+* Every volume the Director sends carries a changer action planned from
+  the storage model: `mounted` (already in the drive), `load` (from its
+  slot), `transfer` (from another, idle drive), `busy` (in a drive used
+  by another job) or `unknown` (slots unknown or no autochanger drive).
+  The Storage Daemon takes a volume out of another drive only on
+  `transfer` from exactly that drive, otherwise it waits for the
+  Director.
 
-Still open: explicit `load` and `unload` commands from the Director.
-The Storage Daemon executes the loads and unloads its jobs need for the
-volume and slot the Director sent and reports them as drive events.
-Replacing this with Director commands changes the autochanger handling
-of real tape libraries and needs testing with them.
+Still open: separate `load` and `unload` commands from the Director.
+The Storage Daemon still runs the changer commands for the action the
+Director sent, and it unloads idle drives itself. Moving these into
+Director commands changes how real tape libraries are handled and
+needs testing with them.
 
 ### Positive Consequences
 
