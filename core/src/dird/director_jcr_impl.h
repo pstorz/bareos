@@ -32,6 +32,8 @@
 #include "dird/job_trigger.h"
 
 #include <condition_variable>
+#include <string>
+#include <vector>
 
 typedef struct s_tree_root TREE_ROOT;
 
@@ -150,6 +152,7 @@ struct DirectorJcrImpl {
   int64_t spool_size{};                 /**< Spool size for this job */
   std::string read_device{};   /**< SD device reserved for reading */
   std::string write_device{};  /**< SD device reserved for writing */
+  std::vector<std::string> read_volumes{}; /**< Volumes of the bootstrap */
   std::atomic<bool> sd_msg_thread_done{};   /**< Set when Storage message thread done */
   bool IgnoreDuplicateJobChecking{};    /**< Set in migration jobs */
   bool IgnoreLevelPoolOverrides{};       /**< Set if a cmdline pool was specified */

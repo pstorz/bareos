@@ -547,6 +547,12 @@ std::vector<std::string> OrderDevices(
         .same_pool = !entry.pool.empty() && entry.pool == request.pool,
         .users = entry.writers + entry.reserved,
     };
+    for (std::size_t i = 0; i < request.read_volumes.size(); ++i) {
+      if (!entry.volume.empty() && entry.volume == request.read_volumes[i]) {
+        use.read_rank = static_cast<int>(i);
+        break;
+      }
+    }
     candidates.push_back({DevicePreference(use), use.users, entry.device});
   };
 

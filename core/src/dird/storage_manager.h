@@ -36,6 +36,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "lib/device_inventory.h"
@@ -307,6 +308,8 @@ struct DeviceUse {
   bool has_volume{false};
   bool same_pool{false};  // reserved for or holding the job's pool
   int users{0};           // writers and reservations
+  // position of the loaded volume in the volumes a job reads, -1 if none
+  int read_rank{-1};
 };
 
 /* Preference of a device for a job, lower is better. Without "Prefer
@@ -315,7 +318,14 @@ struct DeviceUse {
 constexpr int DevicePreference(const DeviceUse& d)
 {
   if (d.unavailable) { return 9; }
-  if (!d.append_request) { return (d.users == 0 && !d.reading) ? 0 : 5; }
+  if (!d.append_request) {
+    // a free drive holding the first volume to read needs no load at all,
+    // an empty one only a load, any other one an unload first
+    if (d.users > 0 || d.reading) { return 6; }
+    if (d.read_rank == 0) { return 0; }
+    if (d.read_rank > 0) { return 1; }
+    return d.has_volume ? 3 : 2;
+  }
   if (d.reading) { return 8; }
   if (d.prefer_mounted) {
     if (d.users > 0) { return d.same_pool ? 0 : 7; }
@@ -334,7 +344,46 @@ struct DeviceRequest {
   bool prefer_mounted{false};
   std::string pool;
   std::string media_type;
+  std::vector<std::string> read_volumes;  // in the order the job reads them
 };
+
+/* The volumes a bootstrap refers to, in the order of their first use.
+ * Volume lines look like Volume="A" or Volume="A|B". */
+constexpr std::vector<std::string> BootstrapVolumes(std::string_view text)
+{
+  constexpr std::string_view key = "Volume=";
+  std::vector<std::string> volumes;
+  while (!text.empty()) {
+    auto end = text.find('\n');
+    std::string_view line = text.substr(0, end);
+    text = end == std::string_view::npos ? std::string_view{}
+                                         : text.substr(end + 1);
+    while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) {
+      line.remove_prefix(1);
+    }
+    while (
+        !line.empty()
+        && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) {
+      line.remove_suffix(1);
+    }
+    if (!line.starts_with(key)) { continue; }
+    line.remove_prefix(key.size());
+    if (line.size() >= 2 && line.front() == '"' && line.back() == '"') {
+      line = line.substr(1, line.size() - 2);
+    }
+    while (!line.empty()) {
+      auto bar = line.find('|');
+      std::string name{line.substr(0, bar)};
+      line = bar == std::string_view::npos ? std::string_view{}
+                                           : line.substr(bar + 1);
+      if (name.empty()) { continue; }
+      bool known = false;
+      for (const auto& v : volumes) { known = known || v == name; }
+      if (!known) { volumes.push_back(std::move(name)); }
+    }
+  }
+  return volumes;
+}
 
 /* The drives of a director storage that can serve the request, best
  * first. Autochangers are expanded into their autoselect drives. An

@@ -116,7 +116,12 @@ static inline bool SendBootstrapFileToSd(JobControlRecord* jcr,
     return false;
   }
   sd->fsend("%s", bootstrap);
-  while (fgets(buf, sizeof(buf), bs)) { sd->fsend("%s", buf); }
+  std::string text;
+  while (fgets(buf, sizeof(buf), bs)) {
+    sd->fsend("%s", buf);
+    text += buf;
+  }
+  jcr->dir_impl->read_volumes = storage_manager::BootstrapVolumes(text);
   sd->signal(BNET_EOD);
   fclose(bs);
   if (jcr->dir_impl->unlink_bsr) {
@@ -146,6 +151,23 @@ static void SetPoolsFromCatalog(JobControlRecord* jcr,
   }
 }
 
+/* The volumes the job reads, from the bootstrap the director wrote.
+ * The bootstrap may already be erased once it was sent. */
+static std::vector<std::string> ReadVolumesOfJob(JobControlRecord* jcr)
+{
+  auto& volumes = jcr->dir_impl->read_volumes;
+  if (volumes.empty() && jcr->RestoreBootstrap) {
+    if (FILE* bs = fopen(jcr->RestoreBootstrap, "rb")) {
+      std::string text;
+      char buf[1000];
+      while (fgets(buf, sizeof(buf), bs)) { text += buf; }
+      fclose(bs);
+      volumes = storage_manager::BootstrapVolumes(text);
+    }
+  }
+  return volumes;
+}
+
 static bool ReserveDevice(JobControlRecord* jcr,
                           alist<StorageResource*>* storages,
                           bool append,
@@ -173,6 +195,7 @@ static bool ReserveDevice(JobControlRecord* jcr,
   request.append = append;
   request.prefer_mounted = jcr->dir_impl->res.job->PreferMountedVolumes;
   request.pool = pool_name;
+  if (!append) { request.read_volumes = ReadVolumesOfJob(jcr); }
 
   BashSpaces(pool_type);
   BashSpaces(pool_name);

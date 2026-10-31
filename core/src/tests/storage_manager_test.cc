@@ -616,7 +616,8 @@ TEST(storage_manager, orders_devices_for_job)
   other.media_type = "File";
   std::vector<DeviceInventoryEntry> inventory{d0, d1, d2, d3, d4, other};
 
-  DeviceRequest request{.append = true, .pool = "Full", .media_type = "LTO"};
+  DeviceRequest request{
+      .append = true, .pool = "Full", .media_type = "LTO", .read_volumes = {}};
   using Order = std::vector<std::string>;
   EXPECT_EQ(OrderDevices(inventory, {"Tape Changer"}, request),
             (Order{"D2", "D1", "D0"}));
@@ -626,6 +627,15 @@ TEST(storage_manager, orders_devices_for_job)
             (Order{"D0", "D2", "D1"}));
 
   request.append = false;
+  EXPECT_EQ(OrderDevices(inventory, {"Tape Changer"}, request),
+            (Order{"D2", "D4", "D1", "D0"}));
+
+  // read from the drive that already holds a volume of the job
+  request.read_volumes = {"A2"};
+  EXPECT_EQ(OrderDevices(inventory, {"Tape Changer"}, request),
+            (Order{"D1", "D2", "D4", "D0"}));
+  // but not from one that is busy
+  request.read_volumes = {"A1", "A2"};
   EXPECT_EQ(OrderDevices(inventory, {"Tape Changer"}, request),
             (Order{"D1", "D2", "D4", "D0"}));
 
@@ -645,6 +655,26 @@ static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=99\n", 20, 20, 99)
               == JobCommandCheck::kVersionMismatch);
 static_assert(CheckJobCommand("JobId= SdProtocolVersion=1\n", -1, 20, 1)
               == JobCommandCheck::kMalformed);
+
+// reading: the drive holding the first volume, then other volumes of the
+// job, then empty drives, then drives that must unload first
+static_assert(DevicePreference({.append_request = false, .read_rank = 0})
+              < DevicePreference({.append_request = false, .read_rank = 1}));
+static_assert(DevicePreference({.append_request = false, .read_rank = 1})
+              < DevicePreference({.append_request = false}));
+static_assert(DevicePreference({.append_request = false})
+              < DevicePreference({.append_request = false,
+                                  .has_volume = true}));
+static_assert(
+    DevicePreference({.append_request = false, .has_volume = true})
+    < DevicePreference({.append_request = false, .users = 1, .read_rank = 0}));
+
+static_assert(BootstrapVolumes("").empty());
+static_assert(BootstrapVolumes("Storage=\"File\"\nVolume=\"A\"\n"
+                               "VolSessionId=1\nVolume=\"B|A\"\n"
+                               " Volume=C\r\n")
+              == std::vector<std::string>{"A", "B", "C"});
+static_assert(BootstrapVolumes("MediaType=\"File\"\nVolumes=X\n").empty());
 
 // free drives first, so jobs spread over the drives
 static_assert(DevicePreference({}) < DevicePreference({.has_volume = true}));
