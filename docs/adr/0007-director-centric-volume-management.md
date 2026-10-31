@@ -116,6 +116,8 @@ Implemented so far (DIR-SD protocol version 5):
   Daemon reserves the first usable one in that order.
 * The Director leases append volumes per drive, prefers the volume already
   loaded in the requesting drive and ignores stale volume status reports.
+* Reading jobs lease the volume they read, so no other job selects it for
+  appending on another drive meanwhile.
 * The Director decides whether a recycled volume gets a new label.
 * The Storage Daemon reports volume events (labeled, full, error) instead
   of a volume status, slot and `InChanger` flag. The Director derives the
@@ -129,7 +131,7 @@ Implemented so far (DIR-SD protocol version 5):
   no volume conflicts, wrong volumes or catalog divergences occur.
 
 Still open: the persistent control connection, Director driven load and
-unload, read sequencing and the removal of the legacy selection code in
+unload, the read order of volumes and the removal of the legacy selection code in
 the Storage Daemon.
 
 ### Positive Consequences

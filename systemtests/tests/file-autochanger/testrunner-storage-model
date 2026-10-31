@@ -64,6 +64,15 @@ wait
 messages
 @$out ${tmp}/list-after-correction.out
 list volume=000004HD
+@# the restore leases the volume it reads
+setdebug level=100 trace=1 director
+@$out ${tmp}/restore.out
+restore client=bareos-fd where=${tmp}/bareos-restores select all done yes
+wait
+messages
+@$out ${tmp}/model-after-restore.out
+setdebug level=0 trace=0 director
+status storage=File model
 @$out ${tmp}/release.out
 release drive=0
 release drive=1
@@ -117,5 +126,12 @@ expect_grep 'load slot 4' "${tmp}/job-wrong-slot.out" \
   "storage daemon did not load the corrected slot"
 expect_grep '| *000004HD *|.*| *4 *|' "${tmp}/list-after-correction.out" \
   "catalog slot of the volume was not corrected"
+
+expect_grep "Restore OK" "${tmp}/restore.out" "restore was not successful"
+expect_grep 'Read lease on volume 000004HD in Drive-' \
+  "${working_dir}/bareos-dir.trace" \
+  "restore did not lease the volume it reads"
+expect_not_grep "JobId" "${tmp}/model-after-restore.out" \
+  "read lease was not released at the end of the restore"
 
 end_test

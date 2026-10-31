@@ -145,6 +145,42 @@ std::optional<AppendTarget> GetAppendTarget(JobControlRecord* jcr,
 
 /* Model drive of a device used by a job for reading or writing. Prefer
  * the storage whose model already knows the device. */
+std::optional<AppendTarget> GetReadTarget(JobControlRecord* jcr,
+                                          char* device,
+                                          int drive_index)
+{
+  StorageResource* store = jcr->dir_impl->res.read_storage;
+  if (jcr->JobId == 0 || !store) { return std::nullopt; }
+  UnbashSpaces(device);
+  auto model
+      = storage_manager::GlobalStorageManager().Get(store->resource_name_);
+  std::optional<int> index;
+  if (drive_index >= 0) { index = drive_index; }
+  std::string drive = model->BindDevice(device, index);
+  return AppendTarget{std::move(model), std::move(drive)};
+}
+
+/* Record that the job reads the volume in this drive, so that no other
+ * job appends to it meanwhile. Reading is never refused here; on a
+ * conflict the storage daemon waits for the volume as before. */
+void LeaseReadVolume(JobControlRecord* jcr,
+                     char* device,
+                     int drive_index,
+                     const char* volume)
+{
+  auto target = GetReadTarget(jcr, device, drive_index);
+  if (!target) { return; }
+  auto result = target->model->AcquireLease(
+      jcr->JobId, volume, storage_manager::AccessMode::kRead, target->drive);
+  if (result == storage_manager::LeaseResult::kConflict) {
+    Dmsg2(050, "Volume %s to read is in use by another job, drive %s\n", volume,
+          target->drive.c_str());
+  } else {
+    Dmsg2(100, "Read lease on volume %s in %s\n", volume,
+          target->drive.c_str());
+  }
+}
+
 std::optional<AppendTarget> GetJobDrive(JobControlRecord* jcr,
                                         char* device,
                                         int drive_index)
@@ -412,6 +448,8 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
                    == storage_manager::LeaseResult::kConflict) {
           reason = T_("in use by another job on another drive");
         }
+      } else {
+        LeaseReadVolume(jcr, device, drive_index, mr.VolumeName);
       }
 
       if (!reason && mr.Enabled != VOL_ENABLED) {
