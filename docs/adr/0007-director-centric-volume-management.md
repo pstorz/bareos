@@ -136,8 +136,22 @@ Implemented so far (DIR-SD protocol version 6):
   jobs in three pools on four drives with small volumes and checks that
   no volume conflicts, wrong volumes or catalog divergences occur.
 
-Still open: Director driven load and unload, the read order of volumes
-and the removal of the legacy selection code in the Storage Daemon.
+* Reading jobs reserve the free drive that already holds the first
+  volume of their bootstrap. The bootstrap, written by the Director,
+  defines the read order of the volumes.
+* The Storage Daemon no longer searches for another appendable volume
+  when it autoloads; the Director chose the volume and its slot.
+* The Storage Daemon still asks again with the volumes it could not
+  reserve locally as `unwanted_volumes`. This is a report, the Director
+  chooses the next volume and its lease. Moving a volume from an idle
+  drive into the reserved one is only possible when the Director leased
+  the volume to that drive.
+
+Still open: explicit `load` and `unload` commands from the Director.
+The Storage Daemon executes the loads and unloads its jobs need for the
+volume and slot the Director sent and reports them as drive events.
+Replacing this with Director commands changes the autochanger handling
+of real tape libraries and needs testing with them.
 
 ### Positive Consequences
 
