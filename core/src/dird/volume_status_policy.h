@@ -48,6 +48,36 @@ constexpr std::string_view ResolveVolumeStatus(std::string_view catalog,
   return catalog;
 }
 
+// Whether a volume in a comma separated volume list.
+constexpr bool VolumeListContains(std::string_view list,
+                                  std::string_view volume)
+{
+  while (!list.empty()) {
+    auto comma = list.find(',');
+    if (list.substr(0, comma) == volume) { return true; }
+    if (comma == std::string_view::npos) { break; }
+    list.remove_prefix(comma + 1);
+  }
+  return false;
+}
+
+/* Whether the volume already loaded in a drive can be appended to by a
+ * job, so it can be used without a volume change. Expiry and limits are
+ * checked separately against the catalog. */
+struct LoadedVolumeFacts {
+  std::string_view status;
+  bool enabled{true};
+  bool same_pool{false};
+  bool same_media_type{false};
+  bool unwanted{false};
+};
+
+constexpr bool CanAppendToLoadedVolume(const LoadedVolumeFacts& v)
+{
+  return v.status == "Append" && v.enabled && v.same_pool && v.same_media_type
+         && !v.unwanted;
+}
+
 }  // namespace directordaemon
 
 #endif  // BAREOS_DIRD_VOLUME_STATUS_POLICY_H_

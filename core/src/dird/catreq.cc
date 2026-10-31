@@ -141,6 +141,42 @@ std::optional<AppendTarget> GetAppendTarget(JobControlRecord* jcr,
 }
 
 constexpr int kMaxLeaseAttempts = 10;
+
+/* Offer the volume already loaded in the drive if the job may append to
+ * it, which avoids a volume change. */
+bool UseLoadedVolume(JobControlRecord* jcr,
+                     const AppendTarget& target,
+                     const MediaDbRecord& request,
+                     const std::string& unwanted,
+                     MediaDbRecord* mr)
+{
+  auto loaded = target.model->LoadedVolume(target.drive);
+  if (!loaded) { return false; }
+
+  MediaDbRecord candidate;
+  bstrncpy(candidate.VolumeName, loaded->c_str(), sizeof(candidate.VolumeName));
+  if (!jcr->db->GetMediaRecord(jcr, &candidate)) { return false; }
+  LoadedVolumeFacts facts{
+      .status = candidate.VolStatus,
+      .enabled = candidate.Enabled == VOL_ENABLED,
+      .same_pool = candidate.PoolId == request.PoolId,
+      .same_media_type = bstrcmp(candidate.MediaType, request.MediaType),
+      .unwanted = VolumeListContains(unwanted, candidate.VolumeName),
+  };
+  if (!CanAppendToLoadedVolume(facts) || HasVolumeExpired(jcr, &candidate)) {
+    return false;
+  }
+  if (target.model->AcquireLease(jcr->JobId, candidate.VolumeName,
+                                 storage_manager::AccessMode::kAppend,
+                                 target.drive)
+      == storage_manager::LeaseResult::kConflict) {
+    return false;
+  }
+  Dmsg2(050, "find_media: use Volume %s loaded in %s\n", candidate.VolumeName,
+        target.drive.c_str());
+  *mr = candidate;
+  return true;
+}
 }  // namespace
 
 void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
@@ -194,27 +230,36 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
       auto target = GetAppendTarget(jcr, device, drive_index);
       std::string unwanted{unwanted_volumes.c_str()};
       const MediaDbRecord request = mr;
-      for (int attempt = 1;; ++attempt) {
-        mr = request;
-        // like the storage daemon, skip one more row per unwanted volume
-        ok = FindNextVolumeForAppend(jcr, &mr, index + attempt - 1,
-                                     unwanted.c_str(), fnv_create_vol,
-                                     fnv_prune);
-        if (!ok || !target) { break; }
-        if (target->model->AcquireLease(jcr->JobId, mr.VolumeName,
-                                        storage_manager::AccessMode::kAppend,
-                                        target->drive)
-            != storage_manager::LeaseResult::kConflict) {
-          break;
+      const bool prefer_loaded
+          = index == 1 && target
+            && jcr->dir_impl->res.job->PreferMountedVolumes;
+      if (prefer_loaded
+          && UseLoadedVolume(jcr, *target, request, unwanted, &mr)) {
+        ok = true;
+      } else {
+        for (int attempt = 1;; ++attempt) {
+          mr = request;
+          // like the storage daemon, skip one more row per unwanted volume
+          ok = FindNextVolumeForAppend(jcr, &mr, index + attempt - 1,
+                                       unwanted.c_str(), fnv_create_vol,
+                                       fnv_prune);
+          if (!ok || !target) { break; }
+          if (target->model->AcquireLease(jcr->JobId, mr.VolumeName,
+                                          storage_manager::AccessMode::kAppend,
+                                          target->drive)
+              != storage_manager::LeaseResult::kConflict) {
+            break;
+          }
+          Dmsg2(050,
+                "find_media: Volume %s is in use on another drive than %s\n",
+                mr.VolumeName, target->drive.c_str());
+          if (attempt == kMaxLeaseAttempts) {
+            ok = false;
+            break;
+          }
+          if (!unwanted.empty()) { unwanted += ','; }
+          unwanted += mr.VolumeName;
         }
-        Dmsg2(050, "find_media: Volume %s is in use on another drive than %s\n",
-              mr.VolumeName, target->drive.c_str());
-        if (attempt == kMaxLeaseAttempts) {
-          ok = false;
-          break;
-        }
-        if (!unwanted.empty()) { unwanted += ','; }
-        unwanted += mr.VolumeName;
       }
       Dmsg3(050, "find_media ok=%d idx=%d vol=%s\n", ok, index, mr.VolumeName);
     }

@@ -129,6 +129,23 @@ static inline bool SendBootstrapFileToSd(JobControlRecord* jcr,
 /* Reserve one device of the given storages. The director asks the
  * storage daemon for the state of its devices and sends the drives in the
  * order it prefers; the storage daemon takes the first usable one. */
+/* The catalog, not the storage daemon, knows the pool of a volume that
+ * stays loaded in an idle drive. */
+static void SetPoolsFromCatalog(JobControlRecord* jcr,
+                                std::vector<DeviceInventoryEntry>& inventory)
+{
+  if (!jcr->db) { return; }
+  for (auto& entry : inventory) {
+    if (entry.volume.empty()) { continue; }
+    MediaDbRecord mr;
+    bstrncpy(mr.VolumeName, entry.volume.c_str(), sizeof(mr.VolumeName));
+    if (!jcr->db->GetMediaRecord(jcr, &mr)) { continue; }
+    PoolDbRecord pr;
+    pr.PoolId = mr.PoolId;
+    if (jcr->db->GetPoolRecord(jcr, &pr)) { entry.pool = pr.Name; }
+  }
+}
+
 static bool ReserveDevice(JobControlRecord* jcr,
                           alist<StorageResource*>* storages,
                           bool append,
@@ -145,7 +162,10 @@ static bool ReserveDevice(JobControlRecord* jcr,
   std::vector<StorageResource*> stores;
   for (auto* storage : storages) { stores.push_back(storage); }
   auto inventory = QueryDeviceInventory(sd_socket);
-  if (inventory) { ApplyDeviceInventory(*inventory, stores); }
+  if (inventory) {
+    ApplyDeviceInventory(*inventory, stores);
+    SetPoolsFromCatalog(jcr, *inventory);
+  }
 
   storage_manager::DeviceRequest request;
   request.append = append;

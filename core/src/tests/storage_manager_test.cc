@@ -448,6 +448,8 @@ TEST(storage_manager, device_inventory_updates_drives)
   EXPECT_FALSE(drives[2].changer);
   EXPECT_EQ(drives[2].loaded_volume, "F1");
   EXPECT_EQ(model.BindDevice("D1", 1), "Drive-1");
+  EXPECT_EQ(model.LoadedVolume("Drive-1"), "A2");
+  EXPECT_FALSE(model.LoadedVolume("Unknown"));
 
   single.volume.clear();
   model.UpdateDevices({single});
@@ -533,3 +535,26 @@ static_assert(DevicePreference({.reading = true})
               < DevicePreference({.unavailable = true}));
 static_assert(DevicePreference({.append_request = false})
               < DevicePreference({.append_request = false, .users = 1}));
+
+static_assert(directordaemon::VolumeListContains("A,B,C", "B"));
+static_assert(directordaemon::VolumeListContains("A", "A"));
+static_assert(!directordaemon::VolumeListContains("AB,C", "A"));
+static_assert(!directordaemon::VolumeListContains("", "A"));
+
+using directordaemon::CanAppendToLoadedVolume;
+static_assert(CanAppendToLoadedVolume(
+    {.status = "Append", .same_pool = true, .same_media_type = true}));
+static_assert(!CanAppendToLoadedVolume(
+    {.status = "Full", .same_pool = true, .same_media_type = true}));
+static_assert(!CanAppendToLoadedVolume({.status = "Append",
+                                        .enabled = false,
+                                        .same_pool = true,
+                                        .same_media_type = true}));
+static_assert(!CanAppendToLoadedVolume({.status = "Append",
+                                        .same_media_type = true}));
+static_assert(!CanAppendToLoadedVolume({.status = "Append",
+                                        .same_pool = true}));
+static_assert(!CanAppendToLoadedVolume({.status = "Append",
+                                        .same_pool = true,
+                                        .same_media_type = true,
+                                        .unwanted = true}));

@@ -151,6 +151,7 @@ class StorageModel {
                     std::vector<SlotState> slots);
 
   std::vector<DriveState> Drives() const;
+  std::optional<std::string> LoadedVolume(const std::string& drive) const;
   std::vector<SlotState> Slots() const;
   std::optional<int> SlotOfVolume(const std::string& volume) const;
 

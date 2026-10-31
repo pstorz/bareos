@@ -43,11 +43,10 @@ messages
 @$out ${tmp}/model.out
 status storage=File model
 @$out ${tmp}/label.out
-label barcodes slots=4 drive=2 pool=Differential yes
+label barcodes slots=3-4 drive=0 pool=Differential yes
 @$out ${tmp}/model-labeled.out
 status storage=File model
-@$out ${tmp}/release.out
-release drive=2
+@# keep 000004HD loaded, the job should append to it
 @$out ${tmp}/job.out
 run job=backup-bareos-fd level=Full pool=Differential storage=File yes
 wait
@@ -76,10 +75,11 @@ expect_grep 'Volume "000002HD": catalog not present, storage daemon slot 2' \
   "${tmp}/model.out" \
   "unlabeled volume in slot 2 is not reported as divergence"
 
-expect_grep "OK label" "${tmp}/label.out" "volume in slot 4 was not labeled"
-expect_grep '^  Drive-2: volume "000004HD" from slot 4, device "File3"$' \
+expect_grep 'OK label.*"000004HD"' "${tmp}/label.out" \
+  "volume in slot 4 was not labeled"
+expect_grep '^  Drive-0: volume "000004HD" from slot 4, device "File1"$' \
   "${tmp}/model-labeled.out" \
-  "model does not show the labeled volume in drive 2"
+  "model does not show the labeled volume in drive 0"
 expect_not_grep 'Volume "000004HD"' "${tmp}/model-labeled.out" \
   "labeled volume is reported as divergence"
 expect_grep 'Volume "000005HD": catalog not present, storage daemon slot 5' \
@@ -87,7 +87,11 @@ expect_grep 'Volume "000005HD": catalog not present, storage daemon slot 5' \
   "unlabeled volume in slot 5 is not reported as divergence"
 
 expect_grep "Backup OK" "${tmp}/job.out" "backup was not successful"
-expect_grep 'volume "000004HD" from slot 4, appending, device "File[1-4]"$' \
+expect_grep 'Volume name(s):.*000004HD' "${tmp}/job.out" \
+  "job did not append to the volume already loaded in a drive"
+expect_not_grep '3307 Issuing autochanger "unload' "${tmp}/job.out" \
+  "job changed the volume instead of using the loaded one"
+expect_grep '^  Drive-0: volume "000004HD" from slot 4, appending, device "File1"$' \
   "${tmp}/model-after-job.out" \
   "model does not show the drive used by the job"
 expect_not_grep "JobId" "${tmp}/model-after-job.out" \

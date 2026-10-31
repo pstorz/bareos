@@ -96,6 +96,15 @@ std::vector<DriveState> StorageModel::Drives() const
   return drives_;
 }
 
+std::optional<std::string> StorageModel::LoadedVolume(
+    const std::string& drive_name) const
+{
+  std::lock_guard lock(mutex_);
+  const DriveState* drive = FindDrive(drive_name);
+  if (!drive) { return std::nullopt; }
+  return drive->loaded_volume;
+}
+
 std::vector<SlotState> StorageModel::Slots() const
 {
   std::lock_guard lock(mutex_);
