@@ -55,6 +55,14 @@ Now you can safely apply the update or upgrade.
    Please remind, that |dir| and |sd| must always have the same version.
    The version of the |fd| may differ.
 
+   The |dir| decides which volume and which drive a job uses and keeps
+   the volume status, slot and :strong:`InChanger` information of the
+   catalog itself; the |sd| only reports what happened. Therefore the
+   protocol between them changed incompatibly. An updated |sd| rejects
+   jobs of an older |dir| with "Director uses storage protocol version
+   ..., this storage daemon needs version ...", so always update both
+   together.
+
 
 .. note::
 
