@@ -25,6 +25,7 @@
 
 #include "dird/storage_manager.h"
 #include "dird/volume_status_policy.h"
+#include "include/dir_sd_protocol.h"
 
 using namespace directordaemon::storage_manager;
 
@@ -364,3 +365,12 @@ static_assert(ResolveVolumeStatus("Unlabeled", "Append", false) == "Append");
 static_assert(ResolveVolumeStatus("Used", "Recycle", true) == "Used");
 static_assert(ResolveVolumeStatus("Append", "Append", false) == "Append");
 }  // namespace
+
+static_assert(CheckJobCommand("JobId=1 BackupFormat=native\n", -1, 20, 0)
+              == JobCommandCheck::kVersionMismatch);
+static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=1\n", 20, 20, 1)
+              == JobCommandCheck::kOk);
+static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=99\n", 20, 20, 99)
+              == JobCommandCheck::kVersionMismatch);
+static_assert(CheckJobCommand("JobId= SdProtocolVersion=1\n", -1, 20, 1)
+              == JobCommandCheck::kMalformed);

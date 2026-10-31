@@ -34,6 +34,7 @@
  *      who returns a job status and requests Catalog services, etc.
  */
 #include "include/bareos.h"
+#include "include/dir_sd_protocol.h"
 #include "dird.h"
 #include "dird/getmsg.h"
 #include "dird/job.h"
@@ -59,7 +60,7 @@ inline constexpr const char jobcmd[]
       "rerunning=%d VolSessionId=%" PRIu32 " VolSessionTime=%" PRIu32
       " Quota=%" PRIu64
       " "
-      "Protocol=%d BackupFormat=%s\n";
+      "Protocol=%d BackupFormat=%s SdProtocolVersion=%d\n";
 inline constexpr const char use_storage[]
     = "use storage=%s media_type=%s pool_name=%s "
       "pool_type=%s append=%d copy=%d stripe=%d\n";
@@ -367,7 +368,7 @@ bool StartStorageDaemonJob(JobControlRecord* jcr, bool send_bsr)
       jcr->dir_impl->spool_data, jcr->dir_impl->res.job->PreferMountedVolumes,
       edit_int64(jcr->dir_impl->spool_size, ed2), jcr->rerunning,
       jcr->VolSessionId, jcr->VolSessionTime, remainingquota,
-      jcr->getJobProtocol(), backup_format.c_str());
+      jcr->getJobProtocol(), backup_format.c_str(), kDirSdProtocolVersion);
 
   Dmsg1(100, ">stored: %s", sd_socket->msg);
   if (BgetDirmsg(sd_socket) > 0) {

@@ -27,6 +27,7 @@
  */
 
 #include "include/bareos.h"
+#include "include/dir_sd_protocol.h"
 #include "stored/stored.h"
 #include "stored/bsr.h"
 #include "stored/acquire.h"
@@ -54,7 +55,7 @@ inline constexpr const char jobcmd[]
       "type=%d level=%d FileSet=%127s NoAttr=%d SpoolAttr=%d FileSetMD5=%127s "
       "SpoolData=%d PreferMountedVols=%d SpoolSize=%127s "
       "rerunning=%d VolSessionId=%d VolSessionTime=%d Quota=%llu "
-      "Protocol=%d BackupFormat=%127s\n";
+      "Protocol=%d BackupFormat=%127s SdProtocolVersion=%d\n";
 
 /* Responses sent to Director daemon */
 inline constexpr const char OK_job[]
@@ -62,6 +63,10 @@ inline constexpr const char OK_job[]
 inline constexpr const char OK_nextrun[] = "3000 OK Job Authorization=%s\n";
 inline constexpr const char BAD_job[]
     = "3915 Bad Job command. stat=%d CMD: %s\n";
+inline constexpr const char BAD_protocol[]
+    = "3916 Director uses storage protocol version %d, this storage daemon "
+      "needs version %d. Director and storage daemon must be upgraded "
+      "together.\n";
 inline constexpr const char Job_end[]
     = "3099 Job %s end JobStatus=%d JobFiles=%" PRIu32
       " JobBytes=%s JobErrors=%" PRIu32 "\n";
@@ -85,6 +90,7 @@ bool job_cmd(JobControlRecord* jcr)
   PoolMem job_name, client_name, job, fileset_name, fileset_md5, backup_format;
   int32_t JobType, level, spool_attributes, no_attributes, spool_data;
   int32_t PreferMountedVols, rerunning, protocol;
+  int32_t sd_protocol_version = 0;
   int status;
   uint64_t quota = 0;
   JobControlRecord* ojcr;
@@ -97,8 +103,15 @@ bool job_cmd(JobControlRecord* jcr)
                    &no_attributes, &spool_attributes, fileset_md5.c_str(),
                    &spool_data, &PreferMountedVols, spool_size, &rerunning,
                    &jcr->VolSessionId, &jcr->VolSessionTime, &quota, &protocol,
-                   backup_format.c_str());
-  if (status != 19) {
+                   backup_format.c_str(), &sd_protocol_version);
+  if (CheckJobCommand(dir->msg, status, 20, sd_protocol_version)
+      == JobCommandCheck::kVersionMismatch) {
+    dir->fsend(BAD_protocol, sd_protocol_version, kDirSdProtocolVersion);
+    Dmsg1(100, ">dird: %s", dir->msg);
+    jcr->setJobStatusWithPriorityCheck(JS_ErrorTerminated);
+    return false;
+  }
+  if (status != 20) {
     PmStrcpy(jcr->errmsg, dir->msg);
     dir->fsend(BAD_job, status, jcr->errmsg);
     Dmsg1(100, ">dird: %s", dir->msg);

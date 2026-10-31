@@ -484,6 +484,12 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
     PmStrcpy(omsg, bs->msg);
     bs->fsend(T_("1990 Invalid Catalog Request: %s"), omsg);
     Jmsg1(jcr, M_FATAL, 0, T_("Invalid Catalog request: %s"), omsg);
+    if ((strstr(omsg, " FindMedia=") || strstr(omsg, " GetVolInfo "))
+        && !strstr(omsg, " device=")) {
+      Jmsg0(jcr, M_FATAL, 0,
+            T_("The storage daemon uses an older protocol. Director and "
+               "storage daemon must be upgraded together.\n"));
+    }
     FreeMemory(omsg);
   }
 
