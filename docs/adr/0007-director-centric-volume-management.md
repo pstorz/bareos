@@ -127,7 +127,7 @@ Implemented so far (DIR-SD protocol version 7):
   sends the slot where the volume really is and corrects `Slot` and
   `InChanger` in the catalog.
 * When the slots of an autochanger are unknown (Director start, operator
-  commands, Storage Daemon restart detected by its epoch in the
+  commands like `label`, `import` or `export`, Storage Daemon restart detected by its epoch in the
   inventory), the Director lists the changer before reserving a device
   and corrects `Slot` and `InChanger` of all volumes of the storage in
   the catalog. It uses a short lived control connection instead of a
@@ -154,11 +154,18 @@ Implemented so far (DIR-SD protocol version 7):
   `transfer` from exactly that drive, otherwise it waits for the
   Director.
 
-Still open: separate `load` and `unload` commands from the Director.
-The Storage Daemon still runs the changer commands for the action the
-Director sent, and it unloads idle drives itself. Moving these into
-Director commands changes how real tape libraries are handled and
-needs testing with them.
+* The console commands `mount`, `unmount` and `release` are the
+  Director's load and unload commands. The Storage Daemon reports the
+  loads and unloads it runs for them as drive events, so the Director
+  keeps the slots of its model instead of listing the changer again.
+* The Storage Daemon has no timers of its own that unload idle drives;
+  it only loads and unloads for a changer action of the Director or for
+  one of these console commands.
+
+Still open: the Storage Daemon runs the changer commands that belong to
+a changer action within the job instead of receiving each `load` and
+`unload` as a separate command. This keeps one round trip per volume.
+None of this has been tested with real tape libraries yet.
 
 ### Positive Consequences
 

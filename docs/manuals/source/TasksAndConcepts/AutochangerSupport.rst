@@ -258,10 +258,10 @@ With barcodes, the Director also does this by itself: when it does not know the 
 of the autochanger, it lists the autochanger before the next job reserves a drive and corrects
 the :strong:`Slot` and :strong:`InChanger` information in the catalog. This happens after a
 Director start, after a restart of the Storage Daemon and after console commands that move
-cartridges, such as :bcommand:`mount`, :bcommand:`unmount`, :bcommand:`release`,
-:bcommand:`label`, :bcommand:`import` and :bcommand:`export`. During jobs the Storage Daemon
-reports each load and unload to the Director, so the Director keeps track of the cartridges
-without listing the autochanger again. Use :bcommand:`update slots` after changing cartridges
+cartridges, such as :bcommand:`label`, :bcommand:`import` and :bcommand:`export`. During jobs
+and for the console commands :bcommand:`mount`, :bcommand:`unmount` and :bcommand:`release`
+the Storage Daemon reports each load and unload to the Director, so the Director keeps track
+of the cartridges without listing the autochanger again. Use :bcommand:`update slots` after changing cartridges
 while the Director and Storage Daemon keep running, or :bcommand:`update slots scan` for
 autochangers without barcodes.
 
