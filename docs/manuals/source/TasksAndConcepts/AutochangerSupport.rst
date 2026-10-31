@@ -254,6 +254,17 @@ If your autochanger has barcodes (machine readable tape labels), the task of inf
 This will cause Bareos to request the autochanger to return the current Volume names in the magazine. This will be done without actually accessing or reading the Volumes because the barcode reader does this during inventory when the autochanger is first turned on. Bareos will ensure that any Volumes that are currently marked as being in the magazine are marked as no longer in the magazine, and the new list of Volumes will be marked as being in the magazine. In addition, the Slot numbers of the
 Volumes will be corrected in Bareos’s catalog if they are incorrect (added or moved).
 
+With barcodes, the Director also does this by itself: when it does not know the current content
+of the autochanger, it lists the autochanger before the next job reserves a drive and corrects
+the :strong:`Slot` and :strong:`InChanger` information in the catalog. This happens after a
+Director start, after a restart of the Storage Daemon and after console commands that move
+cartridges, such as :bcommand:`mount`, :bcommand:`unmount`, :bcommand:`release`,
+:bcommand:`label`, :bcommand:`import` and :bcommand:`export`. During jobs the Storage Daemon
+reports each load and unload to the Director, so the Director keeps track of the cartridges
+without listing the autochanger again. Use :bcommand:`update slots` after changing cartridges
+while the Director and Storage Daemon keep running, or :bcommand:`update slots scan` for
+autochangers without barcodes.
+
 If you do not have a barcode reader on your autochanger, you have several alternatives.
 
 #. You can manually set the Slot and InChanger flag using the update volume command in the Console (quite painful).

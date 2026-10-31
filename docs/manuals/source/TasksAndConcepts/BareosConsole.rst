@@ -1556,8 +1556,9 @@ status
    Director does not offer this volume to jobs on other drives. It also lists all volumes whose
    location in the catalog (:strong:`Slot` and :strong:`InChanger`) differs from the inventory.
    This includes labeled volumes that the catalog places in the wrong slot and volumes that
-   are in the autochanger but not in the catalog. Use :bcommand:`update slots` to fix a
-   catalog location.
+   are in the autochanger but not in the catalog. The Director corrects these locations itself
+   before the next job, if it had to list the autochanger again; use :bcommand:`update slots`
+   to fix a catalog location immediately.
 
    If you do a status dir, it will by default list the first occurrence of all jobs that are
    scheduled today and tomorrow. If you wish to see the jobs that are scheduled in the next three
