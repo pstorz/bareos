@@ -29,8 +29,9 @@
  * only run jobs together if both use the same version.
  *   1: FindMedia and GetVolInfo carry the device and drive index
  *   2: inventory command, director orders the devices to reserve
- *   3: volume info tells the storage daemon to rewrite the label */
-inline constexpr int kDirSdProtocolVersion = 3;
+ *   3: volume info tells the storage daemon to rewrite the label
+ *   4: drive events report autochanger loads and unloads */
+inline constexpr int kDirSdProtocolVersion = 4;
 
 enum class JobCommandCheck
 {

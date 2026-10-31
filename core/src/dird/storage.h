@@ -78,6 +78,9 @@ void StorageReleaseVolList(StorageResource* store,
                            changer_vol_list_t* vol_list);
 void StorageFreeVolList(StorageResource* store, changer_vol_list_t* vol_list);
 void InvalidateVolList(StorageResource* store);
+/* Volumes were moved by an operator command, the slot inventory of the
+ * storage model is outdated until the next changer listing. */
+void InvalidateStorageModel(StorageResource* store);
 int CompareStorageMapping(void* e1, void* e2);
 
 slot_number_t GetElementAddressByBareosSlotNumber(

@@ -53,6 +53,17 @@ wait
 messages
 @$out ${tmp}/model-after-job.out
 status storage=File model
+@# the catalog is wrong, the director corrects it from the changer listing
+@$out ${tmp}/wrong-slot.out
+release drive=0
+update volume=000004HD slot=5
+status storage=File model
+@$out ${tmp}/job-wrong-slot.out
+run job=backup-bareos-fd level=Full pool=Differential storage=File yes
+wait
+messages
+@$out ${tmp}/list-after-correction.out
+list volume=000004HD
 @$out ${tmp}/release.out
 release drive=0
 release drive=1
@@ -96,5 +107,15 @@ expect_grep '^  Drive-0: volume "000004HD" from slot 4, appending, device "File1
   "model does not show the drive used by the job"
 expect_not_grep "JobId" "${tmp}/model-after-job.out" \
   "volume lease was not released at the end of the job"
+
+expect_grep "Backup OK" "${tmp}/job-wrong-slot.out" \
+  "backup with a wrong slot in the catalog was not successful"
+expect_grep 'Volume "000004HD" is in slot 4 of storage "File", the catalog said slot 5' \
+  "${tmp}/job-wrong-slot.out" \
+  "director did not correct the slot of the volume"
+expect_grep 'load slot 4' "${tmp}/job-wrong-slot.out" \
+  "storage daemon did not load the corrected slot"
+expect_grep '| *000004HD *|.*| *4 *|' "${tmp}/list-after-correction.out" \
+  "catalog slot of the volume was not corrected"
 
 end_test

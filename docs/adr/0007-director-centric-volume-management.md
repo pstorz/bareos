@@ -106,7 +106,7 @@ The migration is done in phases, each in its own pull request:
 7. The Director sequences read volumes for restore, copy, migrate and verify.
 8. Remove legacy code and update the documentation.
 
-Implemented so far (DIR-SD protocol version 3):
+Implemented so far (DIR-SD protocol version 4):
 
 * The job command carries `SdProtocolVersion`; the Storage Daemon rejects
   other versions.
@@ -117,10 +117,13 @@ Implemented so far (DIR-SD protocol version 3):
 * The Director leases append volumes per drive, prefers the volume already
   loaded in the requesting drive and ignores stale volume status reports.
 * The Director decides whether a recycled volume gets a new label.
+* The Storage Daemon reports autochanger loads and unloads of jobs as
+  drive events. The Director keeps the storage model current with them,
+  sends the slot where the volume really is and corrects `Slot` and
+  `InChanger` in the catalog.
 
-Still open: the persistent control connection, events instead of status,
-slot and `InChanger` updates, Director driven load and unload, read
-sequencing and the removal of the legacy selection code in the Storage
+Still open: the persistent control connection, volume events instead of
+status, Director driven load and unload, read sequencing and the removal of the legacy selection code in the Storage
 Daemon.
 
 ### Positive Consequences

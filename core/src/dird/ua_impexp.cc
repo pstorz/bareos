@@ -1173,6 +1173,7 @@ static bool PerformMoveOperation(UaContext* ua, enum e_move_op operation)
 
 bail_out:
   CloseSdBsock(ua);
+  InvalidateStorageModel(store.store);
 
   if (vol_list) { StorageReleaseVolList(store.store, vol_list); }
   if (src_slot_list) { free(src_slot_list); }

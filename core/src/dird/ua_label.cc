@@ -195,6 +195,7 @@ bool SendLabelRequest(UaContext* ua,
 {
   bool retval;
 
+  InvalidateStorageModel(store);
   switch (store->Protocol) {
     case APT_NATIVE:
       retval = native_send_label_request(ua, mr, omr, pr, relabel, drive);

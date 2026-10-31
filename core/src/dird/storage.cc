@@ -889,8 +889,17 @@ void StorageFreeVolList(StorageResource* store, changer_vol_list_t* vol_list)
  * Called by functions that change the content of the storage like mount,
  * umount, release.
  */
+void InvalidateStorageModel(StorageResource* store)
+{
+  if (auto model
+      = storage_manager::GlobalStorageManager().Find(store->resource_name_)) {
+    model->InvalidateSlots();
+  }
+}
+
 void InvalidateVolList(StorageResource* store)
 {
+  InvalidateStorageModel(store);
   const std::lock_guard lock{store->runtime_storage_status->changer_lock};
   if (store->runtime_storage_status->vol_list) {
     Dmsg1(100, "Invalidating volume list at %p\n",

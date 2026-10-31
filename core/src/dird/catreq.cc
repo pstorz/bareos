@@ -56,6 +56,9 @@ inline constexpr const char Find_media[]
 inline constexpr const char Get_Vol_Info[]
     = "CatReq Job=%127s GetVolInfo VolName=%127s write=%d device=%127s "
       "drive=%d\n";
+inline constexpr const char Drive_event[]
+    = "CatReq Job=%127s DriveEvent device=%127s drive=%d event=%15s slot=%d "
+      "volume=%127s\n";
 inline constexpr const char Update_media[]
     = "CatReq Job=%127s UpdateMedia VolName=%s"
       " VolJobs=%u VolFiles=%u VolBlocks=%u VolBytes=%lld VolMounts=%u"
@@ -139,6 +142,107 @@ std::optional<AppendTarget> GetAppendTarget(JobControlRecord* jcr,
   if (drive_index >= 0) { index = drive_index; }
   std::string drive = model->BindDevice(device, index);
   return AppendTarget{std::move(model), std::move(drive)};
+}
+
+/* Model drive of a device used by a job for reading or writing. Prefer
+ * the storage whose model already knows the device. */
+std::optional<AppendTarget> GetJobDrive(JobControlRecord* jcr,
+                                        char* device,
+                                        int drive_index)
+{
+  if (jcr->JobId == 0) { return std::nullopt; }
+  UnbashSpaces(device);
+  std::shared_ptr<storage_manager::StorageModel> chosen;
+  for (StorageResource* store :
+       {jcr->dir_impl->res.write_storage, jcr->dir_impl->res.read_storage}) {
+    if (!store) { continue; }
+    auto model
+        = storage_manager::GlobalStorageManager().Get(store->resource_name_);
+    if (model->HasDevice(device)) {
+      chosen = std::move(model);
+      break;
+    }
+    if (!chosen) { chosen = std::move(model); }
+  }
+  if (!chosen) { return std::nullopt; }
+  std::optional<int> index;
+  if (drive_index >= 0) { index = drive_index; }
+  std::string drive = chosen->BindDevice(device, index);
+  return AppendTarget{std::move(chosen), std::move(drive)};
+}
+
+// Apply a load or unload the storage daemon executed to the model.
+void ApplyDriveEvent(JobControlRecord* jcr,
+                     char* device,
+                     int drive_index,
+                     std::string_view event,
+                     int slot,
+                     char* volume)
+{
+  auto target = GetJobDrive(jcr, device, drive_index);
+  if (!target) { return; }
+  UnbashSpaces(volume);
+  std::string reported = bstrcmp(volume, "*None*") ? "" : volume;
+  if (event == "load") {
+    auto loaded = target->model->SlotLoaded(target->drive, slot, reported);
+    Dmsg3(100, "DriveEvent: %s loaded slot %d with %s\n", target->drive.c_str(),
+          slot, loaded ? loaded->c_str() : "unknown");
+  } else if (event == "unload") {
+    std::optional<int> to_slot;
+    if (slot > 0) { to_slot = slot; }
+    target->model->VolumeUnloaded(target->drive, to_slot);
+    Dmsg2(100, "DriveEvent: %s unloaded into slot %d\n", target->drive.c_str(),
+          slot);
+  }
+}
+
+/* The storage model knows where the volume really is: send that slot to
+ * the storage daemon and correct the catalog, instead of letting the
+ * storage daemon load a wrong slot. */
+void ReconcileVolumeLocation(JobControlRecord* jcr,
+                             const std::optional<AppendTarget>& target,
+                             MediaDbRecord* mr)
+{
+  if (!target) { return; }
+  StorageResource* store = nullptr;
+  for (StorageResource* candidate :
+       {jcr->dir_impl->res.write_storage, jcr->dir_impl->res.read_storage}) {
+    if (candidate
+        && target->model->StorageName() == candidate->resource_name_) {
+      store = candidate;
+      break;
+    }
+  }
+  if (!store || !store->autochanger) { return; }
+  auto actual = target->model->KnownSlotOfVolume(mr->VolumeName);
+  auto corrected = storage_manager::CorrectedSlot(
+      {.slot = mr->Slot,
+       .in_changer = mr->InChanger != 0,
+       .same_storage = mr->StorageId == store->StorageId},
+      actual);
+  if (!corrected) { return; }
+
+  Jmsg(jcr, M_INFO, 0,
+       T_("Volume \"%s\" is in slot %d of storage \"%s\", the catalog said "
+          "slot %d%s. Updating the catalog.\n"),
+       mr->VolumeName, *corrected, store->resource_name_, mr->Slot,
+       mr->InChanger ? "" : " (not in changer)");
+  DbLocker _{jcr->db};
+  MediaDbRecord current;
+  current.MediaId = mr->MediaId;
+  if (!jcr->db->GetMediaRecord(jcr, &current)) { return; }
+  current.Slot = *corrected;
+  current.InChanger = 1;
+  SetStorageidInMr(store, &current);
+  if (jcr->db->MakeInchangerUnique(jcr, &current)
+      && jcr->db->UpdateMediaRecord(jcr, &current)) {
+    mr->Slot = current.Slot;
+    mr->InChanger = current.InChanger;
+    mr->StorageId = current.StorageId;
+  } else {
+    Jmsg(jcr, M_WARNING, 0, T_("Catalog error updating Media record. %s"),
+         jcr->db->strerror());
+  }
 }
 
 constexpr int kMaxLeaseAttempts = 10;
@@ -262,6 +366,7 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
           unwanted += mr.VolumeName;
         }
       }
+      if (ok) { ReconcileVolumeLocation(jcr, target, &mr); }
       Dmsg3(050, "find_media ok=%d idx=%d vol=%s\n", ok, index, mr.VolumeName);
     }
 
@@ -314,6 +419,8 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
       }
 
       if (reason == NULL) {
+        ReconcileVolumeLocation(jcr, GetJobDrive(jcr, device, drive_index),
+                                &mr);
         SendVolumeInfoToStorageDaemon(jcr, bs, &mr);
       } else {
         /* Not suitable volume */
@@ -517,6 +624,12 @@ void CatalogRequest(JobControlRecord* jcr, BareosSocket* bs)
            jcr->db->strerror());
       bs->fsend(T_("1992 Update job record error\n"));
     }
+  } else if (char event[16];
+             bsscanf(bs->msg, Drive_event, &Job, &device, &drive_index, &event,
+                     &index, &mr.VolumeName)
+             == 6) {
+    // no reply, the storage daemon does not wait for one
+    ApplyDriveEvent(jcr, device, drive_index, event, index, mr.VolumeName);
   } else if (bsscanf(bs->msg, Delete_nulljobmediarecord, &Job, &jobid) == 2) {
     int numrows = jcr->db->DeleteNullJobmediaRecords(jcr, jobid);
     Dmsg1(400, "Deleted %d rows.\n", numrows);

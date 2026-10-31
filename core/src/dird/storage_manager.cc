@@ -80,6 +80,7 @@ void StorageModel::SetInventory(std::vector<DriveState> drives,
   }
   drives_ = std::move(drives);
   slots_ = std::move(slots);
+  slots_valid_ = true;
 
   for (auto it = leases_.begin(); it != leases_.end();) {
     if (FindDrive(it->second.drive)) {
@@ -121,6 +122,26 @@ std::optional<int> StorageModel::SlotOfVolume(const std::string& volume) const
     if (drive.loaded_volume == volume) { return drive.loaded_from_slot; }
   }
   return std::nullopt;
+}
+
+std::optional<int> StorageModel::KnownSlotOfVolume(
+    const std::string& volume) const
+{
+  std::lock_guard lock(mutex_);
+  if (!slots_valid_) { return std::nullopt; }
+  for (const auto& slot : slots_) {
+    if (slot.volume == volume) { return slot.slot; }
+  }
+  for (const auto& drive : drives_) {
+    if (drive.loaded_volume == volume) { return drive.loaded_from_slot; }
+  }
+  return std::nullopt;
+}
+
+void StorageModel::InvalidateSlots()
+{
+  std::lock_guard lock(mutex_);
+  slots_valid_ = false;
 }
 
 std::optional<DriveChoice> StorageModel::ChooseDrive(
@@ -306,25 +327,77 @@ bool StorageModel::VolumeLoaded(const std::string& drive_name,
   return true;
 }
 
-bool StorageModel::VolumeUnloaded(const std::string& drive_name)
+void StorageModel::ReturnToSlot(DriveState& drive, std::optional<int> to_slot)
+{
+  auto slot = drive.loaded_from_slot ? drive.loaded_from_slot : to_slot;
+  if (drive.loaded_volume && slot) {
+    auto it = std::find_if(slots_.begin(), slots_.end(),
+                           [&](const auto& s) { return s.slot == *slot; });
+    if (it != slots_.end()) {
+      it->volume = drive.loaded_volume;
+    } else {
+      slots_.push_back({*slot, drive.loaded_volume});
+    }
+  }
+  drive.loaded_volume.reset();
+  drive.loaded_from_slot.reset();
+  drive.pending = false;
+}
+
+bool StorageModel::VolumeUnloaded(const std::string& drive_name,
+                                  std::optional<int> to_slot)
 {
   std::lock_guard lock(mutex_);
   DriveState* drive = FindDrive(drive_name);
   if (!drive) { return false; }
-  if (drive->loaded_volume && drive->loaded_from_slot) {
-    auto it = std::find_if(slots_.begin(), slots_.end(), [&](const auto& s) {
-      return s.slot == *drive->loaded_from_slot;
-    });
-    if (it != slots_.end()) {
-      it->volume = drive->loaded_volume;
-    } else {
-      slots_.push_back({*drive->loaded_from_slot, drive->loaded_volume});
+  ReturnToSlot(*drive, to_slot);
+  return true;
+}
+
+std::optional<std::string> StorageModel::SlotLoaded(
+    const std::string& drive_name,
+    int slot_number,
+    const std::string& reported_volume)
+{
+  std::lock_guard lock(mutex_);
+  DriveState* drive = FindDrive(drive_name);
+  if (!drive) { return std::nullopt; }
+  if (drive->loaded_volume && drive->loaded_from_slot != slot_number) {
+    ReturnToSlot(*drive);
+  }
+  std::optional<std::string> volume;
+  for (auto& slot : slots_) {
+    if (slot.slot == slot_number && slot.volume) {
+      volume = std::move(slot.volume);
+      slot.volume.reset();
     }
   }
-  drive->loaded_volume.reset();
-  drive->loaded_from_slot.reset();
+  if (!volume && drive->loaded_from_slot == slot_number) {
+    volume = drive->loaded_volume;
+  }
+  if (!volume && !reported_volume.empty()) { volume = reported_volume; }
+  if (volume) {
+    for (auto& slot : slots_) {
+      if (slot.volume == volume) { slot.volume.reset(); }
+    }
+    for (auto& other : drives_) {
+      if (&other != drive && other.loaded_volume == volume) {
+        other.loaded_volume.reset();
+        other.loaded_from_slot.reset();
+      }
+    }
+  }
+  drive->loaded_volume = volume;
+  drive->loaded_from_slot = slot_number;
   drive->pending = false;
-  return true;
+  return volume;
+}
+
+bool StorageModel::HasDevice(const std::string& device) const
+{
+  std::lock_guard lock(mutex_);
+  return std::any_of(drives_.begin(), drives_.end(),
+                     [&](const auto& d) { return d.device == device; });
 }
 
 std::vector<Divergence> StorageModel::FindDivergences(

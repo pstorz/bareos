@@ -30,6 +30,7 @@
 #include "stored/stored.h"
 #include "stored/stored_globals.h"
 #include "stored/autochanger.h"
+#include "stored/askdir.h"
 #include "stored/device_control_record.h"
 #include "stored/wait.h"
 #include "lib/berrno.h"
@@ -261,6 +262,7 @@ int AutoloadDevice(DeviceControlRecord* dcr, int writing, BareosSocket* dir)
         Dmsg2(100, "load slot %hd, drive %hd, status is OK.\n", wanted_slot,
               drive);
         dcr->dev->SetSlotNumber(wanted_slot); /* set currently loaded slot */
+        ReportDriveEvent(jcr, dcr->dev, true, wanted_slot, dcr->VolumeName);
         if (dcr->dev->vol) {
           // We just swapped this Volume so it cannot be swapping any more
           dcr->dev->vol->ClearSwapping();
@@ -504,6 +506,7 @@ bool UnloadAutochanger(DeviceControlRecord* dcr,
       dev->InvalidateSlotNumber(); /* unknown */
     } else {
       dev->SetSlotNumber(0); /* nothing loaded */
+      ReportDriveEvent(jcr, dev, false, loaded_slot, nullptr);
     }
 
     FreePoolMemory(changer);
@@ -633,6 +636,7 @@ bool UnloadDev(DeviceControlRecord* dcr, Device* dev, bool lock_set)
     dev->InvalidateSlotNumber(); /* unknown */
   } else {
     Dmsg2(100, "Slot %hd unloaded %s\n", dev->GetSlot(), dev->print_name());
+    ReportDriveEvent(jcr, dev, false, dev->GetSlot(), nullptr);
     dev->SetSlotNumber(0); /* nothing loaded */
   }
   if (retval) { dev->ClearUnload(); }

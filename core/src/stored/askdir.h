@@ -1,7 +1,7 @@
 /*
    BAREOS® - Backup Archiving REcovery Open Sourced
 
-   Copyright (C) 2023-2023 Bareos GmbH & Co. KG
+   Copyright (C) 2023-2026 Bareos GmbH & Co. KG
 
    This program is Free Software; you can redistribute it and/or
    modify it under the terms of version three of the GNU Affero General Public
@@ -27,6 +27,16 @@ namespace storagedaemon {
 // deletes all null jobmedia records from the current job (jcr->job)
 // a null jobmedia record is a record with firstindex = 0 and lastindex = 0
 bool DeleteNullJobmediaRecords(JobControlRecord* jcr);
+
+class Device;
+/* Tell the director that the autochanger loaded a slot into the drive of
+ * dev (loaded=true) or unloaded the drive into a slot. Only reported for
+ * jobs; the director keeps its storage model up to date with it. */
+void ReportDriveEvent(JobControlRecord* jcr,
+                      const Device* dev,
+                      bool loaded,
+                      int slot,
+                      const char* volume);
 }  // namespace storagedaemon
 
 #endif  // BAREOS_STORED_ASKDIR_H_

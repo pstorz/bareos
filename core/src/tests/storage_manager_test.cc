@@ -184,6 +184,72 @@ TEST(storage_manager, load_and_unload_track_slots)
   EXPECT_FALSE(model.VolumeUnloaded("Unknown"));
 }
 
+TEST(storage_manager, drive_events_move_volumes)
+{
+  StorageModel model("Tape");
+  SetupChanger(model);
+  // the slot inventory wins over the volume the storage daemon expected
+  EXPECT_EQ(model.SlotLoaded("Drive-0", 1, "Other"), "A1");
+  EXPECT_EQ(model.LoadedVolume("Drive-0"), "A1");
+  EXPECT_EQ(model.SlotOfVolume("A1"), 1);
+
+  // loading another slot returns the previous volume to its slot
+  EXPECT_EQ(model.SlotLoaded("Drive-0", 2, ""), "A2");
+  EXPECT_EQ(model.Slots()[0].volume, "A1");
+  EXPECT_FALSE(model.Slots()[1].volume);
+
+  // unknown slot content: trust the report
+  EXPECT_EQ(model.SlotLoaded("Drive-1", 3, "B3"), "B3");
+  EXPECT_EQ(model.SlotOfVolume("B3"), 3);
+
+  ASSERT_TRUE(model.VolumeUnloaded("Drive-1"));
+  EXPECT_EQ(model.Slots()[2].volume, "B3");
+  EXPECT_FALSE(model.SlotLoaded("Unknown", 1, "A1"));
+}
+
+TEST(storage_manager, unload_uses_reported_slot)
+{
+  StorageModel model("Tape");
+  model.SetInventory({Drive("Drive-0")}, {{1, std::nullopt}});
+  model.VolumeLoaded("Drive-0", "A1", std::nullopt);
+  ASSERT_TRUE(model.VolumeUnloaded("Drive-0", 1));
+  EXPECT_EQ(model.SlotOfVolume("A1"), 1);
+}
+
+TEST(storage_manager, slots_are_known_until_invalidated)
+{
+  StorageModel model("Tape");
+  EXPECT_FALSE(model.KnownSlotOfVolume("A1"));
+  SetupChanger(model);
+  EXPECT_EQ(model.KnownSlotOfVolume("A1"), 1);
+  model.SlotLoaded("Drive-0", 1, "");
+  EXPECT_EQ(model.KnownSlotOfVolume("A1"), 1);
+  EXPECT_FALSE(model.KnownSlotOfVolume("Missing"));
+  model.InvalidateSlots();
+  EXPECT_FALSE(model.KnownSlotOfVolume("A1"));
+  EXPECT_EQ(model.SlotOfVolume("A1"), 1);
+  SetupChanger(model);
+  EXPECT_EQ(model.KnownSlotOfVolume("A1"), 1);
+}
+
+static_assert(!CorrectedSlot({.slot = 4, .in_changer = true}, 4));
+static_assert(!CorrectedSlot({.slot = 4, .in_changer = true}, std::nullopt));
+static_assert(!CorrectedSlot({.slot = 4, .in_changer = false}, 0));
+static_assert(CorrectedSlot({.slot = 5, .in_changer = true}, 4) == 4);
+static_assert(CorrectedSlot({.slot = 4, .in_changer = false}, 4) == 4);
+static_assert(
+    CorrectedSlot({.slot = 4, .in_changer = true, .same_storage = false}, 4)
+    == 4);
+
+TEST(storage_manager, knows_bound_devices)
+{
+  StorageModel model("Tape");
+  SetupChanger(model);
+  EXPECT_FALSE(model.HasDevice("Dev0"));
+  model.BindDevice("Dev0", 0);
+  EXPECT_TRUE(model.HasDevice("Dev0"));
+}
+
 TEST(storage_manager, inventory_keeps_jobs_and_drops_stale_leases)
 {
   StorageModel model("Tape");
@@ -499,7 +565,7 @@ TEST(storage_manager, orders_devices_for_job)
 
 static_assert(CheckJobCommand("JobId=1 BackupFormat=native\n", -1, 20, 0)
               == JobCommandCheck::kVersionMismatch);
-static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=3\n",
+static_assert(CheckJobCommand("JobId=1 SdProtocolVersion=4\n",
                               20,
                               20,
                               kDirSdProtocolVersion)

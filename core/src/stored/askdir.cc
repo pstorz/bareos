@@ -77,6 +77,9 @@ inline constexpr const char Find_media[]
       "device=%s drive=%d unwanted_volumes=%s\n";
 inline constexpr const char Get_Vol_Info[]
     = "CatReq Job=%s GetVolInfo VolName=%s write=%d device=%s drive=%d\n";
+inline constexpr const char Drive_event[]
+    = "CatReq Job=%s DriveEvent device=%s drive=%d event=%s slot=%d "
+      "volume=%s\n";
 inline constexpr const char Update_media[]
     = "CatReq Job=%s UpdateMedia VolName=%s"
       " VolJobs=%u VolFiles=%u VolBlocks=%u VolBytes=%s VolMounts=%u"
@@ -729,6 +732,26 @@ bool DeleteNullJobmediaRecords(JobControlRecord* jcr)
   Dmsg1(100, ">dird %s", dir->msg);
   if (strncmp(dir->msg, "1000", 4) == 0) { return true; }
   return false;
+}
+
+void ReportDriveEvent(JobControlRecord* jcr,
+                      const Device* dev,
+                      bool loaded,
+                      int slot,
+                      const char* volume)
+{
+  if (!jcr || jcr->JobId == 0 || !jcr->dir_bsock || !dev
+      || !dev->AttachedToAutochanger()) {
+    return;
+  }
+  DeviceIdentity identity(dev);
+  std::string name{(volume && volume[0]) ? volume : "*None*"};
+  BashSpaces(name);
+  // no reply, the director only records the event
+  jcr->dir_bsock->fsend(Drive_event, jcr->Job, identity.name.c_str(),
+                        identity.drive_index, loaded ? "load" : "unload", slot,
+                        name.c_str());
+  Dmsg1(debuglevel, ">dird %s", jcr->dir_bsock->msg);
 }
 
 bool DeviceControlRecord::DirGetVolumeInfo(enum get_vol_info_rw)

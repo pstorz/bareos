@@ -131,6 +131,25 @@ enum class LeaseResult
   kUnknownDrive,
 };
 
+/* Slot the catalog must be corrected to, given where the storage model
+ * knows the volume to be; nullopt if the catalog is right or the location
+ * is unknown. */
+struct CatalogSlot {
+  int slot{};
+  bool in_changer{false};
+  bool same_storage{true};
+};
+
+constexpr std::optional<int> CorrectedSlot(const CatalogSlot& catalog,
+                                           std::optional<int> actual)
+{
+  if (!actual || *actual <= 0) { return std::nullopt; }
+  if (catalog.in_changer && catalog.slot == *actual && catalog.same_storage) {
+    return std::nullopt;
+  }
+  return actual;
+}
+
 struct DriveChoice {
   std::string drive;
   DriveCandidate kind{DriveCandidate::kUnusable};
@@ -154,6 +173,12 @@ class StorageModel {
   std::optional<std::string> LoadedVolume(const std::string& drive) const;
   std::vector<SlotState> Slots() const;
   std::optional<int> SlotOfVolume(const std::string& volume) const;
+  /* Like SlotOfVolume, but only while the slot inventory is known to be
+   * current: since the last changer listing only jobs moved volumes, and
+   * they report each move. */
+  std::optional<int> KnownSlotOfVolume(const std::string& volume) const;
+  // Operator commands moved volumes without telling the model.
+  void InvalidateSlots();
 
   // Pick the best drive to use for a volume; nullopt if none is usable.
   std::optional<DriveChoice> ChooseDrive(const std::string& volume) const;
@@ -183,12 +208,22 @@ class StorageModel {
   bool VolumeLoaded(const std::string& drive,
                     const std::string& volume,
                     std::optional<int> from_slot);
-  bool VolumeUnloaded(const std::string& drive);
+  bool VolumeUnloaded(const std::string& drive,
+                      std::optional<int> to_slot = std::nullopt);
+  /* The storage daemon loaded a slot into a drive. The volume is taken
+   * from the slot inventory, the reported volume is used if the slot
+   * content is unknown. Returns the volume now in the drive. */
+  std::optional<std::string> SlotLoaded(const std::string& drive,
+                                        int slot,
+                                        const std::string& reported_volume);
+  bool HasDevice(const std::string& device) const;
 
   std::vector<Divergence> FindDivergences(
       const std::vector<CatalogVolumeLocation>& catalog) const;
 
  private:
+  void ReturnToSlot(DriveState& drive,
+                    std::optional<int> to_slot = std::nullopt);
   DriveState* FindDrive(const std::string& name);
   const DriveState* FindDrive(const std::string& name) const;
 
@@ -196,6 +231,7 @@ class StorageModel {
   std::string storage_name_;
   std::vector<DriveState> drives_;
   std::vector<SlotState> slots_;
+  bool slots_valid_{false};
   std::multimap<std::string, VolumeLease> leases_;
 };
 
