@@ -160,6 +160,8 @@
   "Connection failed": "",
   "Consecutive failures": "",
   "Console": "Konsole",
+  "Console connection failed": "",
+  "Console disconnected": "",
   "Consolidate": "Konsolidować",
   "Consulting": "",
   "Contrib plugin": "",
