@@ -105,7 +105,8 @@ void BareosDb::ListPoolRecords(JobControlRecord* jcr,
          "SELECT PoolId,Name,NumVols,MaxVols,UseOnce,UseCatalog,"
          "AcceptAnyVolume,VolRetention,VolUseDuration,MaxVolJobs,MaxVolBytes,"
          "AutoPrune,Recycle,PoolType,LabelFormat,Enabled,ScratchPoolId,"
-         "RecyclePoolId,LabelType ");
+         "RecyclePoolId,LabelType,MaxVolFiles,ActionOnPurge,MinBlocksize,"
+         "MaxBlocksize ");
     if (pdbr->Name[0] != 0) {
       query.bsprintf("%s FROM Pool WHERE Name='%s'", select.c_str(),
                      escaped_pool_name->c_str());
@@ -257,23 +258,19 @@ void BareosDb::ListJobmediaRecords(JobControlRecord* jcr,
     PmStrcat(where, filter.c_str());
   }
 
+  // The vertical list additionally shows the MediaId.
   DbLocker _{this};
-  if (type == VERT_LIST) {
-    Mmsg(cmd,
-         "SELECT JobMediaId,JobId,Media.MediaId,Media.VolumeName,"
-         "FirstIndex,LastIndex,StartFile,JobMedia.EndFile,StartBlock,"
-         "JobMedia.EndBlock,JobMedia.JobBytes "
-         "FROM JobMedia,Media WHERE Media.MediaId=JobMedia.MediaId %s",
-         where.c_str());
-
-  } else {
-    Mmsg(cmd,
-         "SELECT JobMediaId,JobId,Media.VolumeName,FirstIndex,LastIndex,"
-         "StartFile,JobMedia.EndFile,StartBlock,JobMedia.EndBlock,"
-         "JobMedia.JobBytes "
-         "FROM JobMedia,Media WHERE Media.MediaId=JobMedia.MediaId %s",
-         where.c_str());
-  }
+  Mmsg(cmd,
+       "SELECT JobMedia.JobMediaId,JobMedia.JobId,%sMedia.VolumeName,"
+       "JobMedia.FirstIndex,JobMedia.LastIndex,JobMedia.StartFile,"
+       "JobMedia.EndFile,JobMedia.StartBlock,"
+       "JobMedia.EndBlock,JobMedia.JobBytes,"
+       "Job.Name AS jobname,Client.Name AS clientname "
+       "FROM JobMedia JOIN Media ON Media.MediaId=JobMedia.MediaId "
+       "JOIN Job ON Job.JobId=JobMedia.JobId "
+       "LEFT JOIN Client ON Client.ClientId=Job.ClientId "
+       "WHERE 1=1 %s",
+       type == VERT_LIST ? "Media.MediaId," : "", where.c_str());
   if (!QueryDb(jcr, cmd)) { return; }
 
   sendit->ArrayStart("jobmedia");
